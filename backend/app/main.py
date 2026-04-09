@@ -2,6 +2,7 @@
 Crazy Lister v3.0 - Amazon SP-API Desktop App
 Main FastAPI application entry point
 """
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
@@ -55,6 +56,11 @@ async def startup_event():
     init_db()
     logger.info("Database initialized successfully")
 
+    # Start task manager
+    from app.tasks.task_manager import task_manager
+    asyncio.create_task(task_manager.start())
+    logger.info("Task manager started")
+
     logger.info("Application startup complete")
 
 
@@ -62,6 +68,11 @@ async def startup_event():
 async def shutdown_event():
     """Application shutdown - cleanup resources"""
     logger.info("Shutting down Crazy Lister v3.0")
+
+    # Stop task manager
+    from app.tasks.task_manager import task_manager
+    task_manager.stop()
+    logger.info("Task manager stopped")
 
 
 @app.get("/health", tags=["health"])
