@@ -2,6 +2,7 @@ import { Loader2, Play, RotateCcw } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useListings } from '@/api/hooks'
 import { StatusBadge } from '@/components/common/StatusBadge'
+import type { Listing } from '@/types/api'
 
 export default function ListingQueuePage() {
   const { user } = useAuth()
@@ -49,7 +50,7 @@ export default function ListingQueuePage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {listings?.map((listing, idx) => (
+            {listings?.map((listing: Listing, idx: number) => (
               <tr key={listing.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-4 text-sm text-gray-600">{idx + 1}</td>
                 <td className="px-6 py-4 text-sm text-gray-800 font-medium">
@@ -89,25 +90,25 @@ export default function ListingQueuePage() {
         <div className="grid grid-cols-4 gap-4">
           <div className="bg-green-50 rounded-lg p-4 text-center">
             <p className="text-2xl font-bold text-green-700">
-              {listings.filter((l) => l.status === 'success').length}
+              {listings.filter((l: Listing) => l.status === 'success').length}
             </p>
             <p className="text-sm text-green-600">نجح</p>
           </div>
           <div className="bg-yellow-50 rounded-lg p-4 text-center">
             <p className="text-2xl font-bold text-yellow-700">
-              {listings.filter((l) => l.status === 'queued').length}
+              {listings.filter((l: Listing) => l.status === 'queued').length}
             </p>
             <p className="text-sm text-yellow-600">في الطابور</p>
           </div>
           <div className="bg-blue-50 rounded-lg p-4 text-center">
             <p className="text-2xl font-bold text-blue-700">
-              {listings.filter((l) => l.status === 'processing' || l.status === 'submitted').length}
+              {listings.filter((l: Listing) => l.status === 'processing' || l.status === 'submitted').length}
             </p>
             <p className="text-sm text-blue-600">قيد المعالجة</p>
           </div>
           <div className="bg-red-50 rounded-lg p-4 text-center">
             <p className="text-2xl font-bold text-red-700">
-              {listings.filter((l) => l.status === 'failed').length}
+              {listings.filter((l: Listing) => l.status === 'failed').length}
             </p>
             <p className="text-sm text-red-600">فشل</p>
           </div>

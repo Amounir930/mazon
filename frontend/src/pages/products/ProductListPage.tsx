@@ -4,6 +4,7 @@ import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2 } from 'lucide-rea
 import { useAuth } from '@/contexts/AuthContext'
 import { useProducts } from '@/api/hooks'
 import { StatusBadge } from '@/components/common/StatusBadge'
+import type { Product } from '@/types/api'
 
 export default function ProductListPage() {
   const { user } = useAuth()
@@ -14,7 +15,7 @@ export default function ProductListPage() {
   })
 
   const filteredProducts = data?.items.filter(
-    (p) =>
+    (p: Product) =>
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.sku.toLowerCase().includes(search.toLowerCase())
   )
@@ -84,7 +85,7 @@ export default function ProductListPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {filteredProducts?.map((product) => (
+            {filteredProducts?.map((product: Product) => (
               <tr key={product.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-4">
                   <p className="font-medium text-gray-800">{product.name}</p>

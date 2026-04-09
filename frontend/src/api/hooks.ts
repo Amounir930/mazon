@@ -55,9 +55,9 @@ export function useStats(sellerId: string) {
   return {
     totalProducts: products?.total ?? 0,
     totalListings: listings?.length ?? 0,
-    published: listings?.filter((l) => l.status === 'success').length ?? 0,
-    queued: listings?.filter((l) => l.status === 'queued').length ?? 0,
-    failed: listings?.filter((l) => l.status === 'failed').length ?? 0,
-    processing: listings?.filter((l) => l.status === 'processing' || l.status === 'submitted').length ?? 0,
+    published: listings?.filter((l: Listing) => l.status === 'success').length ?? 0,
+    queued: listings?.filter((l: Listing) => l.status === 'queued').length ?? 0,
+    failed: listings?.filter((l: Listing) => l.status === 'failed').length ?? 0,
+    processing: listings?.filter((l: Listing) => l.status === 'processing' || l.status === 'submitted').length ?? 0,
   }
 }
