@@ -95,12 +95,16 @@ def _run_server():
 
     logger.info(f"Starting FastAPI backend on {BACKEND_URL}...")
 
-    uvicorn.run(
-        "app.main:app",
-        host=BACKEND_HOST,
-        port=BACKEND_PORT,
-        log_level="warning",
-    )
+    try:
+        uvicorn.run(
+            "app.main:app",
+            host=BACKEND_HOST,
+            port=BACKEND_PORT,
+            log_level="warning",
+        )
+    except Exception as e:
+        logger.error(f"❌ Uvicorn failed: {e}")
+        raise
 
 
 def start_backend():
@@ -112,7 +116,7 @@ def start_backend():
     logger.info("Backend server thread started")
 
 
-def wait_for_server(timeout: int = 15) -> bool:
+def wait_for_server(timeout: int = 30) -> bool:
     """
     Wait for the backend server to be ready.
     Polls the /health endpoint until it responds.
@@ -128,7 +132,7 @@ def wait_for_server(timeout: int = 15) -> bool:
                 return True
         except (URLError, ConnectionRefusedError, OSError):
             pass
-        time.sleep(0.3)
+        time.sleep(0.5)
 
     logger.error("❌ Backend server failed to start within timeout")
     return False
@@ -154,29 +158,6 @@ def get_frontend_path() -> str:
         frontend_path = BASE_DIR.parent / "frontend" / "dist" / "index.html"
 
     return str(frontend_path)
-
-
-# ============================================================
-# 6. GRACEFUL SHUTDOWN
-# ============================================================
-
-def on_closing():
-    """Called when the user closes the PyWebView window"""
-    logger.info("Window closing — shutting down gracefully...")
-
-    # Stop backend
-    stop_backend()
-
-    # Stop task manager
-    try:
-        from app.tasks.task_manager import task_manager
-        task_manager.stop()
-        logger.info("Task manager stopped")
-    except Exception as e:
-        logger.warning(f"Error stopping task manager: {e}")
-
-    logger.info("Crazy Lister shutdown complete")
-    return True  # Allow the window to close
 
 
 # ============================================================
@@ -223,8 +204,29 @@ def main():
         min_size=(900, 600),
         resizable=True,
         background_color="#0a0a0f",
-        on_closing=on_closing,
     )
+
+    # Set up closing event handler
+    def on_closing():
+        """Called when the user closes the PyWebView window"""
+        logger.info("Window closing — shutting down gracefully...")
+
+        # Stop backend
+        stop_backend()
+
+        # Stop task manager
+        try:
+            from app.tasks.task_manager import task_manager
+            task_manager.stop()
+            logger.info("Task manager stopped")
+        except Exception as e:
+            logger.warning(f"Error stopping task manager: {e}")
+
+        logger.info("Crazy Lister shutdown complete")
+        return True  # Allow the window to close
+
+    # Bind closing event (pywebview 4.x compatible)
+    window.events.closing += on_closing
 
     logger.info("🚀 Starting PyWebView UI...")
     webview.start()

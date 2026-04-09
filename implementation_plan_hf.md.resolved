@@ -1,33 +1,339 @@
-# Deployment Plan: Hugging Face Spaces (Docker)
+# Deployment Plan: Crazy Lister v3.0 — Standalone Windows Desktop App
 
-هذا التحليل يشرح كيفية نقل مشروعك من العمل المحلي إلى منصة **Hugging Face Spaces**.
-
-## متطلبات Hugging Face الصارمة
-
-> [!IMPORTANT]
-> 1. **المنفذ (Port):** يجب أن يعمل التطبيق على المنفذ **7860** حصرياً (مشروعنا يعمل حالياً على 8000).
-> 2. **المستخدم (User):** يجب تشغيل الـ Docker بمستخدم UID 1000 (غير الـ root).
-> 3. **قاعدة البيانات:** بما أن Hugging Face لا تدعم `docker-compose` المتعدد، سنقوم بالربط بقاعدة بيانات خارجية (Remote Database) لضمان عدم ضياع البيانات.
-
-## التعديلات المقترحة
-
-### [Component: Docker Configuration]
-#### [MODIFY] [backend/Dockerfile](file:///c:/Users/Dell/Desktop/learn/amazon/backend/Dockerfile)
-* تغيير `EXPOSE 8000` إلى `EXPOSE 7860`.
-* تعديل أمر التشغيل `CMD` ليستخدم المنفذ الجديد.
-* إضافة مستخدم `user` بصلاحيات محدودة (متطلب Hugging Face).
-
-### [Component: Environment Settings]
-#### [ACTION] Secret Management
-* سنقوم بوضع مفاتيح أمازون (Client ID, Secret, etc) داخل صفحة **Settings -> Variables and Secrets** في Hugging Face وليس في ملف `.env`.
+> **التاريخ:** أبريل 2026  
+> **النوع:** ملف `.exe` واحد يعمل على Windows بدون Docker أو سيرفر  
+> **الحالة:** المراحل 1-6 مكتملة ✅ | المرحلة 7 (Build) قيد التنفيذ
 
 ---
 
-## الأسئلة المفتوحة (تحتاج إجابتك)
+## 📋 ملخص البنية الحالية
 
-1. **قاعدة البيانات:** هل لديك حساب على **Supabase** أو **Neon DB**؟ (كلاهما مجاني وسأحتاجه لربط الباك-إند بقاعدة بيانات دائمة).
-2. **الهدف:** هل تريد رفع **الباك-إند فقط** حالياً لتجربة الـ Swagger API، أم تريد دمج الفرونت-إند معه في نفس الـ Space؟ (دمجهما معاً يتطلب كود إضافي لكنه ممكن).
+| المكون | التقنية | الحالة |
+|--------|---------|--------|
+| **Backend** | FastAPI (Python 3.11) | ✅ مكتمل |
+| **Frontend** | React 19 + Vite + TypeScript | ✅ مكتمل (build ناجح) |
+| **Database** | SQLite في `%APPDATA%/CrazyLister/` | ✅ مكتمل |
+| **Task Queue** | Asyncio (بدون Celery/Redis) | ✅ مكتمل |
+| **Desktop Wrapper** | PyWebView 4.4.1 | ✅ مكتمل |
+| **Entry Point** | `backend/app/launcher.py` | ✅ مكتمل |
 
-## خطة التحقق (Verification)
-1. بناء صورة Docker محلياً واختبارها على المنفذ 7860.
-2. التأكد من أن التطبيق يعمل بمستخدم UID 1000 دون مشاكل في التصاريح.
+### ✅ تم التحقق فعلياً:
+- `launcher.py` يستورد بدون أخطاء
+- Backend يشتغل على `127.0.0.1:8765`
+- Health endpoint يرد: `{"status":"ok","version":"3.0.0"}`
+- Amazon status endpoint يرد: `"No seller configured"`
+- Frontend build ناجح (336 KB JS + 23 KB CSS)
+- PyWebView 4.4.1 مثبت
+- APP_DATA_DIR = `%APPDATA%/CrazyLister/` ✅
+
+---
+
+## 🚀 المرحلة 7: Build & Packaging (.exe)
+
+### 7.1 الملفات المطلوبة
+
+| الملف | الحالة | الوصف |
+|-------|--------|-------|
+| `crazy_lister.spec` | ❌ **لم يُنشأ** | PyInstaller spec file |
+| `build.py` | ❌ **لم يُنشأ** | Build automation script |
+| `assets/icon.ico` | ❌ **لم يُنشأ** | تطبيق أيقونة |
+| `backend/app/launcher.py` | ✅ موجود | Entry point |
+| `frontend/dist/` | ✅ موجود | Frontend built files |
+
+### 7.2 PyInstaller Spec File (الأولوية الأولى)
+
+**الملف:** `crazy_lister.spec`
+
+```python
+# -*- mode: python ; coding: utf-8 -*-
+
+block_cipher = None
+
+a = Analysis(
+    ['backend/app/launcher.py'],
+    pathex=['backend'],
+    binaries=[],
+    datas=[
+        ('frontend/dist', 'frontend/dist'),
+    ],
+    hiddenimports=[
+        'uvicorn',
+        'uvicorn.lifespan.on',
+        'uvicorn.lifespan.off',
+        'uvicorn.loops.auto',
+        'uvicorn.loops.asyncio',
+        'uvicorn.protocols.http.auto',
+        'uvicorn.protocols.http.h11_impl',
+        'uvicorn.protocols.websockets.auto',
+        'uvicorn.logging',
+        'fastapi',
+        'fastapi.routing',
+        'starlette',
+        'starlette.routing',
+        'sqlalchemy',
+        'sqlalchemy.dialects.sqlite',
+        'pydantic',
+        'pydantic_settings',
+        'webview',
+        'webview.platforms.winforms',
+        'sp_api',
+        'sp_api.api',
+        'sp_api.base',
+        'boto3',
+        'botocore',
+        'loguru',
+        'loguru._defaults',
+        'pandas',
+        'openpyxl',
+        'dateutil',
+        'dateutil.parser',
+        'dateutil.tz',
+        'email_validator',
+        'python_multipart',
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[
+        'tkinter',
+        'matplotlib',
+        'scipy',
+        'numpy',
+        'jinja2',
+        'IPython',
+        'setuptools',
+        'pip',
+        'pytest',
+    ],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    [],
+    name='CrazyLister',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon='assets/icon.ico',
+)
+```
+
+### 7.3 Build Script
+
+**الملف:** `build.py`
+
+```python
+"""
+Build Script for Crazy Lister v3.0
+====================================
+Usage: python build.py
+"""
+import os
+import sys
+import subprocess
+import shutil
+from pathlib import Path
+from datetime import datetime
+
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+RED = "\033[91m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
+def print_header(text):
+    print(f"\n{BOLD}{'='*60}{RESET}")
+    print(f"  {text}")
+    print(f"{BOLD}{'='*60}{RESET}\n")
+
+def print_success(text):
+    print(f"{GREEN}✅ {text}{RESET}")
+
+def print_error(text):
+    print(f"{RED}❌ {text}{RESET}")
+
+def run(cmd, cwd=None, check=True):
+    print(f"  $ {cmd}")
+    result = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True)
+    if result.returncode != 0 and check:
+        print_error(f"Command failed: {cmd}")
+        if result.stderr:
+            print(f"  Error: {result.stderr[:500]}")
+        sys.exit(1)
+    return result
+
+def main():
+    project_root = Path(__file__).parent
+
+    # Step 0: Check requirements
+    print_header("Step 0: Checking Requirements")
+    version = sys.version_info
+    if version.major < 3 or version.minor < 11:
+        print_error(f"Python 3.11+ required (found {version.major}.{version.minor})")
+        sys.exit(1)
+    print_success(f"Python {version.major}.{version.minor}.{version.micro}")
+
+    # Step 1: Build Frontend
+    print_header("Step 1: Building Frontend")
+    frontend_dir = project_root / "frontend"
+    run("npm install", cwd=frontend_dir)
+    run("npm run build", cwd=frontend_dir)
+    if not (frontend_dir / "dist" / "index.html").exists():
+        print_error("Frontend build failed")
+        sys.exit(1)
+    print_success("Frontend built")
+
+    # Step 2: Build .exe
+    print_header("Step 2: Building .exe (PyInstaller)")
+    dist_dir = project_root / "dist"
+    build_dir = project_root / "build"
+    if dist_dir.exists():
+        shutil.rmtree(dist_dir)
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+    run("pyinstaller --clean crazy_lister.spec")
+    exe_path = dist_dir / "CrazyLister.exe"
+    if not exe_path.exists():
+        print_error("Build failed — .exe not found")
+        sys.exit(1)
+    size_mb = exe_path.stat().st_size / (1024 * 1024)
+    print_success(f"Build successful: {exe_path.name} ({size_mb:.1f} MB)")
+
+    print_header("Build Complete!")
+    print(f"  📁 Location: {exe_path}")
+
+if __name__ == "__main__":
+    main()
+```
+
+### 7.4 خطوات التنفيذ
+
+```powershell
+# 1. تأكد إن كل حاجة جاهزة
+cd c:\Users\Dell\Desktop\learn\amazon
+
+# 2. ثبّت الـ dependencies
+cd backend && pip install -r requirements.txt && cd ..
+
+# 3. ابنِ التطبيق
+python build.py
+
+# 4. جرّب الـ .exe
+.\dist\CrazyLister.exe
+```
+
+---
+
+## 🎯 النتيجة المتوقعة
+
+```
+dist/
+└── CrazyLister.exe    ← ~70 MB — ملف واحد
+```
+
+**العميل:**
+1. دبل كليك على `CrazyLister.exe`
+2. البرنامج يفتح خلال 3-5 ثواني
+3. يدخل بيانات Amazon (4 مفاتيح)
+4. يبدأ يشتغل
+
+---
+
+## 📦 خطة التوزيع
+
+```
+CrazyLister-v3.0.0.zip
+├── CrazyLister-v3.0.0.exe    ← ~70 MB
+└── README.txt                 ← تعليمات
+```
+
+### تعليمات للعميل (README.txt)
+
+```
+===============================================
+  Crazy Lister v3.0 — تعليمات الاستخدام
+===============================================
+
+1. المتطلبات:
+   - Windows 10 أو أحدث
+   - اتصال بالإنترنت
+   - حساب Amazon Seller Central
+
+2. التشغيل:
+   - دبل كليك على CrazyLister.exe
+   - انتظر 2-3 ثواني
+
+3. الإعداد:
+   - أدخل: Client ID, Client Secret, Refresh Token, Seller ID
+   - اضغط "تحقق من الاتصال"
+
+4. البيانات محفوظة في:
+   %APPDATA%\CrazyLister\
+
+5. الدعم:
+   اللوجات: %APPDATA%\CrazyLister\crazy_lister.log
+```
+
+---
+
+## ⚠️ ملاحظات مهمة
+
+| الملاحظة | التفاصيل |
+|----------|----------|
+| **لا Docker** | التطبيق يعمل بدون أي Docker أو سيرفر |
+| **لا SaaS** | عميل واحد فقط — مش multi-tenant |
+| **لا PostgreSQL** | SQLite محلي في `%APPDATA%` |
+| **لا Redis/Celery** | Asyncio tasks داخل نفس العملية |
+| **لا Nginx** | PyWebView بيسيرف الـ Frontend مباشرة |
+| **لا Admin مطلوب** | البيانات في `%APPDATA%` مش في `Program Files` |
+
+---
+
+## 📋 Checklist قبل الـ Build
+
+| # | التحقق | الحالة |
+|---|--------|--------|
+| 1 | `launcher.py` يستورد بدون أخطاء | ✅ تم |
+| 2 | Frontend build ناجح | ✅ تم |
+| 3 | Backend يشتغل على port 8765 | ✅ تم |
+| 4 | Health endpoint يرد | ✅ تم |
+| 5 | Amazon status endpoint يرد | ✅ تم |
+| 6 | PyWebView 4.4.1 مثبت | ✅ تم |
+| 7 | `crazy_lister.spec` | ❌ **لم يُنشأ** |
+| 8 | `build.py` | ❌ **لم يُنشأ** |
+| 9 | `assets/icon.ico` | ❌ **لم يُنشأ** |
+| 10 | Python 3.11+ | ✅ تم |
+| 11 | Node.js 18+ | ✅ تم |
+| 12 | PyInstaller مثبت | ❌ **لم يُتحقق** |
+
+---
+
+## 🚀 الخطوة الجاية
+
+**إنشاء 3 ملفات:**
+1. `crazy_lister.spec` — PyInstaller config
+2. `build.py` — Build automation
+3. `assets/icon.ico` — Application icon (اختياري)
+
+**بعدين:**
+```powershell
+python build.py
+```

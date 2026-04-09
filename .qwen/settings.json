@@ -22,7 +22,15 @@
       "Bash(findstr *)",
       "Bash(pip show *)",
       "Bash(pip install *)",
-      "Read(C:\\Users\\Dell\\AppData\\Roaming\\CrazyLister/**)"
+      "Read(C:\\Users\\Dell\\AppData\\Roaming\\CrazyLister/**)",
+      "Bash(uvicorn *)",
+      "Bash(del *)",
+      "Bash(true)",
+      "Bash(echo.)",
+      "Bash(start *)",
+      "Bash(type *)",
+      "Bash(powershell *)",
+      "Bash(tasklist)"
     ]
   },
   "$version": 3
