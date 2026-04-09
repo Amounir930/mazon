@@ -1,14 +1,10 @@
 import { Loader2, Play, RotateCcw } from 'lucide-react'
-import { useAuth } from '@/contexts/AuthContext'
 import { useListings } from '@/api/hooks'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import type { Listing } from '@/types/api'
 
 export default function ListingQueuePage() {
-  const { sellerId } = useAuth()
-  const { data: listings, isLoading } = useListings({
-    seller_id: sellerId,
-  })
+  const { data: listings, isLoading } = useListings({})
 
   if (isLoading) {
     return (

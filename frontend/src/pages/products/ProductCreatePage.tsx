@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowRight, Package, DollarSign, Image, Settings, Layers, Save, Loader2 } from 'lucide-react'
-import { useAuth } from '@/contexts/AuthContext'
 import api from '@/lib/axios'
 import toast from 'react-hot-toast'
 
@@ -15,14 +14,12 @@ const tabs = [
 
 export default function ProductCreatePage() {
   const navigate = useNavigate()
-  const { sellerId } = useAuth()
   const [activeTab, setActiveTab] = useState('basic')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async () => {
     setLoading(true)
     try {
-      // TODO: جمع البيانات من كل التبويبات وإرسالها
       const productData = {
         sku: 'TEST-' + Date.now(),
         name: 'منتج تجريبي',
@@ -34,9 +31,7 @@ export default function ProductCreatePage() {
         keywords: ['كلمة1', 'كلمة2'],
       }
 
-      await api.post('/products', productData, {
-        params: { seller_id: sellerId },
-      })
+      await api.post('/products', productData)
 
       toast.success('تم إنشاء المنتج بنجاح!')
       navigate('/products')

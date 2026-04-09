@@ -4,7 +4,7 @@ import Header from './Header'
 
 export default function Layout() {
   return (
-    <div className="min-h-screen bg-gray-50" dir="rtl">
+    <div className="min-h-screen bg-[#0a0a0f]" dir="rtl">
       <Sidebar />
       <div className="pr-64">
         <Header />

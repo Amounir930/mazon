@@ -19,7 +19,10 @@
       "Bash(node *)",
       "Bash(python *)",
       "Bash(scp *)",
-      "Bash(findstr *)"
+      "Bash(findstr *)",
+      "Bash(pip show *)",
+      "Bash(pip install *)",
+      "Read(C:\\Users\\Dell\\AppData\\Roaming\\CrazyLister/**)"
     ]
   },
   "$version": 3

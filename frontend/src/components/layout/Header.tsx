@@ -1,22 +1,24 @@
-import { Bell, User } from 'lucide-react'
+import { useAmazonConnect } from '@/contexts/AmazonConnectContext'
+import { Shield } from 'lucide-react'
 
 export default function Header() {
+  const { status } = useAmazonConnect()
+
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-4">
+    <header className="bg-[#12121a] border-b border-gray-800/50 px-6 py-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-gray-800">Crazy Lister</h2>
-          <p className="text-sm text-gray-500">Amazon Auto-Listing System</p>
+          <h2 className="text-xl font-semibold text-white">Crazy Lister</h2>
+          <p className="text-sm text-gray-400">Amazon Auto-Listing System v3.0</p>
         </div>
         <div className="flex items-center gap-4">
-          <button className="relative p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-          </button>
-          <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-lg">
-            <User className="w-5 h-5 text-gray-600" />
-            <span className="text-sm text-gray-700">المستخدم</span>
-          </div>
+          {status && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-[#1a1a2e] rounded-lg border border-gray-700/50">
+              <Shield className={`w-4 h-4 ${status.is_connected ? 'text-green-400' : 'text-gray-500'}`} />
+              <span className="text-sm text-gray-300">{status.display_name || status.amazon_seller_id || 'Not configured'}</span>
+              <span className={`w-2 h-2 rounded-full ${status.is_connected ? 'bg-green-400' : 'bg-gray-500'}`} />
+            </div>
+          )}
         </div>
       </div>
     </header>

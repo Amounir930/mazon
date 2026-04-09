@@ -1,4 +1,9 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { useAmazonConnect } from './contexts/AmazonConnectContext'
+import Layout from './components/layout/Layout'
+
+// Amazon connect
+import AmazonConnectPage from './pages/amazon/AmazonConnectPage'
 
 // Main pages
 import DashboardPage from './pages/dashboard/DashboardPage'
@@ -8,23 +13,32 @@ import ListingQueuePage from './pages/listings/ListingQueuePage'
 import ReportsPage from './pages/reports/ReportsPage'
 import SettingsPage from './pages/settings/SettingsPage'
 
-// TODO: Replace with Amazon Connect system (Phase 5)
-// Temporary: simple pass-through layout until AmazonConnectContext is built
+// Connected layout — guards all child routes
 function ConnectedLayout() {
-  // TODO: Check Amazon connection status
+  const { isConnected, isLoading } = useAmazonConnect()
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#0a0a0f]">
+        <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!isConnected) {
+    return <Navigate to="/connect" replace />
+  }
+
   return <Outlet />
 }
 
 export default function AppRouter() {
-  // TODO: Replace with Amazon connect loading state
   return (
     <Routes>
-      {/* TODO: Add /connect route for Amazon credentials page */}
-      {/* Temporary: redirect /login to /dashboard */}
-      <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-      <Route path="/register" element={<Navigate to="/dashboard" replace />} />
+      {/* Amazon connect — always accessible */}
+      <Route path="/connect" element={<AmazonConnectPage />} />
 
-      {/* Main routes — TODO: protect with Amazon connection check */}
+      {/* Protected routes — require Amazon connection */}
       <Route element={<ConnectedLayout />}>
         <Route element={<Layout />}>
           <Route path="" element={<Navigate to="/dashboard" replace />} />
@@ -38,12 +52,7 @@ export default function AppRouter() {
       </Route>
 
       {/* Catch all */}
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/connect" replace />} />
     </Routes>
   )
-}
-
-// Temporary Layout wrapper until Sidebar/Header are updated
-function Layout() {
-  return <Outlet />
 }

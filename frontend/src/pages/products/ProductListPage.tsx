@@ -1,18 +1,13 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2 } from 'lucide-react'
-import { useAuth } from '@/contexts/AuthContext'
 import { useProducts } from '@/api/hooks'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import type { Product } from '@/types/api'
 
 export default function ProductListPage() {
-  const { sellerId } = useAuth()
   const [search, setSearch] = useState('')
-  const { data, isLoading, isError } = useProducts({
-    seller_id: sellerId,
-    page: 1,
-  })
+  const { data, isLoading, isError } = useProducts({ page: 1 })
 
   const filteredProducts = data?.items.filter(
     (p: Product) =>

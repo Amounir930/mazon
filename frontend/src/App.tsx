@@ -2,12 +2,12 @@ import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import AppRouter from './router'
-import { AuthProvider } from './contexts/AuthContext'
+import { AmazonConnectProvider } from './contexts/AmazonConnectContext'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 60 * 5,
       retry: 1,
       refetchOnWindowFocus: false,
     },
@@ -18,7 +18,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AuthProvider>
+        <AmazonConnectProvider>
           <AppRouter />
           <Toaster
             position="top-center"
@@ -43,7 +43,7 @@ function App() {
               },
             }}
           />
-        </AuthProvider>
+        </AmazonConnectProvider>
       </BrowserRouter>
     </QueryClientProvider>
   )
