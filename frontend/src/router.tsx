@@ -14,16 +14,16 @@ import ListingQueuePage from './pages/listings/ListingQueuePage'
 import ReportsPage from './pages/reports/ReportsPage'
 import SettingsPage from './pages/settings/SettingsPage'
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuth()
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
-  }
-  return children
-}
-
 export default function AppRouter() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="w-8 h-8 border-4 border-amazon-orange border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
 
   return (
     <Routes>
@@ -38,25 +38,20 @@ export default function AppRouter() {
       />
 
       {/* Protected routes */}
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <Layout />
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="products" element={<ProductListPage />} />
-        <Route path="products/create" element={<ProductCreatePage />} />
-        <Route path="listings" element={<ListingQueuePage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-      </Route>
+      {isAuthenticated && (
+        <Route path="/" element={<Layout />}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="products" element={<ProductListPage />} />
+          <Route path="products/create" element={<ProductCreatePage />} />
+          <Route path="listings" element={<ListingQueuePage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
+      )}
 
-      {/* Catch all */}
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      {/* Default redirect */}
+      <Route path="*" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
     </Routes>
   )
 }
