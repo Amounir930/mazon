@@ -13,28 +13,26 @@ settings = get_settings()
 
 class SPAPIClient:
     """Amazon Selling Partner API Client Wrapper"""
-    
+
     def __init__(self, seller_id: str, refresh_token: str):
         """
         Initialize SP-API client
-        
+
         Args:
             seller_id: Amazon Seller ID (Merchant ID)
             refresh_token: LWA refresh token for this seller
         """
         self.seller_id = seller_id
         self.refresh_token = refresh_token
-        
-        # Note: In production, implement a credential manager that handles
-        # token refresh automatically
-        try:
-            self.credentials = Credentials(
-                lwa_app_id=settings.SP_API_CLIENT_ID,
-                lwa_client_secret=settings.SP_API_CLIENT_SECRET,
-            )
-        except Exception as e:
-            logger.error(f"Failed to initialize SP-API credentials: {str(e)}")
-            raise
+
+        # Credentials object required by python-amazon-sp-api
+        self.credentials = Credentials(
+            lwa_app_id=settings.SP_API_CLIENT_ID,
+            lwa_client_secret=settings.SP_API_CLIENT_SECRET,
+            aws_access_key=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_key=settings.AWS_SECRET_ACCESS_KEY,
+            role_arn=settings.AWS_SELLER_ROLE_ARN,
+        )
     
     def create_or_update_listing(self, sku: str, product_data: dict, marketplace_id: str) -> dict:
         """
@@ -61,6 +59,20 @@ class SPAPIClient:
                     "product_description": [{"value": product_data.get("description", ""), "language_tag": "en_US"}],
                 },
             }
+
+            # Add Variation Logic
+            if product_data.get("is_parent"):
+                body["attributes"]["parentage_level"] = [{"value": "parent"}]
+                body["attributes"]["variation_theme"] = [{"value": product_data.get("variation_theme", "SIZE_COLOR")}]
+            elif product_data.get("parent_sku"):
+                body["attributes"]["parentage_level"] = [{"value": "child"}]
+                body["attributes"]["parent_sku"] = [{"value": product_data.get("parent_sku")}]
+                
+                # Add child-specific attributes (e.g., color, size)
+                if product_data.get("color"):
+                    body["attributes"]["color"] = [{"value": product_data.get("color")}]
+                if product_data.get("size"):
+                    body["attributes"]["size"] = [{"value": product_data.get("size")}]
             
             # Add bullet points if available
             if product_data.get("bullet_points"):

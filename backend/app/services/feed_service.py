@@ -92,7 +92,7 @@ class FeedService:
         return xml_string
     
     @staticmethod
-    async def submit_listing_to_amazon(db: Session, listing: Listing, seller: Seller) -> bool:
+    def submit_listing_to_amazon(db: Session, listing: Listing, seller: Seller) -> bool:
         """
         Submit a single listing to Amazon via SP-API
         

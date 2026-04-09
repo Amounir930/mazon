@@ -4,7 +4,7 @@ Handles product CRUD operations and business logic
 """
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from typing import Optional, tuple
+from typing import Optional, Tuple
 from uuid import UUID
 from datetime import datetime
 

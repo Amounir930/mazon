@@ -14,6 +14,8 @@ from uuid import UUID
 class ProductBase(BaseModel):
     """Base product schema with common fields"""
     sku: str = Field(..., min_length=1, max_length=100, description="Stock Keeping Unit")
+    parent_sku: Optional[str] = Field(None, max_length=100)
+    is_parent: bool = Field(False)
     name: str = Field(..., min_length=2, max_length=500, description="Product name")
     category: Optional[str] = Field(None, max_length=100)
     brand: Optional[str] = Field(None, max_length=200)

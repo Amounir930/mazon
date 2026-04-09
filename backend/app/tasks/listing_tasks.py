@@ -77,7 +77,7 @@ def submit_listing_task(self, listing_id: str) -> dict:
             raise ValueError(f"Seller account is inactive: {seller.seller_id}")
         
         # Submit to Amazon
-        success = await FeedService.submit_listing_to_amazon(db, listing, seller)
+        success = FeedService.submit_listing_to_amazon(db, listing, seller)
         
         if success:
             # Schedule feed status check task (run after 5 minutes)
@@ -276,7 +276,7 @@ def bulk_submit_task(self, listing_ids: list[str]) -> dict:
                     results["errors"].append(f"Seller not found for listing: {listing_id}")
                     continue
                 
-                success = await FeedService.submit_listing_to_amazon(db, listing, seller)
+                success = FeedService.submit_listing_to_amazon(db, listing, seller)
                 
                 if success:
                     results["success"] += 1

@@ -2,7 +2,7 @@
 Product Model
 Represents a product in the catalog
 """
-from sqlalchemy import Column, String, Integer, Numeric, Text, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, String, Integer, Numeric, Text, DateTime, ForeignKey, JSON, Boolean
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -20,6 +20,8 @@ class Product(Base):
     
     # Basic Information
     sku = Column(String(100), nullable=False, index=True)
+    parent_sku = Column(String(100), index=True)  # To support Variation logic
+    is_parent = Column(Boolean, default=False)  # True if this is a parent container
     name = Column(String(500), nullable=False)
     category = Column(String(100))
     brand = Column(String(200))
