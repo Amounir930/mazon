@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Package, DollarSign, Image, Settings, Layers, Save } from 'lucide-react'
+import { ArrowRight, Package, DollarSign, Image, Settings, Layers, Save, Loader2 } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import api from '@/lib/axios'
 import toast from 'react-hot-toast'
 
 const tabs = [
@@ -13,11 +15,36 @@ const tabs = [
 
 export default function ProductCreatePage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState('basic')
+  const [loading, setLoading] = useState(false)
 
-  const handleSubmit = () => {
-    toast.success('تم حفظ المنتج بنجاح')
-    navigate('/products')
+  const handleSubmit = async () => {
+    setLoading(true)
+    try {
+      // TODO: جمع البيانات من كل التبويبات وإرسالها
+      const productData = {
+        sku: 'TEST-' + Date.now(),
+        name: 'منتج تجريبي',
+        category: 'إلكترونيات',
+        brand: 'TestBrand',
+        price: 199.00,
+        quantity: 50,
+        bullet_points: ['نقطة 1', 'نقطة 2'],
+        keywords: ['كلمة1', 'كلمة2'],
+      }
+
+      await api.post('/products', productData, {
+        params: { seller_id: user?.seller_id },
+      })
+
+      toast.success('تم إنشاء المنتج بنجاح!')
+      navigate('/products')
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'فشل إنشاء المنتج')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -29,10 +56,20 @@ export default function ProductCreatePage() {
         </div>
         <button
           onClick={handleSubmit}
-          className="flex items-center gap-2 bg-amazon-orange hover:bg-amazon-light text-amazon-dark font-semibold px-6 py-3 rounded-lg transition-colors"
+          disabled={loading}
+          className="flex items-center gap-2 bg-amazon-orange hover:bg-amazon-light text-amazon-dark font-semibold px-6 py-3 rounded-lg transition-colors disabled:opacity-50"
         >
-          <Save className="w-5 h-5" />
-          حفظ المنتج
+          {loading ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              جاري الحفظ...
+            </>
+          ) : (
+            <>
+              <Save className="w-5 h-5" />
+              حفظ المنتج
+            </>
+          )}
         </button>
       </div>
 
@@ -43,11 +80,10 @@ export default function ProductCreatePage() {
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap transition-colors ${
-                activeTab === id
+              className={`flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === id
                   ? 'text-amazon-orange border-b-2 border-amazon-orange'
                   : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-              }`}
+                }`}
             >
               <Icon className="w-4 h-4" />
               {label}

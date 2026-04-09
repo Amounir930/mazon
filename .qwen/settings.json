@@ -14,7 +14,10 @@
       "Bash(npx *)",
       "Bash(npm run *)",
       "Bash(timeout *)",
-      "Bash(npm init *)"
+      "Bash(npm init *)",
+      "Bash(taskkill *)",
+      "Bash(node *)",
+      "Bash(python *)"
     ]
   },
   "$version": 3

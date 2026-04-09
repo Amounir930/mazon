@@ -2,13 +2,12 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Package, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import toast from 'react-hot-toast'
 
 export default function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('demo@example.com')
+  const [password, setPassword] = useState('demo123')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -16,23 +15,10 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      // TODO: Replace with actual API call
-      // const { data } = await axios.post('/api/v1/auth/login', { email, password })
-      // login(data.access_token, data.user)
-
-      // Mock login for now
-      login('demo-token', {
-        id: '1',
-        email,
-        seller_id: 'demo-seller',
-        marketplace_id: 'ARBP9OOSHTCHU',
-        region: 'EU',
-      })
-
-      toast.success('تم تسجيل الدخول بنجاح')
+      await login(email, password)
       navigate('/dashboard')
     } catch (error) {
-      toast.error('فشل تسجيل الدخول')
+      // Error handled in AuthContext
     } finally {
       setLoading(false)
     }
@@ -64,7 +50,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange focus:border-amazon-orange transition-colors"
-                placeholder="example@email.com"
+                placeholder="demo@example.com"
                 required
               />
             </div>
@@ -98,6 +84,12 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          <div className="mt-6 p-4 bg-blue-50 rounded-lg text-sm text-blue-700">
+            <p className="font-semibold">🔑 بيانات تجريبية:</p>
+            <p>البريد: demo@example.com</p>
+            <p>كلمة المرور: demo123</p>
+          </div>
 
           <p className="text-center text-sm text-gray-600 mt-6">
             ليس لديك حساب؟{' '}

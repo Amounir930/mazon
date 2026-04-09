@@ -200,12 +200,12 @@ app.get('/api/v1/sellers/:id', async (req, res) => {
 app.get('/api/v1/products', async (req, res) => {
   await delay(400)
   const { seller_id, status, category, page = 1, page_size = 50 } = req.query
-  
+
   let filtered = [...mockProducts]
   if (seller_id) filtered = filtered.filter((p) => p.seller_id === seller_id)
   if (status) filtered = filtered.filter((p) => p.status === status)
   if (category) filtered = filtered.filter((p) => p.category === category)
-  
+
   const result = paginate(filtered, parseInt(page), parseInt(page_size))
   res.json(result)
 })
@@ -237,7 +237,7 @@ app.put('/api/v1/products/:id', async (req, res) => {
   await delay(400)
   const idx = mockProducts.findIndex((p) => p.id === req.params.id)
   if (idx === -1) return res.status(404).json({ error: 'Product not found' })
-  
+
   mockProducts[idx] = {
     ...mockProducts[idx],
     ...req.body,
@@ -250,7 +250,7 @@ app.delete('/api/v1/products/:id', async (req, res) => {
   await delay(300)
   const idx = mockProducts.findIndex((p) => p.id === req.params.id)
   if (idx === -1) return res.status(404).json({ error: 'Product not found' })
-  
+
   mockProducts.splice(idx, 1)
   res.json({ message: 'Product deleted successfully' })
 })
@@ -259,7 +259,7 @@ app.delete('/api/v1/products/:id', async (req, res) => {
 app.post('/api/v1/listings/submit', async (req, res) => {
   await delay(800)
   const { product_id, seller_id } = req.body
-  
+
   const newListing = {
     id: uuidv4(),
     product_id,
@@ -275,18 +275,18 @@ app.post('/api/v1/listings/submit', async (req, res) => {
     created_at: new Date().toISOString(),
   }
   mockListings.push(newListing)
-  
+
   // Simulate async processing
   setTimeout(() => {
     const listing = mockListings.find((l) => l.id === newListing.id)
     if (listing) {
       listing.status = 'processing'
-      
+
       setTimeout(() => {
         listing.status = 'submitted'
         listing.feed_submission_id = 'FEED_' + Date.now()
         listing.submitted_at = new Date().toISOString()
-        
+
         setTimeout(() => {
           listing.status = Math.random() > 0.15 ? 'success' : 'failed'
           listing.completed_at = new Date().toISOString()
@@ -300,18 +300,18 @@ app.post('/api/v1/listings/submit', async (req, res) => {
       }, 3000)
     }
   }, 2000)
-  
+
   res.status(201).json(newListing)
 })
 
 app.get('/api/v1/listings', async (req, res) => {
   await delay(300)
   const { seller_id, status } = req.query
-  
+
   let filtered = [...mockListings]
   if (seller_id) filtered = filtered.filter((l) => l.seller_id === seller_id)
   if (status) filtered = filtered.filter((l) => l.status === status)
-  
+
   res.json(filtered)
 })
 
@@ -319,13 +319,13 @@ app.post('/api/v1/listings/:id/retry', async (req, res) => {
   await delay(400)
   const listing = mockListings.find((l) => l.id === req.params.id)
   if (!listing) return res.status(404).json({ error: 'Listing not found' })
-  
+
   listing.status = 'queued'
   listing.error_message = null
   listing.submitted_at = null
   listing.completed_at = null
   listing.feed_submission_id = null
-  
+
   res.json({ message: 'Listing retry queued successfully' })
 })
 
@@ -333,11 +333,11 @@ app.delete('/api/v1/listings/:id', async (req, res) => {
   await delay(300)
   const listing = mockListings.find((l) => l.id === req.params.id)
   if (!listing) return res.status(404).json({ error: 'Listing not found' })
-  
+
   if (!['queued', 'processing'].includes(listing.status)) {
     return res.status(400).json({ error: 'Can only cancel queued or processing listings' })
   }
-  
+
   listing.status = 'cancelled'
   res.json({ message: 'Listing cancelled successfully' })
 })
