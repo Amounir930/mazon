@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@emnapi/core": "^1.9.2",
+    "@emnapi/runtime": "^1.9.2",
     "@hookform/resolvers": "^5.2.2",
     "@tanstack/react-query": "^5.96.2",
     "axios": "^1.15.0",
