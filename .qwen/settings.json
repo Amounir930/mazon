@@ -17,7 +17,8 @@
       "Bash(npm init *)",
       "Bash(taskkill *)",
       "Bash(node *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(scp *)"
     ]
   },
   "$version": 3

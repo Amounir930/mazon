@@ -1,77 +1,23 @@
 version: '3.9'
 
 services:
-  # Amazon Mock API
-  amazon_mock:
-    build: ./amazon-mock-api
-    ports:
-      - "9500:9500"
+  db:
+    image: postgres:15-alpine
     environment:
-      - NODE_ENV=production
-    networks:
-      - crazy_lister_network
-    restart: unless-stopped
-
-  # Frontend Application
-  frontend:
-    build:
-      context: ./frontend
-      args:
-        - VITE_API_URL=/api/v1
-    ports:
-      - "80:80"
-    depends_on:
-      - api
-    networks:
-      - crazy_lister_network
-    restart: unless-stopped
-
-  # Backend API
-  api:
-    build: ./backend
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=sqlite:///./crazy_lister.db
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-      - DEBUG=true
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - USE_AMAZON_MOCK=true
-      - CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
-    depends_on:
-      - redis
-      - amazon_mock
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: crazy_lister
     volumes:
-      - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - crazy_lister_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # Celery Worker
-  celery_worker:
-    build: ./backend
-    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
-    environment:
-      - DATABASE_URL=sqlite:///./crazy_lister.db
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://redis:6379/2
-      - SECRET_KEY=dev-secret-key-change-in-production
-      - USE_AMAZON_MOCK=true
-    depends_on:
-      - redis
-      - api
-      - amazon_mock
-    volumes:
-      - ./backend:/app
-    networks:
-      - crazy_lister_network
-    restart: unless-stopped
-
-  # Redis
   redis:
     image: redis:7-alpine
     ports:
@@ -85,7 +31,61 @@ services:
       timeout: 5s
       retries: 5
 
-  # Flower - Celery Monitor
+  amazon_mock:
+    build: ./amazon-mock-api
+    ports:
+      - "9500:9500"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - crazy_lister_network
+    restart: unless-stopped
+
+  api:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/crazy_lister
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - DEBUG=true
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - USE_AMAZON_MOCK=true
+      - CORS_ORIGINS=["http://localhost:3000","http://localhost:5173"]
+    depends_on:
+      - redis
+      - db
+      - amazon_mock
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - crazy_lister_network
+    restart: unless-stopped
+
+  celery_worker:
+    build: ./backend
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/crazy_lister
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - SECRET_KEY=dev-secret-key-change-in-production
+      - USE_AMAZON_MOCK=true
+    depends_on:
+      - redis
+      - db
+      - api
+      - amazon_mock
+    volumes:
+      - ./backend:/app
+    networks:
+      - crazy_lister_network
+    restart: unless-stopped
+
   flower:
     build: ./backend
     command: celery -A app.tasks.celery_app flower --port=5555
@@ -100,6 +100,22 @@ services:
       - crazy_lister_network
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=/api/v1
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks:
+      - crazy_lister_network
+    restart: unless-stopped
+
 networks:
   crazy_lister_network:
     driver: bridge
+
+volumes:
+  postgres_data:
