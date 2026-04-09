@@ -13,7 +13,8 @@
       "Bash(npm install)",
       "Bash(npx *)",
       "Bash(npm run *)",
-      "Bash(timeout *)"
+      "Bash(timeout *)",
+      "Bash(npm init *)"
     ]
   },
   "$version": 3
