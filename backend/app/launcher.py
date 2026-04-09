@@ -160,6 +160,18 @@ def get_frontend_path() -> str:
     return str(frontend_path)
 
 
+def get_icon_path() -> str:
+    """Get the path to the application icon"""
+    if getattr(sys, 'frozen', False):
+        # Running as .exe — icon is bundled in _MEIPASS
+        icon_path = BASE_DIR / "assets" / "icon.ico"
+    else:
+        # Development mode — icon is in project root
+        icon_path = BASE_DIR.parent / "assets" / "icon.ico"
+
+    return str(icon_path)
+
+
 # ============================================================
 # 7. MAIN ENTRY POINT
 # ============================================================
@@ -196,15 +208,26 @@ def main():
     # Normalize path for Windows (convert backslashes to forward slashes)
     file_url = f"file:///{os.path.abspath(frontend_path).replace(chr(92), '/')}"
 
-    window = webview.create_window(
-        title="Crazy Lister v3.0",
-        url=file_url,
-        width=1280,
-        height=850,
-        min_size=(900, 600),
-        resizable=True,
-        background_color="#0a0a0f",
-    )
+    # Prepare window parameters
+    window_params = {
+        "title": "Crazy Lister v3.0",
+        "url": file_url,
+        "width": 1280,
+        "height": 850,
+        "min_size": (900, 600),
+        "resizable": True,
+        "background_color": "#0a0a0f",
+    }
+
+    # Add icon if it exists
+    icon_path = get_icon_path()
+    if os.path.exists(icon_path):
+        window_params["icon"] = icon_path
+        logger.info(f"✅ Icon: {icon_path}")
+    else:
+        logger.warning(f"⚠️  Icon not found: {icon_path}")
+
+    window = webview.create_window(**window_params)
 
     # Set up closing event handler
     def on_closing():

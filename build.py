@@ -166,9 +166,18 @@ def build_exe():
     build_dir = project_root / "build"
 
     if dist_dir.exists():
-        shutil.rmtree(dist_dir)
+        print("  Cleaning previous build...")
+        try:
+            shutil.rmtree(dist_dir)
+        except PermissionError as e:
+            print_warning(f"Could not clean dist directory (file may be in use): {e}")
+            print_warning("Continuing build anyway...")
+    
     if build_dir.exists():
-        shutil.rmtree(build_dir)
+        try:
+            shutil.rmtree(build_dir)
+        except PermissionError as e:
+            print_warning(f"Could not clean build directory: {e}")
 
     # Run PyInstaller
     print("  Running PyInstaller...")
