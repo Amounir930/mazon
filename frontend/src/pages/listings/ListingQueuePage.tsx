@@ -5,9 +5,9 @@ import { StatusBadge } from '@/components/common/StatusBadge'
 import type { Listing } from '@/types/api'
 
 export default function ListingQueuePage() {
-  const { user } = useAuth()
+  const { sellerId } = useAuth()
   const { data: listings, isLoading } = useListings({
-    seller_id: user?.seller_id || '',
+    seller_id: sellerId,
   })
 
   if (isLoading) {

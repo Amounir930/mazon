@@ -7,6 +7,8 @@ interface AuthContextType {
   user: Seller | null
   token: string | null
   isAuthenticated: boolean
+  /** Database UUID - use this for API calls */
+  sellerId: string
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, name?: string) => Promise<void>
   logout: () => void
@@ -73,7 +75,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated: !!token, login, register, logout, loading }}>
+    <AuthContext.Provider value={{
+      user,
+      token,
+      isAuthenticated: !!token,
+      sellerId: user?.id || '',
+      login,
+      register,
+      logout,
+      loading,
+    }}>
       {children}
     </AuthContext.Provider>
   )

@@ -4,8 +4,8 @@ import { useStats } from '@/api/hooks'
 import { Link } from 'react-router-dom'
 
 export default function DashboardPage() {
-  const { user } = useAuth()
-  const { totalProducts, published, queued, failed, processing } = useStats(user?.seller_id || '')
+  const { sellerId } = useAuth()
+  const { totalProducts, published, queued, failed, processing } = useStats(sellerId)
 
   const stats = [
     { label: 'المنتجات', value: totalProducts.toString(), icon: Package, color: 'bg-blue-500' },

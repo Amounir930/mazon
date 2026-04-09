@@ -15,7 +15,7 @@ const tabs = [
 
 export default function ProductCreatePage() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { sellerId } = useAuth()
   const [activeTab, setActiveTab] = useState('basic')
   const [loading, setLoading] = useState(false)
 
@@ -35,7 +35,7 @@ export default function ProductCreatePage() {
       }
 
       await api.post('/products', productData, {
-        params: { seller_id: user?.seller_id },
+        params: { seller_id: sellerId },
       })
 
       toast.success('تم إنشاء المنتج بنجاح!')
@@ -81,8 +81,8 @@ export default function ProductCreatePage() {
               key={id}
               onClick={() => setActiveTab(id)}
               className={`flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === id
-                  ? 'text-amazon-orange border-b-2 border-amazon-orange'
-                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                ? 'text-amazon-orange border-b-2 border-amazon-orange'
+                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
                 }`}
             >
               <Icon className="w-4 h-4" />

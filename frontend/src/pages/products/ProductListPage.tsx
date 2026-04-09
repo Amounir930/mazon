@@ -7,10 +7,10 @@ import { StatusBadge } from '@/components/common/StatusBadge'
 import type { Product } from '@/types/api'
 
 export default function ProductListPage() {
-  const { user } = useAuth()
+  const { sellerId } = useAuth()
   const [search, setSearch] = useState('')
   const { data, isLoading, isError } = useProducts({
-    seller_id: user?.seller_id || '',
+    seller_id: sellerId,
     page: 1,
   })
 
