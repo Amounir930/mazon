@@ -187,7 +187,10 @@ def main():
     if not os.path.exists(frontend_path):
         logger.error(f"❌ Frontend not found: {frontend_path}")
         logger.error("Run 'npm run build' in frontend/ first!")
-        input("Press Enter to exit...")
+        try:
+            input("Press Enter to exit...")
+        except (RuntimeError, EOFError):
+            pass  # stdin not available in frozen .exe
         sys.exit(1)
 
     logger.info(f"✅ Frontend: {frontend_path}")
@@ -218,14 +221,6 @@ def main():
         "resizable": True,
         "background_color": "#0a0a0f",
     }
-
-    # Add icon if it exists
-    icon_path = get_icon_path()
-    if os.path.exists(icon_path):
-        window_params["icon"] = icon_path
-        logger.info(f"✅ Icon: {icon_path}")
-    else:
-        logger.warning(f"⚠️  Icon not found: {icon_path}")
 
     window = webview.create_window(**window_params)
 

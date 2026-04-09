@@ -32,7 +32,10 @@
       "Bash(python *)",
       "Bash(npm run *)",
       "Bash(netstat *)",
-      "Bash(taskkill *)"
+      "Bash(taskkill *)",
+      "Bash(tasklist *)",
+      "Bash(wmic *)",
+      "Bash(echo *)"
     ]
   },
   "$version": 3

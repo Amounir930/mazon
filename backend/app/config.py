@@ -39,8 +39,19 @@ class Settings(BaseSettings):
     # SQLite Database
     DATABASE_URL: str = f"sqlite:///{APP_DATA_DIR}/crazy_lister.db"
 
-    # Amazon SP-API (empty by default — user will configure)
+    # Amazon SP-API (Strictly Production)
     USE_AMAZON_MOCK: bool = False
+    SP_API_MOCK_MODE: bool = False
+
+    # AWS Credentials (Loaded from .env)
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "eu-west-1"
+    AWS_SELLER_ROLE_ARN: Optional[str] = None
+
+    # LWA Credentials (Used for SP-API OAuth)
+    SP_API_CLIENT_ID: str = ""
+    SP_API_CLIENT_SECRET: str = ""
 
     # CORS (localhost only for desktop app)
     CORS_ORIGINS: list[str] = ["*"]
