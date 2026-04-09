@@ -1,5 +1,5 @@
 """
-Crazy Lister API - Amazon SP-API Auto-Listing System
+Crazy Lister v3.0 - Amazon SP-API Desktop App
 Main FastAPI application entry point
 """
 from fastapi import FastAPI
@@ -10,8 +10,6 @@ import sys
 from app.config import get_settings
 from app.api.router import api_router
 from app.database import engine, Base, init_db
-from app.middleware.security import AuditLogMiddleware, SecurityHeadersMiddleware
-from app.docs import register_docs_routes
 
 # Get settings
 settings = get_settings()
@@ -27,16 +25,12 @@ logger.add(
 # Create FastAPI application
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Amazon SP-API Auto-Listing System - Modern, scalable platform for automated Amazon product listings",
-    version="2.0.0",
+    description="Amazon SP-API Auto-Listing System - Desktop Application v3.0",
+    version="3.0.0",
     docs_url=None,      # Disable default swagger (CDN blocked)
     redoc_url=None,     # Disable default redoc (CDN blocked)
     openapi_url="/openapi.json",
 )
-
-# Add Security middlewares
-app.add_middleware(AuditLogMiddleware)
-app.add_middleware(SecurityHeadersMiddleware)
 
 # Add CORS middleware
 app.add_middleware(
@@ -50,28 +44,16 @@ app.add_middleware(
 # Include API routes
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
-# Register local documentation routes (zero CDN dependency)
-register_docs_routes(app)
-
 
 @app.on_event("startup")
 async def startup_event():
     """Application startup - initialize database and services"""
-    logger.info("Starting Crazy Lister API v2.0.0")
+    logger.info("Starting Crazy Lister v3.0")
 
     # Create database tables
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully")
-
-    # Seed demo user for development
-    from app.seed import seed_demo_user
-    from app.database import SessionLocal
-    db = SessionLocal()
-    try:
-        seed_demo_user(db)
-    finally:
-        db.close()
 
     logger.info("Application startup complete")
 
@@ -79,7 +61,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Application shutdown - cleanup resources"""
-    logger.info("Shutting down Crazy Lister API")
+    logger.info("Shutting down Crazy Lister v3.0")
 
 
 @app.get("/health", tags=["health"])
@@ -87,7 +69,7 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "ok",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "app_name": settings.APP_NAME,
     }
 
@@ -96,7 +78,7 @@ async def health_check():
 async def root():
     """Root endpoint"""
     return {
-        "message": "Welcome to Crazy Lister API v2.0.0",
+        "message": "Welcome to Crazy Lister v3.0",
         "docs": "/docs",
         "health": "/health",
     }

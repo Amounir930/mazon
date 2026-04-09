@@ -1,10 +1,24 @@
 """
-Crazy Lister API - Configuration
+Crazy Lister v3.0 - Configuration
 Environment variables and application settings
 """
+import os
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 from typing import Optional
+
+
+# Windows AppData paths
+APP_DATA_DIR = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming")) / "CrazyLister"
+APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+UPLOAD_DIR = APP_DATA_DIR / "uploads"
+EXPORT_DIR = APP_DATA_DIR / "exports"
+LOG_FILE = APP_DATA_DIR / "crazy_lister.log"
+
+for d in [UPLOAD_DIR, EXPORT_DIR]:
+    d.mkdir(parents=True, exist_ok=True)
 
 
 class Settings(BaseSettings):
@@ -14,49 +28,32 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
-        extra="ignore",  # Ignore extra env vars from Docker (PostgreSQL, etc.)
+        extra="ignore",
     )
 
     # Application
-    APP_NAME: str = "Crazy Lister API"
+    APP_NAME: str = "Crazy Lister v3.0"
     DEBUG: bool = False
-    SECRET_KEY: str = "your-secret-key-change-in-production"
     API_V1_PREFIX: str = "/api/v1"
 
-    # Database
-    DATABASE_URL: str = "sqlite:///./crazy_lister.db"
-    DATABASE_POOL_SIZE: int = 5
-    DATABASE_MAX_OVERFLOW: int = 10
+    # SQLite Database
+    DATABASE_URL: str = f"sqlite:///{APP_DATA_DIR}/crazy_lister.db"
 
-    # Redis & Celery
-    REDIS_URL: str = "redis://localhost:6379/0"
-    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
+    # Amazon SP-API (empty by default — user will configure)
+    USE_AMAZON_MOCK: bool = False
 
-    # Amazon SP-API
-    SP_API_CLIENT_ID: str = ""
-    SP_API_CLIENT_SECRET: str = ""
-    SP_API_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/callback"
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_REGION: str = "eu-west-1"
-    AWS_SELLER_ROLE_ARN: str = ""
+    # CORS (localhost only for desktop app)
+    CORS_ORIGINS: list[str] = ["*"]
 
-    # Default Amazon Marketplace
-    DEFAULT_MARKETPLACE_ID: str = "ARBP9OOSHTCHU"  # Egypt
-    DEFAULT_REGION: str = "EU"
+    # File paths
+    UPLOAD_DIR: str = str(UPLOAD_DIR)
+    EXPORT_DIR: str = str(EXPORT_DIR)
+    LOG_FILE: str = str(LOG_FILE)
 
     # Logging
     LOG_LEVEL: str = "INFO"
-    LOG_FILE: str = "logs/crazy_lister.log"
-    LOG_ROTATION: str = "500 MB"
+    LOG_ROTATION: str = "10 MB"
     LOG_RETENTION: str = "30 days"
-
-    # Rate Limiting
-    RATE_LIMIT_PER_MINUTE: int = 60
-
-    # CORS
-    CORS_ORIGINS: list[str] = ["*"]
 
 
 @lru_cache()

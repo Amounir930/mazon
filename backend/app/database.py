@@ -1,22 +1,27 @@
 """
-Database configuration and session management
+Database Configuration
+SQLite for local desktop app
 """
-from sqlalchemy import create_engine
+import os
+from pathlib import Path
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
-from sqlalchemy.pool import QueuePool
+from sqlalchemy.pool import StaticPool
 from typing import Generator
-from app.config import get_settings
+from loguru import logger
 
-settings = get_settings()
+# Windows AppData path
+APP_DATA_DIR = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming")) / "CrazyLister"
+APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# Create database engine
+DATABASE_URL = f"sqlite:///{APP_DATA_DIR}/crazy_lister.db"
+
+# SQLite-specific engine config
 engine = create_engine(
-    settings.DATABASE_URL,
-    poolclass=QueuePool,
-    pool_size=settings.DATABASE_POOL_SIZE,
-    max_overflow=settings.DATABASE_MAX_OVERFLOW,
-    pool_pre_ping=True,  # Verify connections before use
-    echo=settings.DEBUG,  # Log SQL queries in debug mode
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+    echo=False,
 )
 
 # Create session factory
@@ -42,27 +47,26 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-async def get_async_db() -> Generator[Session, None, None]:
-    """
-    Async version of database dependency.
-    For production, use AsyncSession from sqlalchemy.ext.asyncio
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 def init_db():
     """
     Initialize database - create all tables.
     Call this on application startup.
     """
-    # Import all models here (Classes) to ensure they're registered with Base
+    # Import all models here to ensure they're registered with Base
     from app.models.seller import Seller
     from app.models.product import Product
     from app.models.listing import Listing
-    from app.models.task import Task
-    
+
     Base.metadata.create_all(bind=engine)
+    logger.info(f"Database initialized at: {APP_DATA_DIR}/crazy_lister.db")
+
+
+# Enable WAL mode for better performance
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA cache_size=10000")
+    cursor.execute("PRAGMA temp_store=memory")
+    cursor.close()

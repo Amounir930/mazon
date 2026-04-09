@@ -1,39 +1,38 @@
 """
-Seller Account Model
-Represents an Amazon seller account with authentication credentials
+Seller Account Model - Single Client
+Stores Amazon SP-API credentials
 """
 from sqlalchemy import Column, String, Boolean, DateTime, Text
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 import uuid
 from app.database import Base
 
 
 class Seller(Base):
-    """Seller account model for Amazon sellers"""
+    """Single seller account with Amazon credentials"""
 
     __tablename__ = "sellers"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    seller_id = Column(String(100), unique=True, nullable=False, index=True)  # Amazon Merchant ID
-    marketplace_id = Column(String(20), nullable=False)  # e.g., A2NODRKZP88ZB9
-    region = Column(String(10), nullable=False)  # EU, NA, FE
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    # Platform Authentication (Crazy Lister login)
-    hashed_password = Column(Text, nullable=True)  # Password for platform login
-    name = Column(String(200), nullable=True)  # Seller display name
+    # Amazon SP-API Credentials (المفاتيح الأربعة)
+    lwa_client_id = Column(String(255), nullable=False)        # Client ID
+    lwa_client_secret = Column(String(255), nullable=False)    # Client Secret
+    lwa_refresh_token = Column(Text, nullable=False)           # Refresh Token
+    amazon_seller_id = Column(String(100), nullable=False)     # Seller ID
 
-    # Amazon SP-API Authentication
-    lwa_refresh_token = Column(String, nullable=True)  # Login with Amazon refresh token
-    mws_auth_token = Column(String)  # Legacy MWS token (deprecated)
+    # Optional Info
+    display_name = Column(String(200), default="My Amazon Store")
+    marketplace_id = Column(String(20), default="ARBP9OOSHTCHU")
+    region = Column(String(10), default="EU")
 
-    # Status
-    is_active = Column(Boolean, default=True)
+    # Connection Status
+    is_connected = Column(Boolean, default=False)
+    last_sync_at = Column(DateTime(timezone=True))
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     def __repr__(self):
-        return f"<Seller {self.email} ({self.seller_id})>"
+        return f"<Seller {self.display_name} ({self.amazon_seller_id})>"
