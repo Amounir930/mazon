@@ -58,12 +58,21 @@ register_docs_routes(app)
 async def startup_event():
     """Application startup - initialize database and services"""
     logger.info("Starting Crazy Lister API v2.0.0")
-    
+
     # Create database tables
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully")
-    
+
+    # Seed demo user for development
+    from app.seed import seed_demo_user
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        seed_demo_user(db)
+    finally:
+        db.close()
+
     logger.info("Application startup complete")
 
 

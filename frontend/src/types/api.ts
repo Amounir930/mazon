@@ -87,3 +87,41 @@ export interface ApiResponse<T> {
   data: T
   message?: string
 }
+
+// Auth types
+export interface LoginRequest {
+  email: string
+  password: string
+}
+
+export interface LoginResponse {
+  access_token: string
+  refresh_token: string
+  token_type: string
+  user: Seller
+}
+
+export interface RegisterRequest {
+  email: string
+  password: string
+  name?: string
+}
+
+export interface RegisterResponse {
+  user: Seller
+  message: string
+}
+
+export interface AuthUrlResponse {
+  auth_url: string
+  message: string
+}
+
+export interface MessageResponse {
+  message: string
+}
+
+export interface ErrorResponse {
+  error: string
+  detail?: string
+}

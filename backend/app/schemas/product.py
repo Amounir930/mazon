@@ -166,13 +166,14 @@ class SellerResponse(BaseModel):
     """Schema for seller response"""
     id: UUID
     email: str
+    name: Optional[str] = None
     seller_id: str
     marketplace_id: str
     region: str
     is_active: bool
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 

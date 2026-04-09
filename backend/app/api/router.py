@@ -3,7 +3,8 @@ API Router Configuration
 Aggregates all route routers
 """
 from fastapi import APIRouter
-from app.api import sellers, products, listings, feeds, auth
+from app.api import sellers, products, listings, feeds
+from app.api.auth import endpoints as auth
 
 api_router = APIRouter()
 

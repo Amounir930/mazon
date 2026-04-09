@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Package, Loader2 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import toast from 'react-hot-toast'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -17,8 +18,8 @@ export default function LoginPage() {
     try {
       await login(email, password)
       navigate('/dashboard')
-    } catch (error) {
-      // Error handled in AuthContext
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'فشل تسجيل الدخول')
     } finally {
       setLoading(false)
     }

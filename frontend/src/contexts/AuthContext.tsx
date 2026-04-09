@@ -1,20 +1,14 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import api from '@/lib/axios'
 import toast from 'react-hot-toast'
-
-interface User {
-  id: string
-  email: string
-  seller_id: string
-  marketplace_id: string
-  region: string
-}
+import type { Seller } from '@/types/api'
 
 interface AuthContextType {
-  user: User | null
+  user: Seller | null
   token: string | null
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<void>
+  register: (email: string, password: string, name?: string) => Promise<void>
   logout: () => void
   loading: boolean
 }
@@ -22,37 +16,52 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<Seller | null>(null)
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('auth-token'))
   const [loading, setLoading] = useState(true)
 
+  // On mount, validate stored token and fetch user
   useEffect(() => {
-    if (token) {
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-      // TODO: Fetch user from API
-      setUser({
-        id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-        email: 'demo@example.com',
-        seller_id: 'MOCK-SELLER-001',
-        marketplace_id: 'ARBP9OOSHTCHU',
-        region: 'EU',
-      })
+    const validateToken = async () => {
+      if (!token) {
+        setLoading(false)
+        return
+      }
+
+      try {
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        const { data } = await api.get<Seller>('/auth/me')
+        setUser(data)
+      } catch {
+        // Token invalid or expired
+        setToken(null)
+        setUser(null)
+        localStorage.removeItem('auth-token')
+        delete api.defaults.headers.common['Authorization']
+      } finally {
+        setLoading(false)
+      }
     }
-    setLoading(false)
+
+    validateToken()
   }, [token])
 
   const login = async (email: string, password: string) => {
-    try {
-      const { data } = await api.post('/auth/login', { email, password })
-      setToken(data.access_token)
-      setUser(data.user)
-      localStorage.setItem('auth-token', data.access_token)
-      api.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`
-      toast.success('تم تسجيل الدخول بنجاح')
-    } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'فشل تسجيل الدخول')
-      throw error
-    }
+    const { data } = await api.post('/auth/login', { email, password })
+    setToken(data.access_token)
+    setUser(data.user)
+    localStorage.setItem('auth-token', data.access_token)
+    api.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`
+    toast.success('تم تسجيل الدخول بنجاح')
+  }
+
+  const register = async (email: string, password: string, name?: string) => {
+    const { data } = await api.post('/auth/register', { email, password, name })
+    setToken(data.access_token)
+    setUser(data.user)
+    localStorage.setItem('auth-token', data.access_token)
+    api.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`
+    toast.success('تم إنشاء الحساب بنجاح')
   }
 
   const logout = () => {
@@ -64,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated: !!token, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, isAuthenticated: !!token, login, register, logout, loading }}>
       {children}
     </AuthContext.Provider>
   )
