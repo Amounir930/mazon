@@ -28,8 +28,7 @@ def register_docs_routes(app: FastAPI):
   <title>Crazy Lister API - Docs</title>
   <link rel="stylesheet" type="text/css" href="/static/swagger-ui/swagger-ui.css?{v}">
   <style>
-    html {{ box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }}
-    *, *:before, *:after {{ box-sizing: inherit; }}
+    html {{ box-sizing: border-box; overflow-y: scroll; }}
     body {{ margin: 0; background: #fafafa; }}
   </style>
 </head>
@@ -44,23 +43,18 @@ def register_docs_routes(app: FastAPI):
           url: "/openapi.json",
           dom_id: "#swagger-ui",
           deepLinking: true,
-          presets: [
-            SwaggerUIBundle.presets.apis,
-            SwaggerUIStandalonePreset
-          ]},
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
           plugins: [SwaggerUIBundle.plugins.DownloadUrl],
           layout: "StandaloneLayout",
           docExpansion: "list",
-          defaultModelsExpandDepth: 1,
-          displayRequestDuration: true,
           filter: true
         }});
       }} catch(e) {{
-        document.getElementById("swagger-ui").innerHTML = 
+        document.getElementById("swagger-ui").innerHTML =
           "<div style='padding:40px;font-family:sans-serif;text-align:center;'>" +
           "<h2>Swagger UI Load Error</h2>" +
           "<p>" + e.message + "</p>" +
-          "<p><a href='/redoc'>Try ReDoc &rarr;</a></p></div>";
+          "<p><a href='/redoc'>Try ReDoc</a></p></div>";
       }}
     }};
   </script>
@@ -76,27 +70,15 @@ def register_docs_routes(app: FastAPI):
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Crazy Lister API - ReDoc</title>
-  <style>body {{ margin: 0; padding: 0; }}</style>
 </head>
 <body>
   <div id="redoc-container"></div>
   <script src="/static/redoc/redoc.standalone.js?{v}"></script>
   <script>
-    window.onload = function() {{
-      try {{
-        Redoc.init("/openapi.json", {{
-          expandResponses: "200,201",
-          hideLoading: false,
-          theme: {{ colors: {{ primary: {{ main: "#FF9900" }} }} }}
-        }}, document.getElementById("redoc-container"));
-      }} catch(e) {{
-        document.getElementById("redoc-container").innerHTML = 
-          "<div style='padding:40px;font-family:sans-serif;text-align:center;'>" +
-          "<h2>ReDoc Load Error</h2>" +
-          "<p>" + e.message + "</p>" +
-          "<p><a href='/docs'>Try Swagger UI &rarr;</a></p></div>";
-      }}
-    }};
+    Redoc.init("/openapi.json", {{
+      expandResponses: "200,201",
+      hideLoading: false
+    }}, document.getElementById("redoc-container"));
   </script>
 </body>
 </html>"""
