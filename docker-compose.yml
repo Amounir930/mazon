@@ -12,6 +12,20 @@ services:
       - crazy_lister_network
     restart: unless-stopped
 
+  # Frontend Application
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=/api/v1
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks:
+      - crazy_lister_network
+    restart: unless-stopped
+
   # Backend API
   api:
     build: ./backend
