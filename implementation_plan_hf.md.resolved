@@ -1,0 +1,33 @@
+# Deployment Plan: Hugging Face Spaces (Docker)
+
+هذا التحليل يشرح كيفية نقل مشروعك من العمل المحلي إلى منصة **Hugging Face Spaces**.
+
+## متطلبات Hugging Face الصارمة
+
+> [!IMPORTANT]
+> 1. **المنفذ (Port):** يجب أن يعمل التطبيق على المنفذ **7860** حصرياً (مشروعنا يعمل حالياً على 8000).
+> 2. **المستخدم (User):** يجب تشغيل الـ Docker بمستخدم UID 1000 (غير الـ root).
+> 3. **قاعدة البيانات:** بما أن Hugging Face لا تدعم `docker-compose` المتعدد، سنقوم بالربط بقاعدة بيانات خارجية (Remote Database) لضمان عدم ضياع البيانات.
+
+## التعديلات المقترحة
+
+### [Component: Docker Configuration]
+#### [MODIFY] [backend/Dockerfile](file:///c:/Users/Dell/Desktop/learn/amazon/backend/Dockerfile)
+* تغيير `EXPOSE 8000` إلى `EXPOSE 7860`.
+* تعديل أمر التشغيل `CMD` ليستخدم المنفذ الجديد.
+* إضافة مستخدم `user` بصلاحيات محدودة (متطلب Hugging Face).
+
+### [Component: Environment Settings]
+#### [ACTION] Secret Management
+* سنقوم بوضع مفاتيح أمازون (Client ID, Secret, etc) داخل صفحة **Settings -> Variables and Secrets** في Hugging Face وليس في ملف `.env`.
+
+---
+
+## الأسئلة المفتوحة (تحتاج إجابتك)
+
+1. **قاعدة البيانات:** هل لديك حساب على **Supabase** أو **Neon DB**؟ (كلاهما مجاني وسأحتاجه لربط الباك-إند بقاعدة بيانات دائمة).
+2. **الهدف:** هل تريد رفع **الباك-إند فقط** حالياً لتجربة الـ Swagger API، أم تريد دمج الفرونت-إند معه في نفس الـ Space؟ (دمجهما معاً يتطلب كود إضافي لكنه ممكن).
+
+## خطة التحقق (Verification)
+1. بناء صورة Docker محلياً واختبارها على المنفذ 7860.
+2. التأكد من أن التطبيق يعمل بمستخدم UID 1000 دون مشاكل في التصاريح.

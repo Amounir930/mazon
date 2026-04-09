@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import Layout from './components/layout/Layout'
 
@@ -14,10 +14,15 @@ import ListingQueuePage from './pages/listings/ListingQueuePage'
 import ReportsPage from './pages/reports/ReportsPage'
 import SettingsPage from './pages/settings/SettingsPage'
 
-// Protected route wrapper
-function RequireAuth({ children }: { children: React.ReactNode }) {
+// Protected layout - wraps all protected routes
+function ProtectedLayout() {
   const { isAuthenticated } = useAuth()
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <Outlet />
 }
 
 export default function AppRouter() {
@@ -25,8 +30,8 @@ export default function AppRouter() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="w-8 h-8 border-4 border-amazon-orange border-t-transparent rounded-full animate-spin" />
+      <div className="flex items-center justify-center h-screen bg-amazon-blue">
+        <div className="w-10 h-10 border-4 border-amazon-orange border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -34,22 +39,30 @@ export default function AppRouter() {
   return (
     <Routes>
       {/* Public routes */}
-      <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" replace />} />
-      <Route path="/register" element={!isAuthenticated ? <RegisterPage /> : <Navigate to="/dashboard" replace />} />
+      <Route
+        path="/login"
+        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
+      />
+      <Route
+        path="/register"
+        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
+      />
 
       {/* Protected routes */}
-      <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="products" element={<ProductListPage />} />
-        <Route path="products/create" element={<ProductCreatePage />} />
-        <Route path="listings" element={<ListingQueuePage />} />
-        <Route path="reports" element={<ReportsPage />} />
-        <Route path="settings" element={<SettingsPage />} />
+      <Route element={<ProtectedLayout />}>
+        <Route element={<Layout />}>
+          <Route path="" element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="products" element={<ProductListPage />} />
+          <Route path="products/create" element={<ProductCreatePage />} />
+          <Route path="listings" element={<ListingQueuePage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
       </Route>
 
-      {/* Fallback */}
-      <Route path="*" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
+      {/* Catch all - redirect to login */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )
 }
