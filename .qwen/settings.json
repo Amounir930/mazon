@@ -3,7 +3,11 @@
     "allow": [
       "Bash(mkdir *)",
       "Bash(rm *)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(dir *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git *)"
     ]
   },
   "$version": 3
