@@ -25,8 +25,12 @@ def register_docs_routes(app: FastAPI):
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Crazy Lister API - Docs</title>
-  <link rel="stylesheet" href="/static/swagger-ui/swagger-ui.css">
-  <style>body { margin: 0; padding: 0; }</style>
+  <link rel="stylesheet" type="text/css" href="/static/swagger-ui/swagger-ui.css">
+  <style>
+    html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
+    *, *:before, *:after { box-sizing: inherit; }
+    body { margin: 0; background: #fafafa; }
+  </style>
 </head>
 <body>
   <div id="swagger-ui"></div>
@@ -34,16 +38,37 @@ def register_docs_routes(app: FastAPI):
   <script src="/static/swagger-ui/swagger-ui-standalone-preset.js"></script>
   <script>
     window.onload = function() {
-      window.ui = SwaggerUIBundle({
-        url: "/openapi.json",
-        dom_id: "#swagger-ui",
-        deepLinking: true,
-        presets: [
-          SwaggerUIBundle.presets.apis,
-          SwaggerUIStandalonePreset
-        ],
-        layout: "StandaloneLayout"
-      });
+      try {
+        window.ui = SwaggerUIBundle({
+          url: "/openapi.json",
+          dom_id: "#swagger-ui",
+          deepLinking: true,
+          presets: [
+            SwaggerUIBundle.presets.apis,
+            SwaggerUIStandalonePreset
+          ],
+          plugins: [
+            SwaggerUIBundle.plugins.DownloadUrl
+          ],
+          layout: "StandaloneLayout",
+          docExpansion: "list",
+          defaultModelsExpandDepth: 1,
+          displayRequestDuration: true,
+          filter: true,
+          onComplete: function() {
+            console.log("Swagger UI loaded successfully");
+          },
+          onError: function(err) {
+            console.error("Swagger UI Error:", err);
+          }
+        });
+      } catch(e) {
+        document.getElementById("swagger-ui").innerHTML = 
+          "<div style='padding:20px;font-family:sans-serif;'>" +
+          "<h2>Error loading Swagger UI</h2>" +
+          "<p>" + e.message + "</p>" +
+          "<p>Try <a href='/redoc'>ReDoc</a> instead.</p></div>";
+      }
     };
   </script>
 </body>
@@ -57,10 +82,33 @@ def register_docs_routes(app: FastAPI):
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Crazy Lister API - ReDoc</title>
-  <style>body { margin: 0; padding: 0; }</style>
+  <style>
+    body { margin: 0; padding: 0; }
+  </style>
 </head>
 <body>
-  <redoc spec-url="/openapi.json"></redoc>
+  <div id="redoc-container"></div>
   <script src="/static/redoc/redoc.standalone.js"></script>
+  <script>
+    window.onload = function() {
+      try {
+        Redoc.init("/openapi.json", {
+          expandResponses: "200,201",
+          hideLoading: false,
+          theme: {
+            colors: {
+              primary: { main: "#FF9900" }
+            }
+          }
+        }, document.getElementById("redoc-container"));
+      } catch(e) {
+        document.getElementById("redoc-container").innerHTML = 
+          "<div style='padding:20px;font-family:sans-serif;'>" +
+          "<h2>Error loading ReDoc</h2>" +
+          "<p>" + e.message + "</p>" +
+          "<p>Try <a href='/docs'>Swagger UI</a> instead.</p></div>";
+      }
+    };
+  </script>
 </body>
 </html>"""
