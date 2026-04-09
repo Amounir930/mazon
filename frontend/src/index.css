@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --color-amazon-dark: #131921;
+  --color-amazon-orange: #FF9900;
+  --color-amazon-blue: #232F3E;
+  --color-amazon-light: #FEBD69;
+  --color-brand: var(--color-amazon-orange);
+  --font-family-arabic: "Cairo", system-ui, sans-serif;
+  --font-family-sans: "Inter", system-ui, sans-serif;
+}
+
+/* Cairo & Inter fonts will be loaded from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* RTL Support */
+[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
