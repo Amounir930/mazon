@@ -10,6 +10,7 @@ import sys
 from app.config import get_settings
 from app.api.router import api_router
 from app.database import engine, Base, init_db
+from app.middleware.security import AuditLogMiddleware, SecurityHeadersMiddleware
 
 # Get settings
 settings = get_settings()
@@ -31,6 +32,10 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
+# Add Security middlewares
+app.add_middleware(AuditLogMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Add CORS middleware
 app.add_middleware(
