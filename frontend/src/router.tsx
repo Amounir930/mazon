@@ -14,6 +14,12 @@ import ListingQueuePage from './pages/listings/ListingQueuePage'
 import ReportsPage from './pages/reports/ReportsPage'
 import SettingsPage from './pages/settings/SettingsPage'
 
+// Protected route wrapper
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuth()
+  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />
+}
+
 export default function AppRouter() {
   const { isAuthenticated, loading } = useAuth()
 
@@ -28,29 +34,21 @@ export default function AppRouter() {
   return (
     <Routes>
       {/* Public routes */}
-      <Route
-        path="/login"
-        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
-      />
-      <Route
-        path="/register"
-        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
-      />
+      <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/dashboard" replace />} />
+      <Route path="/register" element={!isAuthenticated ? <RegisterPage /> : <Navigate to="/dashboard" replace />} />
 
       {/* Protected routes */}
-      {isAuthenticated && (
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="products" element={<ProductListPage />} />
-          <Route path="products/create" element={<ProductCreatePage />} />
-          <Route path="listings" element={<ListingQueuePage />} />
-          <Route path="reports" element={<ReportsPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-        </Route>
-      )}
+      <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="products" element={<ProductListPage />} />
+        <Route path="products/create" element={<ProductCreatePage />} />
+        <Route path="listings" element={<ListingQueuePage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+      </Route>
 
-      {/* Default redirect */}
+      {/* Fallback */}
       <Route path="*" element={<Navigate to={isAuthenticated ? "/dashboard" : "/login"} replace />} />
     </Routes>
   )
