@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.api.router import api_router
 from app.database import engine, Base, init_db
 from app.middleware.security import AuditLogMiddleware, SecurityHeadersMiddleware
+from app.docs import register_docs_routes
 
 # Get settings
 settings = get_settings()
@@ -28,13 +29,9 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="Amazon SP-API Auto-Listing System - Modern, scalable platform for automated Amazon product listings",
     version="2.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None,      # Disable default swagger (CDN blocked)
+    redoc_url=None,     # Disable default redoc (CDN blocked)
     openapi_url="/openapi.json",
-    swagger_ui_parameters={
-        "defaultModelsExpandDepth": -1,
-        "persistAuthorization": True,
-    },
 )
 
 # Add Security middlewares
@@ -52,6 +49,9 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+# Register local documentation routes (zero CDN dependency)
+register_docs_routes(app)
 
 
 @app.on_event("startup")
