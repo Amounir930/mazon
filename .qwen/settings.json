@@ -18,7 +18,8 @@
       "Bash(taskkill *)",
       "Bash(node *)",
       "Bash(python *)",
-      "Bash(scp *)"
+      "Bash(scp *)",
+      "Bash(findstr *)"
     ]
   },
   "$version": 3
