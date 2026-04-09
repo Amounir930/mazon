@@ -1,208 +1,96 @@
 """
 Product API Endpoints
-Handles product CRUD operations
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from typing import Optional
-from uuid import UUID
+import json
 from decimal import Decimal
 
 from app.database import get_db
-from app.schemas.product import (
-    ProductCreate,
-    ProductUpdate,
-    ProductResponse,
-    ProductListResponse,
-    MessageResponse,
-)
-from app.services.product_service import ProductService
+from app.models.product import Product
+from app.schemas.product import ProductCreate, ProductUpdate, ProductListResponse, MessageResponse
 from loguru import logger
 
 router = APIRouter()
 
 
-@router.post("/", response_model=ProductResponse, status_code=201)
-async def create_product(
-    product_data: ProductCreate,
-    seller_id: str = Query(..., description="Seller UUID"),
-    db: Session = Depends(get_db),
-):
-    """
-    Create a new product in the catalog.
-    
-    Requires seller_id to associate the product with the correct seller account.
-    """
-    try:
-        seller_uuid = UUID(seller_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid seller ID format")
-    
-    try:
-        product = ProductService.create_product(db, seller_uuid, product_data)
-        logger.info(f"Product created: {product.sku} for seller {seller_id}")
-        return product
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error creating product: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.get("/{product_id}", response_model=ProductResponse)
-async def get_product(
-    product_id: str,
-    db: Session = Depends(get_db),
-):
-    """Get product details by ID"""
-    try:
-        product_uuid = UUID(product_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid product ID format")
-    
-    product = ProductService.get_product(db, product_uuid)
-    
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    
-    return product
+def product_to_dict(product: Product) -> dict:
+    """Convert Product model to dict (handle JSON strings)"""
+    d = {c.name: getattr(product, c.name) for c in product.__table__.columns}
+    # Parse JSON strings
+    for field in ['bullet_points', 'keywords', 'images', 'dimensions', 'attributes', 'optimized_data']:
+        val = d.get(field)
+        if val and isinstance(val, str):
+            try:
+                d[field] = json.loads(val)
+            except Exception:
+                d[field] = [] if field not in ('dimensions', 'attributes', 'optimized_data') else {}
+    # Convert Decimal to float for JSON serialization
+    for field in ['price', 'compare_price', 'cost', 'weight']:
+        if d.get(field) is not None:
+            d[field] = float(d[field])
+    # Convert datetime to string
+    for field in ['created_at', 'updated_at']:
+        val = d.get(field)
+        if val and hasattr(val, 'isoformat'):
+            d[field] = val.isoformat()
+    return d
 
 
 @router.get("/", response_model=ProductListResponse)
 async def list_products(
-    seller_id: str = Query(..., description="Filter by seller UUID"),
-    status: Optional[str] = Query(None, description="Filter by status"),
-    category: Optional[str] = Query(None, description="Filter by category"),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(50, ge=1, le=200, description="Items per page"),
+    status: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
-    """
-    List all products for a seller with pagination and filtering.
-    """
-    try:
-        seller_uuid = UUID(seller_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid seller ID format")
-    
-    products, total = ProductService.get_products_by_seller(
-        db, seller_uuid, status=status, category=category,
-        skip=(page - 1) * page_size, limit=page_size
-    )
-    
-    pages = (total + page_size - 1) // page_size
-    
+    query = db.query(Product)
+
+    if status:
+        query = query.filter(Product.status == status)
+    if category:
+        query = query.filter(Product.category == category)
+
+    total = query.count()
+    products = query.offset((page - 1) * page_size).limit(page_size).all()
+
     return ProductListResponse(
-        items=products,
+        items=[product_to_dict(p) for p in products],
         total=total,
         page=page,
-        pages=pages,
-        has_next=page < pages,
+        pages=(total + page_size - 1) // page_size,
+        has_next=page * page_size < total,
         has_prev=page > 1,
     )
 
 
-@router.put("/{product_id}", response_model=ProductResponse)
-async def update_product(
-    product_id: str,
-    update_data: ProductUpdate,
-    db: Session = Depends(get_db),
-):
-    """Update product details"""
-    try:
-        product_uuid = UUID(product_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid product ID format")
-    
-    try:
-        product = ProductService.update_product(db, product_uuid, update_data)
-        logger.info(f"Product updated: {product.sku}")
-        return product
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error updating product: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+@router.post("/", status_code=201)
+async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
+    product = Product(
+        sku=data.sku,
+        name=data.name,
+        category=data.category or "",
+        brand=data.brand or "",
+        price=data.price,
+        quantity=data.quantity or 0,
+        description=data.description or "",
+        bullet_points=json.dumps(data.bullet_points or []),
+        images=json.dumps(data.images or []),
+        attributes=json.dumps(data.attributes or {}),
+    )
+    db.add(product)
+    db.commit()
+    db.refresh(product)
+    return product_to_dict(product)
 
 
 @router.delete("/{product_id}", response_model=MessageResponse)
-async def delete_product(
-    product_id: str,
-    db: Session = Depends(get_db),
-):
-    """Delete a product"""
-    try:
-        product_uuid = UUID(product_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid product ID format")
-    
-    success = ProductService.delete_product(db, product_uuid)
-    
-    if not success:
-        raise HTTPException(status_code=404, detail="Product not found")
-    
-    logger.info(f"Product deleted: {product_id}")
-    return {"message": "Product deleted successfully"}
-
-
-@router.post("/bulk-create", response_model=list[ProductResponse], status_code=201)
-async def bulk_create_products(
-    products_data: list[ProductCreate],
-    seller_id: str = Query(..., description="Seller UUID"),
-    db: Session = Depends(get_db),
-):
-    """
-    Create multiple products in a single request.
-    
-    Useful for bulk uploads from CSV/Excel files.
-    """
-    try:
-        seller_uuid = UUID(seller_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid seller ID format")
-    
-    created_products = []
-    
-    try:
-        for product_data in products_data:
-            product = ProductService.create_product(db, seller_uuid, product_data)
-            created_products.append(product)
-        
-        db.commit()
-        logger.info(f"Bulk created {len(created_products)} products for seller {seller_id}")
-        return created_products
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error in bulk create: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.post("/{product_id}/optimize")
-async def optimize_product_listing(
-    product_id: str,
-    db: Session = Depends(get_db),
-):
-    """
-    Optimize product listing using AI.
-    
-    Returns optimized title, description, bullet points, and keywords.
-    """
-    try:
-        product_uuid = UUID(product_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid product ID format")
-    
-    product = ProductService.get_product(db, product_uuid)
-    
+async def delete_product(product_id: str, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
-    # TODO: Integrate with AI optimization service
-    # For now, return placeholder
-    return {
-        "message": "AI optimization not yet implemented",
-        "product_id": product_id,
-    }
+    db.delete(product)
+    db.commit()
+    return {"message": "Product deleted successfully"}

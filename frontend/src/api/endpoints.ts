@@ -1,107 +1,80 @@
 import api from '@/lib/axios'
 import type {
-  LoginRequest,
-  LoginResponse,
-  RegisterRequest,
-  RegisterResponse,
-  Seller,
+  AmazonConnectRequest,
+  AmazonConnectResponse,
+  AmazonVerifyResponse,
   Product,
   ProductCreate,
   ProductListResponse,
   Listing,
+  TaskStatus,
   MessageResponse,
 } from '@/types/api'
 
-// ==================== Auth API ====================
+// ==================== Amazon API ====================
 
-export const authApi = {
-  login: (data: LoginRequest) =>
-    api.post<LoginResponse>('/auth/login', data),
+export const amazonApi = {
+  connect: (data: AmazonConnectRequest) =>
+    api.post<AmazonConnectResponse>('/amazon/connect', data),
 
-  register: (data: RegisterRequest) =>
-    api.post<RegisterResponse>('/auth/register', data),
+  verify: () =>
+    api.post<AmazonVerifyResponse>('/amazon/verify'),
 
-  getMe: () =>
-    api.get<Seller>('/auth/me'),
-
-  logout: () =>
-    api.post<MessageResponse>('/auth/logout'),
+  status: () =>
+    api.get<AmazonConnectResponse>('/amazon/status'),
 }
 
 // ==================== Products API ====================
 
 export const productsApi = {
-  list: (params: {
-    seller_id: string
-    status?: string
-    category?: string
-    page?: number
-    page_size?: number
-  }) => api.get<ProductListResponse>('/products', { params }),
+  list: (params?: { status?: string; category?: string; page?: number; page_size?: number }) =>
+    api.get<ProductListResponse>('/products', { params }),
 
-  get: (id: string) =>
-    api.get<Product>(`/products/${id}`),
-
-  create: (data: ProductCreate, seller_id: string) =>
-    api.post<Product>('/products', data, { params: { seller_id } }),
-
-  update: (id: string, data: Partial<ProductCreate>) =>
-    api.put<Product>(`/products/${id}`, data),
+  create: (data: ProductCreate) =>
+    api.post<Product>('/products', data),
 
   delete: (id: string) =>
     api.delete<MessageResponse>(`/products/${id}`),
-
-  bulkCreate: (products: ProductCreate[], seller_id: string) =>
-    api.post<Product[]>('/products/bulk-create', products, { params: { seller_id } }),
-
-  optimize: (id: string) =>
-    api.post(`/products/${id}/optimize`),
 }
 
 // ==================== Listings API ====================
 
 export const listingsApi = {
-  list: (params: { seller_id: string; status?: string }) =>
+  list: (params?: { status?: string }) =>
     api.get<Listing[]>('/listings', { params }),
 
-  submit: (data: { product_id: string; seller_id: string }) =>
-    api.post<Listing>('/listings/submit', data),
+  submit: (product_id: string) =>
+    api.post('/listings/submit', null, { params: { product_id } }),
 
-  get: (id: string) =>
-    api.get<Listing>(`/listings/${id}`),
-
-  getResults: (seller_id: string) =>
-    api.get('/listings/results', { params: { seller_id } }),
-
-  retry: (id: string) =>
-    api.post<Listing>(`/listings/${id}/retry`),
+  retry: (listing_id: string) =>
+    api.post(`/listings/${listing_id}/retry`),
 }
 
-// ==================== Sellers API ====================
+// ==================== Tasks API ====================
 
-export const sellersApi = {
-  register: (data: {
-    email: string
-    seller_id: string
-    marketplace_id: string
-    region: string
-    lwa_refresh_token: string
-  }) => api.post<Seller>('/sellers/register', data),
-
+export const tasksApi = {
   get: (id: string) =>
-    api.get<Seller>(`/sellers/${id}`),
+    api.get<TaskStatus>(`/tasks/${id}`),
 
-  getByEmail: (email: string) =>
-    api.get<Seller>(`/sellers/email/${email}`),
+  list: () =>
+    api.get<Record<string, TaskStatus>>('/tasks/'),
+}
 
-  getAuthUrl: (seller_email: string) =>
-    api.post('/sellers/auth-url', null, { params: { seller_email } }),
+// ==================== Sync API ====================
 
-  updateStatus: (id: string, is_active: boolean) =>
-    api.put<MessageResponse>(`/sellers/${id}/status`, null, {
-      params: { is_active },
-    }),
+export const syncApi = {
+  syncFromAmazon: () =>
+    api.post('/sync'),
+}
 
-  delete: (id: string) =>
-    api.delete<MessageResponse>(`/sellers/${id}`),
+// ==================== Bulk API ====================
+
+export const bulkApi = {
+  upload: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/bulk/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 }

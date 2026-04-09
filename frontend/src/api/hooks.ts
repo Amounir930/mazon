@@ -1,22 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { productsApi, listingsApi, authApi } from './endpoints'
-import type {
-  ProductListResponse,
-  Listing,
-  ProductCreate,
-  LoginRequest,
-  RegisterRequest,
-  Seller,
-} from '@/types/api'
+import { productsApi, listingsApi, amazonApi, tasksApi, syncApi, bulkApi } from './endpoints'
+import type { ProductListResponse, Listing } from '@/types/api'
 
 // ==================== Product Keys ====================
 
 export const productKeys = {
   all: ['products'] as const,
   lists: () => [...productKeys.all, 'list'] as const,
-  list: (params: Record<string, unknown>) => [...productKeys.lists(), params] as const,
-  details: () => [...productKeys.all, 'detail'] as const,
-  detail: (id: string) => [...productKeys.details(), id] as const,
+  list: (params?: Record<string, unknown>) => [...productKeys.lists(), params] as const,
 }
 
 // ==================== Listing Keys ====================
@@ -24,41 +15,32 @@ export const productKeys = {
 export const listingKeys = {
   all: ['listings'] as const,
   lists: () => [...listingKeys.all, 'list'] as const,
-  list: (params: Record<string, unknown>) => [...listingKeys.lists(), params] as const,
+  list: (params?: Record<string, unknown>) => [...listingKeys.lists(), params] as const,
 }
 
-// ==================== Auth Keys ====================
+// ==================== Amazon Keys ====================
 
-export const authKeys = {
-  me: ['auth', 'me'] as const,
+export const amazonKeys = {
+  status: ['amazon', 'status'] as const,
+}
+
+// ==================== Task Keys ====================
+
+export const taskKeys = {
+  list: ['tasks'] as const,
+  detail: (id: string) => ['tasks', id] as const,
 }
 
 // ==================== Product Hooks ====================
 
-export function useProducts(params: {
-  seller_id: string
-  page?: number
-  status?: string
-  category?: string
-}) {
+export function useProducts(params?: { status?: string; category?: string; page?: number; page_size?: number }) {
   return useQuery({
     queryKey: productKeys.list(params),
     queryFn: async () => {
-      const { data } = await productsApi.list({ ...params, page_size: 50 })
+      const { data } = await productsApi.list({ page: params?.page, page_size: params?.page_size, status: params?.status, category: params?.category })
       return data
     },
     staleTime: 1000 * 60 * 2,
-  })
-}
-
-export function useProduct(id: string) {
-  return useQuery({
-    queryKey: productKeys.detail(id),
-    queryFn: async () => {
-      const { data } = await productsApi.get(id)
-      return data
-    },
-    enabled: !!id,
   })
 }
 
@@ -66,27 +48,12 @@ export function useCreateProduct() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ product, seller_id }: { product: ProductCreate; seller_id: string }) => {
-      const { data } = await productsApi.create(product, seller_id)
-      return data
-    },
-    onSuccess: (_, { seller_id }) => {
-      queryClient.invalidateQueries({ queryKey: productKeys.list({ seller_id }) })
-    },
-  })
-}
-
-export function useUpdateProduct() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<ProductCreate> }) => {
-      const { data: result } = await productsApi.update(id, data)
+    mutationFn: async (data: Record<string, unknown>) => {
+      const { data: result } = await productsApi.create(data as Parameters<typeof productsApi.create>[0])
       return result
     },
-    onSuccess: (product) => {
-      queryClient.invalidateQueries({ queryKey: productKeys.detail(product.id) })
-      queryClient.invalidateQueries({ queryKey: productKeys.lists() })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: productKeys.list() })
     },
   })
 }
@@ -107,7 +74,7 @@ export function useDeleteProduct() {
 
 // ==================== Listing Hooks ====================
 
-export function useListings(params: { seller_id: string; status?: string }) {
+export function useListings(params?: { status?: string }) {
   return useQuery({
     queryKey: listingKeys.list(params),
     queryFn: async () => {
@@ -115,6 +82,7 @@ export function useListings(params: { seller_id: string; status?: string }) {
       return data
     },
     staleTime: 1000 * 60 * 1,
+    refetchInterval: 5000,
   })
 }
 
@@ -122,59 +90,98 @@ export function useSubmitListing() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (data: { product_id: string; seller_id: string }) => {
-      const { data: result } = await listingsApi.submit(data)
-      return result
-    },
-    onSuccess: (_, { seller_id }) => {
-      queryClient.invalidateQueries({ queryKey: listingKeys.list({ seller_id }) })
-    },
-  })
-}
-
-// ==================== Auth Hooks ====================
-
-export function useMe() {
-  return useQuery({
-    queryKey: authKeys.me,
-    queryFn: async () => {
-      const { data } = await authApi.getMe()
+    mutationFn: async (product_id: string) => {
+      const { data } = await listingsApi.submit(product_id)
       return data
     },
-    retry: false,
-  })
-}
-
-export function useLogin() {
-  return useMutation({
-    mutationFn: async (data: LoginRequest) => {
-      const { data: result } = await authApi.login(data)
-      return result
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: listingKeys.list() })
+      queryClient.invalidateQueries({ queryKey: taskKeys.list })
     },
   })
 }
 
-export function useRegister() {
+// ==================== Amazon Hooks ====================
+
+export function useAmazonStatus() {
+  return useQuery({
+    queryKey: amazonKeys.status,
+    queryFn: async () => {
+      const { data } = await amazonApi.status()
+      return data
+    },
+    staleTime: 1000 * 60 * 1,
+    refetchInterval: 30000,
+  })
+}
+
+export function useConnectAmazon() {
+  const queryClient = useQueryClient()
+
   return useMutation({
-    mutationFn: async (data: RegisterRequest) => {
-      const { data: result } = await authApi.register(data)
+    mutationFn: async (data: Record<string, string>) => {
+      const { data: result } = await amazonApi.connect(data as Parameters<typeof amazonApi.connect>[0])
       return result
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: amazonKeys.status })
     },
   })
 }
 
-// ==================== Stats Hook ====================
+export function useVerifyConnection() {
+  const queryClient = useQueryClient()
 
-export function useStats(sellerId: string) {
-  const { data: products } = useProducts({ seller_id: sellerId })
-  const { data: listings } = useListings({ seller_id: sellerId })
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await amazonApi.verify()
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: amazonKeys.status })
+    },
+  })
+}
 
-  return {
-    totalProducts: products?.total ?? 0,
-    totalListings: listings?.length ?? 0,
-    published: listings?.filter((l: Listing) => l.status === 'success').length ?? 0,
-    queued: listings?.filter((l: Listing) => l.status === 'queued').length ?? 0,
-    failed: listings?.filter((l: Listing) => l.status === 'failed').length ?? 0,
-    processing: listings?.filter((l: Listing) => l.status === 'processing' || l.status === 'submitted').length ?? 0,
-  }
+// ==================== Task Hooks ====================
+
+export function useTasks() {
+  return useQuery({
+    queryKey: taskKeys.list,
+    queryFn: async () => {
+      const { data } = await tasksApi.list()
+      return data
+    },
+    refetchInterval: 3000,
+  })
+}
+
+// ==================== Sync & Bulk Hooks ====================
+
+export function useSyncFromAmazon() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await syncApi.syncFromAmazon()
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: productKeys.lists() })
+    },
+  })
+}
+
+export function useBulkUpload() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const { data } = await bulkApi.upload(file)
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: productKeys.lists() })
+    },
+  })
 }

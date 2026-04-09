@@ -1,10 +1,4 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
-import { useAuth } from './contexts/AuthContext'
-import Layout from './components/layout/Layout'
-
-// Auth pages
-import LoginPage from './pages/auth/LoginPage'
-import RegisterPage from './pages/auth/RegisterPage'
 
 // Main pages
 import DashboardPage from './pages/dashboard/DashboardPage'
@@ -14,42 +8,24 @@ import ListingQueuePage from './pages/listings/ListingQueuePage'
 import ReportsPage from './pages/reports/ReportsPage'
 import SettingsPage from './pages/settings/SettingsPage'
 
-// Protected layout - wraps all protected routes
-function ProtectedLayout() {
-  const { isAuthenticated } = useAuth()
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
-  }
-
+// TODO: Replace with Amazon Connect system (Phase 5)
+// Temporary: simple pass-through layout until AmazonConnectContext is built
+function ConnectedLayout() {
+  // TODO: Check Amazon connection status
   return <Outlet />
 }
 
 export default function AppRouter() {
-  const { isAuthenticated, loading } = useAuth()
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-amazon-blue">
-        <div className="w-10 h-10 border-4 border-amazon-orange border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
-  }
-
+  // TODO: Replace with Amazon connect loading state
   return (
     <Routes>
-      {/* Public routes */}
-      <Route
-        path="/login"
-        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
-      />
-      <Route
-        path="/register"
-        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
-      />
+      {/* TODO: Add /connect route for Amazon credentials page */}
+      {/* Temporary: redirect /login to /dashboard */}
+      <Route path="/login" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/register" element={<Navigate to="/dashboard" replace />} />
 
-      {/* Protected routes */}
-      <Route element={<ProtectedLayout />}>
+      {/* Main routes — TODO: protect with Amazon connection check */}
+      <Route element={<ConnectedLayout />}>
         <Route element={<Layout />}>
           <Route path="" element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
@@ -61,8 +37,13 @@ export default function AppRouter() {
         </Route>
       </Route>
 
-      {/* Catch all - redirect to login */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      {/* Catch all */}
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )
+}
+
+// Temporary Layout wrapper until Sidebar/Header are updated
+function Layout() {
+  return <Outlet />
 }
