@@ -16,6 +16,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('frontend/dist', 'frontend/dist'),
+        ('assets/icon.ico', 'assets'),
     ],
     hiddenimports=[
         # Uvicorn
@@ -105,4 +106,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='assets/icon.ico',          # Application icon
 )

@@ -24,6 +24,7 @@
       "Bash(pip install *)",
       "Read(C:\\Users\\Dell\\AppData\\Roaming\\CrazyLister/**)",
       "Bash(uvicorn *)",
+<<<<<<< HEAD
       "Bash(del *)",
       "Bash(true)",
       "Bash(echo.)",
@@ -31,6 +32,9 @@
       "Bash(type *)",
       "Bash(powershell *)",
       "Bash(tasklist)"
+=======
+      "Bash(del *)"
+>>>>>>> 4dddf01e45163d57b670cee2aca2a6d9a90e6890
     ]
   },
   "$version": 3

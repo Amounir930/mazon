@@ -104,6 +104,16 @@ def check_requirements():
         print_error("pywebview not installed. Run: pip install pywebview")
         sys.exit(1)
 
+    # Check icon file (optional but recommended)
+    project_root = Path(__file__).parent
+    icon_path = project_root / "assets" / "icon.ico"
+    if icon_path.exists():
+        print_success(f"Icon found: {icon_path}")
+    else:
+        print_warning(f"Icon not found: {icon_path}")
+        print_warning("Build will continue without custom icon")
+        print_warning("To create icon: python create_icon.py")
+
 
 def build_frontend():
     """Build the React frontend"""
