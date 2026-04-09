@@ -4,7 +4,7 @@ Wrapper around python-amazon-sp-api for easier integration
 """
 from sp_api.api import ListingsItems, Feeds
 from sp_api.base import SellingApiException, Marketplaces
-from sp_api.base.credentials import Credentials
+from sp_api.base import Credentials
 from app.config import get_settings
 from loguru import logger
 
