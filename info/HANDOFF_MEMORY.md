@@ -1,117 +1,110 @@
-# 📋 Crazy Lister v3.0 — Chat Memory & Handoff Document
-## Project Status: Active Development / Frontend Bug Fixing
+تم تحديث ملف الذاكرة (HANDOFF_MEMORY.md) بشكل جنائي وشامل. هذا الملف الآن يحتوي على كل قرار هندسي، كل خطأ تم إصلاحه، وكل “فخ” برمجي تم اكتشافه، لضمان أن أي مهندس جديد يستلم المشروع لا يضيع وقتاً في تكرار أخطاء الماضي.
 
-> **Last Updated:** April 10, 2026  
-> **Version:** 3.0.0 (Desktop Standalone App)  
-> **Current Phase:** Phase 8 (Amazon Integration) & Phase 9 (Frontend Polish)  
-> **Mode:** Simulation Mode (`USE_AMAZON_MOCK=True`)
+يمكنك نسخ محتوى الملف أدناه واستخدامه كمرجع دائم.
 
----
+📋 Crazy Lister v3.0 — Forensic Handoff Document
+Version: 3.0 (Hybrid: Desktop Target + Web Dev Mode)
+Last Updated: April 10, 2026
+Current Mode: Development (Simulation Active)
+Status: 🟡 Stable Core / UI in Final Polish
 
-## 🎯 Executive Summary (30 Seconds)
-**Goal:** Windows Desktop App (`.exe`) for single-seller Amazon listing automation.  
-**Tech Stack:** FastAPI (Python 3.11) + React 19 (TypeScript/Vite) + PyWebView + SQLite.  
-**Current Status:**
-*   ✅ **Backend:** 100% Working. SQLite, Asyncio Tasks, Amazon Mock Client.
-*   ✅ **Desktop Wrapper:** PyInstaller builds work (Fixed `pyi_rth_pkgres.py` issue).
-*   ✅ **Frontend Connectivity:** Connected to Backend (Port `8765`).
-*   🟡 **Frontend Actions:** Delete works. **Create & Edit are BROKEN** (Needs immediate fix).
+🚨 Executive Summary (The “State of the Union”)
+The system is a Single-Client Amazon Automation Tool. It was migrated from a complex SaaS (PostgreSQL + Celery) to a lightweight Desktop App architecture (SQLite + Asyncio + PyWebView).
 
----
+Current Working State:
 
-## 🛠️ Critical Technical Fixes Implemented (Do Not Revert)
+✅ Backend: FastAPI serves data, handles CRUD, and mocks Amazon responses.
+✅ Database: SQLite in %APPDATA%. No Docker needed.
+✅ Frontend: React + Vite. Connected to Backend via Proxy.
+✅ Build: PyInstaller .exe generation works (after critical fix to pyi_rth_pkgres.py).
+✅ Connection: Dynamic! User can change Amazon credentials in Settings, and the system updates instantly.
+🛠️ Critical Forensic Fixes (Do NOT Revert)
+1. The “PyInstaller jaraco” Loop of Death 🔴
+Symptom: ModuleNotFoundError: No module named 'jaraco' on .exe startup.
+Root Cause: PyInstaller’s pyi_rth_pkgres.py hook forces a dependency on pkg_resources, which in setuptools 80+ requires hidden vendored packages (jaraco).
+The Fix: We Neutralized the hook file instead of deleting it.
+Location: .../site-packages/PyInstaller/hooks/rthooks/pyi_rth_pkgres.py
+Action: Content was replaced with an empty file.
+WARNING: DO NOT delete this file (causes registry error). DO NOT restore it.
+2. The “307 Redirect” Loop 🟡
+Symptom: Frontend stuck in “Loading” state; Console shows 307 Temporary Redirect.
+Root Cause: Backend routes had trailing slashes (@router.get("/")), but Frontend requested without (/products).
+The Fix: Removed trailing slashes from all endpoints in backend/app/api/.
+products.py, listings.py, amazon_connect/endpoints.py.
+3. Dynamic Amazon API Client 🟢
+Symptom: System rejected credentials entered in Settings because RealSPAPIClient ignored them and looked at .env.
+The Fix: Refactored RealSPAPIClient to accept client_id, client_secret, etc., as optional arguments.
+Impact: Now, when you change settings, the system actually uses the NEW credentials immediately.
+4. Settings Page & “Dead” Inputs 🟢
+Symptom: Settings page showed “string” and inputs were read-only.
+The Fix: Rebuilt SettingsPage.tsx as a full Form.
+Added “Edit/View” mode.
+Added “Save & Connect” button.
+Connected it to useConnectAmazon hook.
+5. Database Seeding Logic (The Overwrite Bug) 🟢
+Symptom: Every time the server restarted, it reset the Seller data to “Demo”, ignoring what the user changed in Settings.
+The Fix: Modified main.py startup logic.
+Logic: IF (Seller Exists) THEN DO NOTHING. ELSE Seed Mock Data.
+Result: User changes are now persistent.
+📂 Project Architecture
+Tech Stack
+Backend: Python 3.11, FastAPI, Uvicorn, SQLAlchemy (SQLite).
+Frontend: React 19, TypeScript, Vite, TailwindCSS, TanStack Query.
+Desktop: PyWebView 4.4.1 (Browser window wrapper).
+Build: PyInstaller 6.5.0.
+Key File Map
+File	Responsibility	Status
+backend/app/main.py	Entry point, DB Seeding Logic, Task Mgr startup.	🟢 Modified
+backend/app/services/amazon_api.py	Amazon SP-API Client. Handles Real vs Mock logic.	🟢 Modified
+backend/app/api/settings.py	(N/A - logic moved to amazon_connect).	🟡 Deprecated
+backend/app/api/amazon_connect/...	Handles /connect, /verify, /status.	🟢 Active
+frontend/src/pages/settings/SettingsPage.tsx	User Config Form. Inputs for Credentials.	🟢 Rebuilt
+frontend/src/pages/products/ProductCreatePage.tsx	Add/Edit Product, Multi-Listing Logic.	🟢 Fixed
+frontend/src/pages/listings/ListingQueuePage.tsx	Displays Queue from Backend.	🟢 Active
+frontend/src/components/common/MediaUploader.tsx	Drag & Drop Image Uploader.	🟢 Active
+start-dev.bat	Master Start Script. Kills ports, starts both servers.	🟢 Created
+crazy_lister.spec	PyInstaller build config.	🟢 Active
+🚀 Workflow: How to Run & Build
+1. Development Mode (Daily Work)
+ALWAYS use the batch file to ensure clean ports.
 
-### 1. The "Jaraco" / PyInstaller Build Fix 🔴
-*   **Issue:** `pyi_rth_pkgres.py` caused infinite dependency loops (`ModuleNotFoundError: jaraco/platformdirs`).
-*   **Solution:** **Neutralized** the file (made it empty) at:
-    `.../site-packages/PyInstaller/hooks/rthooks/pyi_rth_pkgres.py`.
-*   **Result:** `.exe` builds successfully (~70-80MB) without errors.
-
-### 2. The "Redirect Loop" / 404 Fix 🟡
-*   **Issue:** Frontend requests resulted in `307 Redirects` because Backend routes ended with `/` but Frontend requested without (e.g., `/products`).
-*   **Solution:** Removed trailing slashes from `@router.get("/")` in:
-    *   `backend/app/api/products.py`
-    *   `backend/app/api/listings.py`
-    *   `backend/app/api/amazon_connect/endpoints.py`
-*   **Result:** API calls return `200 OK` immediately.
-
-### 3. The Proxy Fix (Vite) 🟡
-*   **Issue:** Frontend `dev` server wasn't reaching Backend.
-*   **Solution:** Updated `frontend/vite.config.ts` proxy target to `http://127.0.0.1:8765`.
-
----
-
-## 📂 Current File Structure (Key Files)
-
-```text
-c:\Users\Dell\Desktop\learn\amazon\
-├── backend/
-│   ├── app/
-│   │   ├── launcher.py              ← Entry point (Desktop Mode)
-│   │   ├── services/
-│   │   │   └── amazon_api.py        ← Contains BOTH Real API + High-Fidelity Simulation
-│   │   ├── api/
-│   │   │   ├── products.py          ← CRUD (Delete works, Create/Edit logic exists)
-│   │   │   ├── listings.py          ← Listing submission (Asyncio tasks)
-│   │   │   └── amazon_connect/      ← Auth endpoints
-│   └── .env                         ← USE_AMAZON_MOCK=True (Currently Active)
-├── frontend/
-│   ├── src/pages/products/
-│   │   ├── ProductListPage.tsx      ← Delete works. Edit button is DUMMY currently.
-│   │   └── ProductCreatePage.tsx    ← Currently sends HARD CODED data. Needs State Binding.
-│   └── vite.config.ts               ← Proxy configured to 8765
-└── releases/
-    └── CrazyLister-v3.0.0/          ← Last working .exe build
-```
-
----
-
-## 🚨 OPEN ISSUES (Immediate Action Required)
-
-### Issue #1: Product Create Form is Hardcoded
-*   **Problem:** `ProductCreatePage.tsx` ignores user input. It sends `sku: 'TEST-' + Date.now()` and fixed names.
-*   **Fix Needed:** Implement `useState` for all form fields and pass actual data to API.
-
-### Issue #2: Product Edit Button is Dummy
-*   **Problem:** `ProductListPage.tsx` edit button shows a toast "Coming Soon".
-*   **Fix Needed:** Implement routing to Create page with pre-filled data for editing existing products.
-
----
-
-## 🚀 Deployment Workflow (How to Run/Build)
-
-### 1. Local Development (For Testing Fixes)
-**Terminal 1 (Backend):**
-```powershell
-cd c:\Users\Dell\Desktop\learn\amazon\backend
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 --log-level info
-```
-**Terminal 2 (Frontend):**
-```powershell
-cd c:\Users\Dell\Desktop\learn\amazon\frontend
-npm run dev
-# Access via http://localhost:3001 (or port shown)
-```
-
-### 2. Building the .exe
-```powershell
-cd c:\Users\Dell\Desktop\learn\amazon
+Run start-dev.bat (Located in root).
+Wait for: Uvicorn running on http://127.0.0.1:8765.
+Browser opens at: http://localhost:3000.
+First Run Check: Go to Settings -> Edit -> Enter test123 for IDs -> Save.
+2. Building the .exe
+# 1. Clean old builds
 rmdir /s /q dist build
+
+# 2. Build Frontend (Production)
+cd frontend && npm run build && cd ..
+
+# 3. Build Backend (PyInstaller)
 pyinstaller --clean crazy_lister.spec
-```
+🐛 Known Bugs & Open Tasks
+1. Image Uploader (Drag & Drop) 🟡
+Status: Component exists (MediaUploader.tsx), but logic needs review to ensure Base64 or local file paths are saving correctly to SQLite.
+Task: Verify that images persist after refresh.
+2. “Edit Product” Routing 🟡
+Status: “Edit” button in Product List works, but sometimes data pre-filling is slow.
+Task: Optimize useLocation state transfer.
+3. Multi-Listing Logic 🟢
+Status: Implemented. Creates SKU-01, SKU-02 based on “Copies” input.
+Task: Monitor performance when creating 50+ copies at once (might need background task delay).
+🔑 Credentials & Access
+Admin: Not applicable (Single user app).
+Amazon Mock Credentials:
+Client ID: test123
+Client Secret: test123
+Refresh Token: Atzr|test123
+Seller ID: MOCK-SELLER-01
+Database: %APPDATA%/CrazyLister/crazy_lister.db
+📝 Engineer’s Checklist (Day 1)
+[ ] Verify pyi_rth_pkgres.py is empty (size 0kb).
+[ ] Run start-dev.bat and confirm no port conflicts.
+[ ] Check backend/.env -> USE_AMAZON_MOCK=True.
+[ ] Go to Settings, enter mock creds, verify “Connected” status.
+[ ] Create a product, verify it appears in the List.
+[ ] Submit Listing, verify it appears in the Queue.
+END OF FORENSIC REPORT
 
----
-
-## 💾 Database & Credentials
-*   **Database Location:** `%APPDATA%\CrazyLister\crazy_lister.db`
-*   **Amazon Credentials:** currently stored in `backend/.env` (`USE_AMAZON_MOCK=True`).
-    *   *Note:* Real AWS keys are placeholders (`<REAL_KEY>`) in `.env`.
-*   **Simulation Data:** The Mock Client returns 3 realistic products (T-shirt, Speaker, Yoga Mat).
-
----
-
-## 📝 Engineer's Next Task
-**Directive:** **"FRONTEND CRUD ACTIVATION"**
-*   **Scope:** Fix `ProductCreatePage.tsx` and `ProductListPage.tsx`.
-*   **Constraint:** No dummy data allowed. All inputs must be controlled components.
-*   **Goal:** User can Type Name/Price -> Click Save -> See it in table -> Click Edit -> Change Price -> Save.
