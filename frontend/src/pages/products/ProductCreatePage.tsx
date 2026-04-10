@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowRight, Package, DollarSign, Image, Settings, Layers, Save, Loader2, Globe } from 'lucide-react'
-import { useCreateProduct, useUpdateProduct, useSubmitListing, useSubmitMultiListing } from '@/api/hooks'
-import { ImageUploader } from '@/components/products/ImageUploader'
-import { BulletPointInput } from '@/components/products/BulletPointInput'
+import { useCreateProduct, useUpdateProduct, useSubmitListing } from '@/api/hooks'
+import { MediaUploader } from '@/components/common/MediaUploader'
 import toast from 'react-hot-toast'
 
 const tabs = [
@@ -20,7 +19,6 @@ export default function ProductCreatePage() {
   const createMutation = useCreateProduct()
   const updateMutation = useUpdateProduct()
   const submitListingMutation = useSubmitListing()
-  const submitMultiListingMutation = useSubmitMultiListing()
 
   const editMode = location.state?.editMode || false
   const editProduct = location.state?.editProduct || null
@@ -74,15 +72,13 @@ export default function ProductCreatePage() {
     }
   }, [editMode, editProduct])
 
-  const loading = createMutation.isPending || updateMutation.isPending || submitListingMutation.isPending || submitMultiListingMutation.isPending
+  const loading = createMutation.isPending || updateMutation.isPending || submitListingMutation.isPending
 
-  // Sanitize input: strip HTML tags
   const sanitizeInput = (str: string): string => {
     return str.replace(/<[^>]*>/g, '')
   }
 
   const handleSubmit = async () => {
-    // Validation
     if (!formData.sku || !formData.name || !formData.price) {
       toast.error('يرجى ملء الحقول المطلوبة (SKU، الاسم، السعر)')
       return
@@ -90,22 +86,6 @@ export default function ProductCreatePage() {
 
     if (!formData.images || formData.images.length === 0) {
       toast.error('يرجى إضافة صورة رئيسية واحدة على الأقل')
-      return
-    }
-
-    if ((!formData.bullet_points_ar || formData.bullet_points_ar.length === 0) &&
-      (!formData.bullet_points_en || formData.bullet_points_en.length === 0)) {
-      toast.error('يرجى إضافة نقطة ميزة واحدة على الأقل')
-      return
-    }
-
-    if (Number(formData.price) < 0) {
-      toast.error('السعر يجب أن يكون رقماً موجباً')
-      return
-    }
-
-    if (Number(formData.quantity) < 0) {
-      toast.error('الكمية يجب أن تكون رقماً موجباً')
       return
     }
 
@@ -118,8 +98,6 @@ export default function ProductCreatePage() {
         description: sanitizeInput(formData.description),
         description_ar: sanitizeInput(formData.description_ar),
         description_en: sanitizeInput(formData.description_en),
-        bullet_points_ar: formData.bullet_points_ar.map(sanitizeInput),
-        bullet_points_en: formData.bullet_points_en.map(sanitizeInput),
         price: Number(formData.price),
         quantity: Number(formData.quantity),
         weight: Number(formData.weight),
@@ -127,36 +105,30 @@ export default function ProductCreatePage() {
 
       let product;
       if (editMode && editProduct) {
-        // Edit Mode: Just update the product, do NOT create copies
         product = await updateMutation.mutateAsync({ id: editProduct.id, data: payload })
         toast.success('تم تحديث المنتج بنجاح!')
         navigate('/products')
-      } else {
-        const copies = Number(formData.listing_copies) || 1
+        return
+      }
 
-        if (copies > 1) {
-          // Multi-Listing Mode: Create X distinct products with unique SKUs
-          const createdProducts = []
-          for (let i = 1; i <= copies; i++) {
-            const multiPayload = {
-              ...payload,
-              sku: `${payload.sku}-${i.toString().padStart(2, '0')}`, // SKU-001, SKU-002...
-              name: `${payload.name} (Copy ${i})`,
-            }
-            const newProduct = await createMutation.mutateAsync(multiPayload)
-            createdProducts.push(newProduct)
-            // Add small delay to prevent rate limiting
-            await new Promise(resolve => setTimeout(resolve, 200))
+      const copies = Number(formData.listing_copies) || 1
+
+      if (copies > 1) {
+        for (let i = 1; i <= copies; i++) {
+          const multiPayload = {
+            ...payload,
+            sku: `${payload.sku}-${i.toString().padStart(2, '0')}`,
+            name: `${payload.name} (نسخة ${i})`,
           }
-          toast.success(`تم إنشاء ${copies} منتج بنجاح!`)
-        } else {
-          // Normal Mode: Create 1 product
-          product = await createMutation.mutateAsync(payload)
-          toast.success('تم إنشاء المنتج بنجاح!')
-          // Submit listing for normal flow
-          await submitListingMutation.mutateAsync(product.id)
+          const newProduct = await createMutation.mutateAsync(multiPayload)
+          await submitListingMutation.mutateAsync(newProduct.id)
+          await new Promise(resolve => setTimeout(resolve, 200))
         }
-        navigate('/products')
+        toast.success(`تم إنشاء ${copies} منتج وإضافتها لقائمة الرفع!`)
+      } else {
+        product = await createMutation.mutateAsync(payload)
+        await submitListingMutation.mutateAsync(product.id)
+        toast.success('تم إنشاء المنتج بنجاح!')
       }
 
       navigate('/products')
@@ -241,11 +213,6 @@ export default function ProductCreatePage() {
 function BasicInfoTab({ formData, setFormData }: { formData: any, setFormData: any }) {
   return (
     <div className="space-y-6">
-      <div className="bg-[#1a1a2e] p-4 rounded-lg border border-gray-800 mb-4 flex items-center gap-2">
-        <Package className="w-5 h-5 text-amazon-orange" />
-        <span className="text-white font-semibold">المعلومات الأساسية (SKU & Category)</span>
-      </div>
-
       <div>
         <label className="block text-sm font-medium text-gray-400 mb-2">SKU (Stock Keeping Unit) *</label>
         <input
@@ -359,43 +326,83 @@ function PricingTab({ formData, setFormData }: { formData: any, setFormData: any
 function MediaTab({ formData, setFormData }: { formData: any, setFormData: any }) {
   return (
     <div className="space-y-4">
-      <div className="bg-[#1a1a2e] p-4 rounded-lg border border-gray-800 mb-4 flex items-center gap-2">
-        <Image className="w-5 h-5 text-amazon-orange" />
-        <span className="text-white font-semibold">الصور والوسائط (1 رئيسية + 8 فرعية)</span>
-      </div>
-      <ImageUploader
+      <MediaUploader
         images={formData.images}
         onChange={(imgs) => setFormData({ ...formData, images: imgs })}
-        maxImages={9}
       />
     </div>
   )
 }
 
 function AdvancedTab({ formData, setFormData }: { formData: any, setFormData: any }) {
+  const [newBulletAr, setNewBulletAr] = useState('')
+  const [newBulletEn, setNewBulletEn] = useState('')
+
+  const addBullet = () => {
+    if (newBulletAr.trim() || newBulletEn.trim()) {
+      setFormData({
+        ...formData,
+        bullet_points_ar: [...formData.bullet_points_ar, newBulletAr.trim()],
+        bullet_points_en: [...formData.bullet_points_en, newBulletEn.trim()],
+        bullet_points: [...formData.bullet_points, newBulletAr.trim()]
+      })
+      setNewBulletAr('')
+      setNewBulletEn('')
+    }
+  }
+
+  const removeBullet = (index: number) => {
+    const newBar = [...formData.bullet_points_ar]
+    const newBen = [...formData.bullet_points_en]
+    newBar.splice(index, 1)
+    newBen.splice(index, 1)
+    setFormData({ ...formData, bullet_points_ar: newBar, bullet_points_en: newBen })
+  }
+
   return (
     <div className="space-y-8">
-      {/* Arabic Bullet Points */}
-      <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
-        <BulletPointInput
-          bulletPoints={formData.bullet_points_ar}
-          onChange={(bullets) => setFormData({ ...formData, bullet_points_ar: bullets, bullet_points: bullets })}
-          maxPoints={5}
-          placeholder="أضف ميزة بالعربية..."
-          label="مميزات المنتج (العربية)"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-2">مميزات المنتج (العربية)</label>
+          <input
+            type="text"
+            value={newBulletAr}
+            onChange={(e) => setNewBulletAr(e.target.value)}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange transition-all"
+            placeholder="أضف ميزة بالعربية..."
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-2">Features (English)</label>
+          <input
+            type="text"
+            value={newBulletEn}
+            onChange={(e) => setNewBulletEn(e.target.value)}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange transition-all"
+            placeholder="Add feature in English..."
+          />
+        </div>
       </div>
+      <button
+        onClick={addBullet}
+        className="w-full py-3 border border-gray-700 rounded-lg text-gray-400 hover:text-white hover:border-amazon-orange transition-all"
+      >
+        + إضافة نقطة ميزة (Bullet Point)
+      </button>
 
-      {/* English Bullet Points */}
-      <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
-        <BulletPointInput
-          bulletPoints={formData.bullet_points_en}
-          onChange={(bullets) => setFormData({ ...formData, bullet_points_en: bullets })}
-          maxPoints={5}
-          placeholder="Add feature in English..."
-          label="Product Features (English)"
-        />
-      </div>
+      <ul className="space-y-4">
+        {formData.bullet_points_ar.map((bullet: string, i: number) => (
+          <li key={i} className="bg-[#1a1a2e] p-4 rounded-xl border border-gray-800 flex flex-col gap-2 relative group">
+            <div className="flex justify-between items-start">
+              <div className="flex-1">
+                <p className="text-white text-sm" dir="rtl">● {bullet}</p>
+                <p className="text-gray-500 text-xs mt-1" dir="ltr">● {formData.bullet_points_en[i]}</p>
+              </div>
+              <button onClick={() => removeBullet(i)} className="text-red-500 hover:text-red-400 p-2">X</button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -409,12 +416,12 @@ function MultiListingTab({ formData, setFormData }: { formData: any, setFormData
           <h3 className="text-white font-bold text-lg">نظام النشر المتعدد (Multi-Listing)</h3>
         </div>
         <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-          هذه الخاصية تتيح لك إرسال طلبات رفع متعددة لنفس المنتج إلى أمازون تلقائياً.
-          مفيد جداً لاختبار العناوين المختلفة أو زيادة فرص الظهور.
+          هذه الخاصية تتيح لك إنشاء نسخ متعددة من المنتج تلقائياً.
+          كل نسخة ستحصل على SKU فريد وسيتم إضافتها لقائمة الرفع.
         </p>
 
         <div className="max-w-xs">
-          <label className="block text-sm font-medium text-gray-400 mb-2">عدد نسخ الرفع لانتظار أمازون</label>
+          <label className="block text-sm font-medium text-gray-400 mb-2">عدد النسخ المطلوبة</label>
           <input
             type="number"
             min={1}
@@ -423,7 +430,7 @@ function MultiListingTab({ formData, setFormData }: { formData: any, setFormData
             onChange={(e) => setFormData({ ...formData, listing_copies: Number(e.target.value) })}
             className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white font-bold text-center focus:ring-2 focus:ring-amazon-orange outline-none"
           />
-          <p className="text-xs text-amazon-orange mt-2">سيتم إنشاء {formData.listing_copies} طلب رفع في قائمة الانتظار.</p>
+          <p className="text-xs text-amazon-orange mt-2">سيتم إنشاء {formData.listing_copies} منتجات مستقلة.</p>
         </div>
       </div>
     </div>

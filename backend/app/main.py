@@ -60,6 +60,36 @@ async def startup_event():
     init_db()
     logger.info("Database initialized successfully")
 
+    # Seed Mock Seller Data ONLY on first run (if table is empty)
+    from app.models.seller import Seller
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        existing_seller = db.query(Seller).first()
+        
+        if not existing_seller:
+            # Only seed if the database is empty. 
+            # If user changed settings, we do NOT overwrite them here.
+            logger.info("Seeding Initial Mock Seller Data...")
+            mock_seller = Seller(
+                lwa_client_id="test123",
+                lwa_client_secret="test123",
+                lwa_refresh_token="Atzr|test123",
+                amazon_seller_id="MOCK-SELLER-01",
+                display_name="My AWS Account",
+                marketplace_id="ARBP9OOSHTCHU",
+                region="EU",
+                is_connected=True  # Auto-connect for mock mode
+            )
+            db.add(mock_seller)
+            db.commit()
+            logger.info("Mock Seller Data Seeded.")
+    except Exception as e:
+        logger.error(f"Error seeding mock data: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
     # Start task manager
     from app.tasks.task_manager import task_manager
     asyncio.create_task(task_manager.start())
