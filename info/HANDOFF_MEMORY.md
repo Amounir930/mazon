@@ -48,6 +48,7 @@ The system is a **Single-Client Amazon Automation Tool**. It was migrated from a
     *   Added "Edit/View" mode toggle.
     *   Added "Save & Connect" button linked to `/amazon/connect` and `/amazon/verify`.
     *   Connected it to `useConnectAmazon` hook.
+    *   **Critical Patch:** Added `refreshStatus()` call after saving to force the UI to fetch the new connection state immediately.
 
 ### 5. Database Seeding Logic (The Overwrite Bug) 🟢
 *   **Symptom:** Every time the server restarted, it reset the Seller data to "Demo", ignoring what the user changed in Settings.

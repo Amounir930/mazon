@@ -4,7 +4,7 @@ import { Shield, CheckCircle, AlertCircle, Globe, Loader2, Save, Key } from 'luc
 import toast from 'react-hot-toast'
 
 export default function SettingsPage() {
-  const { status, isConnected, isLoading } = useAmazonStatus()
+  const { status, isConnected, isLoading, refreshStatus } = useAmazonStatus()
   const connectMutation = useConnectAmazon()
   const verifyMutation = useVerifyConnection()
 
@@ -40,6 +40,7 @@ export default function SettingsPage() {
     }
 
     try {
+      // 1. Save Credentials
       await connectMutation.mutateAsync({
         lwa_client_id: formData.lwa_client_id,
         lwa_client_secret: formData.lwa_client_secret || '********',
@@ -49,8 +50,12 @@ export default function SettingsPage() {
         marketplace_id: formData.marketplace_id
       })
 
-      // Automatically verify after save
+      // 2. Verify Connection
       await verifyMutation.mutateAsync()
+
+      // 3. FORCE UI UPDATE: Fetch fresh status immediately
+      await refreshStatus()
+
       toast.success('تم حفظ البيانات والاتصال بنجاح!')
       setMode('view')
     } catch (error: any) {
