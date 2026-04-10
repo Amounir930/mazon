@@ -35,6 +35,9 @@ export const productsApi = {
 
   delete: (id: string) =>
     api.delete<MessageResponse>(`/products/${id}`),
+
+  update: (id: string, data: Partial<Product>) =>
+    api.put<Product>(`/products/${id}`, data),
 }
 
 // ==================== Listings API ====================

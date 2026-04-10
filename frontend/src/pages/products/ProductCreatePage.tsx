@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Package, DollarSign, Image, Settings, Layers, Save, Loader2 } from 'lucide-react'
-import api from '@/lib/axios'
+import { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { ArrowRight, Package, DollarSign, Image, Settings, Layers, Save, Loader2, Globe } from 'lucide-react'
+import { useCreateProduct, useUpdateProduct, useSubmitListing } from '@/api/hooks'
+import { MediaUploader } from '@/components/common/MediaUploader'
 import toast from 'react-hot-toast'
 
 const tabs = [
@@ -9,36 +10,105 @@ const tabs = [
   { id: 'pricing', label: 'التسعير والمخزون', icon: DollarSign },
   { id: 'media', label: 'الصور والوسائط', icon: Image },
   { id: 'advanced', label: 'الخصائص المتقدمة', icon: Settings },
-  { id: 'multi', label: 'الإعلانات المتعددة', icon: Layers },
+  { id: 'multi', label: 'رفع متعدد', icon: Layers },
 ]
 
 export default function ProductCreatePage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const createMutation = useCreateProduct()
+  const updateMutation = useUpdateProduct()
+  const submitListingMutation = useSubmitListing()
+
+  const editMode = location.state?.editMode || false
+  const editProduct = location.state?.editProduct || null
+
   const [activeTab, setActiveTab] = useState('basic')
-  const [loading, setLoading] = useState(false)
+  const [formData, setFormData] = useState({
+    sku: '',
+    name: '',
+    name_ar: '',
+    name_en: '',
+    category: '',
+    brand: '',
+    price: 0,
+    quantity: 0,
+    description: '',
+    description_ar: '',
+    description_en: '',
+    bullet_points: [] as string[],
+    bullet_points_ar: [] as string[],
+    bullet_points_en: [] as string[],
+    keywords: [] as string[],
+    weight: 0,
+    images: [] as string[],
+    attributes: {} as Record<string, any>,
+    listing_copies: 1,
+  })
+
+  useEffect(() => {
+    if (editMode && editProduct) {
+      setFormData({
+        sku: editProduct.sku || '',
+        name: editProduct.name || '',
+        name_ar: editProduct.name_ar || '',
+        name_en: editProduct.name_en || '',
+        category: editProduct.category || '',
+        brand: editProduct.brand || '',
+        price: Number(editProduct.price) || 0,
+        quantity: Number(editProduct.quantity) || 0,
+        description: editProduct.description || '',
+        description_ar: editProduct.description_ar || '',
+        description_en: editProduct.description_en || '',
+        bullet_points: editProduct.bullet_points || [],
+        bullet_points_ar: editProduct.bullet_points_ar || [],
+        bullet_points_en: editProduct.bullet_points_en || [],
+        keywords: editProduct.keywords || [],
+        weight: Number(editProduct.weight) || 0,
+        images: editProduct.images || [],
+        attributes: editProduct.attributes || {},
+        listing_copies: 1,
+      })
+    }
+  }, [editMode, editProduct])
+
+  const loading = createMutation.isPending || updateMutation.isPending || submitListingMutation.isPending
 
   const handleSubmit = async () => {
-    setLoading(true)
+    if (!formData.sku || !formData.name || !formData.price) {
+      toast.error('يرجى ملء الحقول المطلوبة (SKU، الاسم، السعر)')
+      return
+    }
+
     try {
-      const productData = {
-        sku: 'TEST-' + Date.now(),
-        name: 'منتج تجريبي',
-        category: 'إلكترونيات',
-        brand: 'TestBrand',
-        price: 199.00,
-        quantity: 50,
-        bullet_points: ['نقطة 1', 'نقطة 2'],
-        keywords: ['كلمة1', 'كلمة2'],
+      const payload = {
+        ...formData,
+        price: Number(formData.price),
+        quantity: Number(formData.quantity),
+        weight: Number(formData.weight),
       }
 
-      await api.post('/products', productData)
+      let product;
+      if (editMode && editProduct) {
+        product = await updateMutation.mutateAsync({ id: editProduct.id, data: payload })
+        toast.success('تم تحديث المنتج بنجاح!')
+      } else {
+        product = await createMutation.mutateAsync(payload)
+        toast.success('تم إنشاء المنتج بنجاح!')
+      }
 
-      toast.success('تم إنشاء المنتج بنجاح!')
+      // Multi-Listing Logic
+      if (formData.listing_copies > 1) {
+        toast.loading(`جاري إنشاء ${formData.listing_copies} طلبات رفع...`, { id: 'listing-loop' })
+        for (let i = 0; i < formData.listing_copies; i++) {
+          await submitListingMutation.mutateAsync(product.id)
+        }
+        toast.success(`تم إنشاء المنتج وإضافة ${formData.listing_copies} طلب رفع للقائمة`, { id: 'listing-loop' })
+      }
+
       navigate('/products')
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'فشل إنشاء المنتج')
-    } finally {
-      setLoading(false)
+      toast.error(error.response?.data?.detail || 'فشل في حفظ البيانات')
     }
   }
 
@@ -46,8 +116,13 @@ export default function ProductCreatePage() {
     <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">إضافة منتج جديد</h1>
-          <p className="text-gray-600 mt-1">أدخل بيانات المنتج لرفعه على أمازون</p>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            {editMode ? 'تعديل المنتج' : 'إضافة منتج جديد'}
+            <span className="text-xs bg-amazon-orange/20 text-amazon-orange px-2 py-1 rounded">Bilingual Enabled</span>
+          </h1>
+          <p className="text-gray-400 mt-1">
+            {editMode ? `تعديل SKU: ${editProduct.sku}` : 'أدخل بيانات المنتج بالعربية والإنجليزية للرفع العالمي'}
+          </p>
         </div>
         <button
           onClick={handleSubmit}
@@ -57,27 +132,26 @@ export default function ProductCreatePage() {
           {loading ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              جاري الحفظ...
+              جاري التنفيذ...
             </>
           ) : (
             <>
               <Save className="w-5 h-5" />
-              حفظ المنتج
+              {editMode ? 'تحديث وحفظ' : 'حفظ ونشر'}
             </>
           )}
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex border-b border-gray-200 overflow-x-auto">
+      <div className="bg-[#12121a] rounded-xl border border-gray-800/50 overflow-hidden shadow-2xl">
+        <div className="flex border-b border-gray-800/50 overflow-x-auto bg-[#1a1a2e]/50">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap transition-colors ${activeTab === id
-                ? 'text-amazon-orange border-b-2 border-amazon-orange'
-                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+              className={`flex items-center gap-2 px-6 py-4 text-sm font-medium whitespace-nowrap transition-all ${activeTab === id
+                ? 'text-amazon-orange border-b-2 border-amazon-orange bg-[#1a1a2e]'
+                : 'text-gray-500 hover:text-white hover:bg-[#1a1a2e]'
                 }`}
             >
               <Icon className="w-4 h-4" />
@@ -86,25 +160,23 @@ export default function ProductCreatePage() {
           ))}
         </div>
 
-        {/* Tab Content */}
-        <div className="p-6">
-          {activeTab === 'basic' && <BasicInfoTab />}
-          {activeTab === 'pricing' && <PricingTab />}
-          {activeTab === 'media' && <MediaTab />}
-          {activeTab === 'advanced' && <AdvancedTab />}
-          {activeTab === 'multi' && <MultiListingTab />}
+        <div className="p-8">
+          {activeTab === 'basic' && <BasicInfoTab formData={formData} setFormData={setFormData} />}
+          {activeTab === 'pricing' && <PricingTab formData={formData} setFormData={setFormData} />}
+          {activeTab === 'media' && <MediaTab formData={formData} setFormData={setFormData} />}
+          {activeTab === 'advanced' && <AdvancedTab formData={formData} setFormData={setFormData} />}
+          {activeTab === 'multi' && <MultiListingTab formData={formData} setFormData={setFormData} />}
         </div>
 
-        {/* Navigation */}
-        <div className="flex justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+        <div className="flex justify-between px-8 py-4 bg-[#1a1a2e]/50 border-t border-gray-800/50">
           <button
             onClick={() => {
               const idx = tabs.findIndex((t) => t.id === activeTab)
               if (idx < tabs.length - 1) setActiveTab(tabs[idx + 1].id)
             }}
-            className="flex items-center gap-2 text-amazon-orange font-medium hover:underline"
+            className="flex items-center gap-2 text-amazon-orange font-medium hover:underline text-sm"
           >
-            التبويب التالي
+            الانتقال للقسم التالي
             <ArrowRight className="w-4 h-4 rotate-180" />
           </button>
         </div>
@@ -113,85 +185,236 @@ export default function ProductCreatePage() {
   )
 }
 
-function BasicInfoTab() {
+function BasicInfoTab({ formData, setFormData }: { formData: any, setFormData: any }) {
+  return (
+    <div className="space-y-6">
+      <div className="bg-[#1a1a2e] p-4 rounded-lg border border-gray-800 mb-4 flex items-center gap-2">
+        <Package className="w-5 h-5 text-amazon-orange" />
+        <span className="text-white font-semibold">المعلومات الأساسية (SKU & Category)</span>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-gray-400 mb-2">SKU (Stock Keeping Unit) *</label>
+        <input
+          type="text"
+          value={formData.sku}
+          onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+          className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none transition-all"
+          placeholder="مثل: LAPTOP-COREI7-001"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-gray-800 pt-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
+            <Globe className="w-4 h-4 text-blue-400" /> الاسم (العربية) *
+          </label>
+          <input
+            type="text"
+            value={formData.name_ar}
+            onChange={(e) => setFormData({ ...formData, name_ar: e.target.value, name: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="اسم المنتج بالعربية"
+            dir="rtl"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-2 flex items-center gap-2">
+            <Globe className="w-4 h-4 text-red-400" /> Title (English) *
+          </label>
+          <input
+            type="text"
+            value={formData.name_en}
+            onChange={(e) => setFormData({ ...formData, name_en: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white focus:ring-2 focus:ring-red-500 outline-none"
+            placeholder="Product name in English"
+            dir="ltr"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-2">الوصف (العربية)</label>
+          <textarea
+            rows={5}
+            value={formData.description_ar}
+            onChange={(e) => setFormData({ ...formData, description_ar: e.target.value, description: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="وصف تفصيلي بالعربية..."
+            dir="rtl"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-2">Description (English)</label>
+          <textarea
+            rows={5}
+            value={formData.description_en}
+            onChange={(e) => setFormData({ ...formData, description_en: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white focus:ring-2 focus:ring-red-500 outline-none"
+            placeholder="Detailed description in English..."
+            dir="ltr"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PricingTab({ formData, setFormData }: { formData: any, setFormData: any }) {
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3">السعر (EGP) *</label>
+          <div className="relative">
+            <DollarSign className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amazon-orange" />
+            <input
+              type="number"
+              value={formData.price}
+              onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+              className="w-full pr-10 pl-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white text-xl font-bold focus:ring-2 focus:ring-amazon-orange outline-none"
+              placeholder="0.00"
+            />
+          </div>
+        </div>
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3">الكمية المتوفرة</label>
+          <input
+            type="number"
+            value={formData.quantity}
+            onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white text-xl font-bold focus:ring-2 focus:ring-amazon-orange outline-none"
+            placeholder="0"
+          />
+        </div>
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3">الوزن الكلي (كجم)</label>
+          <input
+            type="number"
+            value={formData.weight}
+            onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white text-xl font-bold focus:ring-2 focus:ring-amazon-orange outline-none"
+            placeholder="0.0"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MediaTab({ formData, setFormData }: { formData: any, setFormData: any }) {
   return (
     <div className="space-y-4">
+      <MediaUploader 
+        images={formData.images} 
+        onChange={(imgs) => setFormData({ ...formData, images: imgs })} 
+      />
+    </div>
+  )
+}
+
+function AdvancedTab({ formData, setFormData }: { formData: any, setFormData: any }) {
+  const [newBulletAr, setNewBulletAr] = useState('')
+  const [newBulletEn, setNewBulletEn] = useState('')
+
+  const addBullet = () => {
+    if (newBulletAr.trim() || newBulletEn.trim()) {
+      setFormData({ 
+        ...formData, 
+        bullet_points_ar: [...formData.bullet_points_ar, newBulletAr.trim()],
+        bullet_points_en: [...formData.bullet_points_en, newBulletEn.trim()],
+        bullet_points: [...formData.bullet_points, newBulletAr.trim()] // Fallback
+      })
+      setNewBulletAr('')
+      setNewBulletEn('')
+    }
+  }
+
+  const removeBullet = (index: number) => {
+    const newBar = [...formData.bullet_points_ar]
+    const newBen = [...formData.bullet_points_en]
+    newBar.splice(index, 1)
+    newBen.splice(index, 1)
+    setFormData({ ...formData, bullet_points_ar: newBar, bullet_points_en: newBen })
+  }
+
+  return (
+    <div className="space-y-8">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">SKU *</label>
-          <input type="text" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange" placeholder="SKU-001" />
+          <label className="block text-sm font-medium text-gray-400 mb-2">مميزات المنتج (العربية)</label>
+          <input
+            type="text"
+            value={newBulletAr}
+            onChange={(e) => setNewBulletAr(e.target.value)}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange transition-all"
+            placeholder="أضف ميزة بالعربية..."
+          />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">اسم المنتج *</label>
-          <input type="text" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange" placeholder="اسم المنتج" />
+          <label className="block text-sm font-medium text-gray-400 mb-2">Features (English)</label>
+          <input
+            type="text"
+            value={newBulletEn}
+            onChange={(e) => setNewBulletEn(e.target.value)}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange transition-all"
+            placeholder="Add feature in English..."
+          />
         </div>
       </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">الوصف</label>
-        <textarea rows={4} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange" placeholder="وصف المنتج..." />
-      </div>
+      <button
+        onClick={addBullet}
+        className="w-full py-3 border border-gray-700 rounded-lg text-gray-400 hover:text-white hover:border-amazon-orange transition-all"
+      >
+        + إضافة نقطة ميزة (Bullet Point)
+      </button>
+
+      <ul className="space-y-4">
+        {formData.bullet_points_ar.map((bullet: string, i: number) => (
+          <li key={i} className="bg-[#1a1a2e] p-4 rounded-xl border border-gray-800 flex flex-col gap-2 relative group">
+            <div className="flex justify-between items-start">
+              <div className="flex-1">
+                <p className="text-white text-sm" dir="rtl">● {bullet}</p>
+                <p className="text-gray-500 text-xs mt-1" dir="ltr">● {formData.bullet_points_en[i]}</p>
+              </div>
+              <button onClick={() => removeBullet(i)} className="text-red-500 hover:text-red-400 p-2">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
 
-function PricingTab() {
+function MultiListingTab({ formData, setFormData }: { formData: any, setFormData: any }) {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">السعر *</label>
-          <input type="number" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange" placeholder="0.00" />
+    <div className="space-y-6">
+      <div className="bg-amazon-orange/5 border border-amazon-orange/20 p-6 rounded-xl">
+        <div className="flex items-center gap-3 mb-4">
+          <Layers className="w-6 h-6 text-amazon-orange" />
+          <h3 className="text-white font-bold text-lg">نظام النشر المتعدد (Multi-Listing)</h3>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">الكمية</label>
-          <input type="number" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange" placeholder="0" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">الوزن (كجم)</label>
-          <input type="number" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange" placeholder="0.0" />
+        <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+          هذه الخاصية تتيح لك إرسال طلبات رفع متعددة لنفس المنتج إلى أمازون تلقائياً. 
+          مفيد جداً لاختبار العناوين المختلفة أو زيادة فرص الظهور.
+        </p>
+        
+        <div className="max-w-xs">
+          <label className="block text-sm font-medium text-gray-400 mb-2">عدد نسخ الرفع لانتظار أمازون</label>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={formData.listing_copies}
+            onChange={(e) => setFormData({ ...formData, listing_copies: Number(e.target.value) })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white font-bold text-center focus:ring-2 focus:ring-amazon-orange outline-none"
+          />
+          <p className="text-xs text-amazon-orange mt-2">سيتم إنشاء {formData.listing_copies} طلب رفع في قائمة الانتظار.</p>
         </div>
       </div>
-    </div>
-  )
-}
-
-function MediaTab() {
-  return (
-    <div className="space-y-4">
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center hover:border-amazon-orange transition-colors cursor-pointer">
-        <Image className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-600">اسحب الصور هنا أو انقر للاختيار</p>
-        <p className="text-sm text-gray-500 mt-2">حتى 8 صور (PNG, JPG)</p>
-      </div>
-    </div>
-  )
-}
-
-function AdvancedTab() {
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">اللون</label>
-          <input type="text" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">الحجم</label>
-          <input type="text" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function MultiListingTab() {
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">عدد الإعلانات</label>
-        <input type="number" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange" placeholder="1" defaultValue={1} />
-      </div>
-      <p className="text-sm text-gray-600">يمكنك إنشاء عدة إعلانات لنفس المنتج مع تغييرات طفيفة في العنوان والسعر</p>
     </div>
   )
 }

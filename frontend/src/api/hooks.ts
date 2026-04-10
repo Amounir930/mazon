@@ -58,6 +58,20 @@ export function useCreateProduct() {
   })
 }
 
+export function useUpdateProduct() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
+      const { data: result } = await productsApi.update(id, data as Parameters<typeof productsApi.update>[1])
+      return result
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: productKeys.lists() })
+    },
+  })
+}
+
 export function useDeleteProduct() {
   const queryClient = useQueryClient()
 
