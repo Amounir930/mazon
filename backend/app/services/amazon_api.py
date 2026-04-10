@@ -123,7 +123,14 @@ except ImportError:
 class RealSPAPIClient:
     """Real Amazon SP-API Client using python-amazon-sp-api"""
 
-    def __init__(self, seller_id: str, refresh_token: str, marketplace_id: str = "A2NODRKZP88ZB9"):
+    def __init__(
+        self, 
+        seller_id: str, 
+        refresh_token: str, 
+        marketplace_id: str = "A2NODRKZP88ZB9",
+        client_id: str = None,
+        client_secret: str = None
+    ):
         self.seller_id = seller_id
         self.refresh_token = refresh_token
         self.marketplace_id = marketplace_id
@@ -138,8 +145,9 @@ class RealSPAPIClient:
             
             self.creds = {
                 "refresh_token": self.refresh_token,
-                "lwa_app_id": settings.SP_API_CLIENT_ID,
-                "lwa_client_secret": settings.SP_API_CLIENT_SECRET,
+                # Use dynamic credentials if provided, fallback to settings
+                "lwa_app_id": client_id or settings.SP_API_CLIENT_ID,
+                "lwa_client_secret": client_secret or settings.SP_API_CLIENT_SECRET,
                 "aws_access_key": settings.AWS_ACCESS_KEY_ID,
                 "aws_secret_key": settings.AWS_SECRET_ACCESS_KEY,
                 "role_arn": settings.AWS_SELLER_ROLE_ARN,
