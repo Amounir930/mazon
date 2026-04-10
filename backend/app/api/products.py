@@ -38,7 +38,7 @@ def product_to_dict(product: Product) -> dict:
     return d
 
 
-@router.get("/", response_model=ProductListResponse)
+@router.get("", response_model=ProductListResponse)
 async def list_products(
     status: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
@@ -66,7 +66,7 @@ async def list_products(
     )
 
 
-@router.post("/", status_code=201)
+@router.post("", status_code=201)
 async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
     product = Product(
         sku=data.sku,

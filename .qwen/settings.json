@@ -35,7 +35,9 @@
       "Bash(taskkill *)",
       "Bash(tasklist *)",
       "Bash(wmic *)",
-      "Bash(echo *)"
+      "Bash(echo *)",
+      "Bash(pip show *)",
+      "Bash(npm install)"
     ]
   },
   "$version": 3

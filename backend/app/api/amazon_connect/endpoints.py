@@ -18,7 +18,7 @@ from app.api.amazon_connect.service import amazon_service
 router = APIRouter()
 
 
-@router.post("/connect", response_model=AmazonConnectResponse)
+@router.post("connect", response_model=AmazonConnectResponse)
 async def connect_amazon(data: AmazonConnectRequest, db: Session = Depends(get_db)):
     """
     Save Amazon credentials for the single seller.
@@ -63,7 +63,7 @@ async def connect_amazon(data: AmazonConnectRequest, db: Session = Depends(get_d
     )
 
 
-@router.post("/verify", response_model=AmazonVerifyResponse)
+@router.post("verify", response_model=AmazonVerifyResponse)
 async def verify_connection(db: Session = Depends(get_db)):
     """Test Amazon SP-API connection"""
     seller = db.query(Seller).first()
@@ -87,7 +87,7 @@ async def verify_connection(db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Failed to connect to Amazon. Check your credentials.")
 
 
-@router.get("/status", response_model=AmazonConnectResponse)
+@router.get("status", response_model=AmazonConnectResponse)
 async def get_connection_status(db: Session = Depends(get_db)):
     """Get current Amazon connection status"""
     seller = db.query(Seller).first()

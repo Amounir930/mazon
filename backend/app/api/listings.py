@@ -14,7 +14,7 @@ from loguru import logger
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("")
 async def list_listings(
     status: Optional[str] = Query(None),
     db: Session = Depends(get_db),

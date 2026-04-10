@@ -10,6 +10,7 @@ from datetime import datetime
 from app.models.listing import Listing
 from app.models.seller import Seller
 from app.models.product import Product
+from app.services.amazon_api import AmazonAPIClient
 from loguru import logger
 
 
@@ -68,7 +69,7 @@ class FeedService:
         return ET.tostring(envelope, encoding="UTF-8", xml_declaration=True)
 
     @staticmethod
-    def submit_listing_to_amazon(db: Session, listing: Listing, seller: Seller) -> bool:
+    async def submit_listing_to_amazon(db: Session, listing: Listing, seller: Seller) -> bool:
         """Submit a single listing to Amazon via SP-API"""
         try:
             product = listing.product
@@ -86,14 +87,24 @@ class FeedService:
 
             xml_data = FeedService.generate_product_xml(product_data, seller)
 
-            # TODO: Integrate with real SP-API
-            # For now, mock submission
-            listing.feed_submission_id = f"FEED-{listing.id[:8]}"
+            # Real SP-API integration
+            client = AmazonAPIClient(
+                seller_id=seller.amazon_seller_id,
+                refresh_token=seller.lwa_refresh_token
+            )
+            
+            feed_id = await client.submit_feed(
+                feed_type="POST_PRODUCT_DATA",
+                feed_data=xml_data,
+                marketplace_ids=[seller.marketplace_id]
+            )
+
+            listing.feed_submission_id = feed_id
             listing.status = "submitted"
             listing.submitted_at = datetime.utcnow()
 
             db.commit()
-            logger.info(f"Listing submitted: {listing.id}")
+            logger.info(f"Listing submitted to SP-API: {listing.id} (Feed ID: {feed_id})")
             return True
 
         except Exception as e:
@@ -113,7 +124,8 @@ class FeedService:
         if not listing:
             raise ValueError(f"Feed not found: {feed_id}")
 
-        # TODO: Check with real SP-API
+        # Real status check should be implemented here in a background task
+        # For Phase 2, we keep the tracking structure but mark it for future sync
         return {
             "feed_id": feed_id,
             "status": listing.status,
