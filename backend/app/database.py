@@ -14,7 +14,8 @@ from loguru import logger
 APP_DATA_DIR = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming")) / "CrazyLister"
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-DATABASE_URL = f"sqlite:///{APP_DATA_DIR}/crazy_lister.db"
+DATABASE_URL = f"sqlite:///{APP_DATA_DIR.as_posix()}/crazy_lister.db"
+logger.info(f"Database URL configured as: {DATABASE_URL}")
 
 # SQLite-specific engine config
 engine = create_engine(

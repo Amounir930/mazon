@@ -58,6 +58,20 @@ export function useCreateProduct() {
   })
 }
 
+export function useUpdateProduct() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
+      const { data: result } = await productsApi.update(id, data as Parameters<typeof productsApi.update>[1])
+      return result
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: productKeys.lists() })
+    },
+  })
+}
+
 export function useDeleteProduct() {
   const queryClient = useQueryClient()
 
@@ -92,6 +106,21 @@ export function useSubmitListing() {
   return useMutation({
     mutationFn: async (product_id: string) => {
       const { data } = await listingsApi.submit(product_id)
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: listingKeys.list() })
+      queryClient.invalidateQueries({ queryKey: taskKeys.list })
+    },
+  })
+}
+
+export function useSubmitMultiListing() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ product_id, copies }: { product_id: string; copies: number }) => {
+      const { data } = await listingsApi.submitMulti(product_id, copies)
       return data
     },
     onSuccess: () => {

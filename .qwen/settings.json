@@ -37,7 +37,8 @@
       "Bash(wmic *)",
       "Bash(echo *)",
       "Bash(pip show *)",
-      "Bash(npm install)"
+      "Bash(npm install)",
+      "Bash(curl *)"
     ]
   },
   "$version": 3

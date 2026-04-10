@@ -35,6 +35,9 @@ export const productsApi = {
 
   delete: (id: string) =>
     api.delete<MessageResponse>(`/products/${id}`),
+
+  update: (id: string, data: Partial<Product>) =>
+    api.put<Product>(`/products/${id}`, data),
 }
 
 // ==================== Listings API ====================
@@ -45,6 +48,9 @@ export const listingsApi = {
 
   submit: (product_id: string) =>
     api.post('/listings/submit', null, { params: { product_id } }),
+
+  submitMulti: (product_id: string, copies: number) =>
+    api.post('/listings/submit-multi', null, { params: { product_id, copies } }),
 
   retry: (listing_id: string) =>
     api.post(`/listings/${listing_id}/retry`),

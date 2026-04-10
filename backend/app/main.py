@@ -10,6 +10,7 @@ import sys
 
 from app.config import get_settings
 from app.api.router import api_router
+from app.docs import register_docs_routes
 from app.database import engine, Base, init_db
 
 # Get settings
@@ -28,8 +29,8 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="Amazon SP-API Auto-Listing System - Desktop Application v3.0",
     version="3.0.0",
-    docs_url=None,      # Disable default swagger (CDN blocked)
-    redoc_url=None,     # Disable default redoc (CDN blocked)
+    docs_url="/docs",      # Re-enable default swagger
+    redoc_url="/redoc",     # Re-enable default redoc
     openapi_url="/openapi.json",
 )
 
@@ -44,6 +45,9 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+# Register local documentation routes (DISABLED - missing static dir)
+# register_docs_routes(app)
 
 
 @app.on_event("startup")
@@ -84,6 +88,12 @@ async def health_check():
         "app_name": settings.APP_NAME,
     }
 
+@app.get("/debug/tables")
+async def debug_tables():
+    from sqlalchemy import inspect
+    inspector = inspect(engine)
+    return {"tables": inspector.get_table_names()}
+
 
 @app.get("/", tags=["root"])
 async def root():
@@ -100,7 +110,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=8765,
         reload=settings.DEBUG,
         log_level=settings.LOG_LEVEL.lower(),
     )

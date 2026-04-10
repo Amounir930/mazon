@@ -30,6 +30,8 @@ export interface Product {
   id: string
   sku: string
   name: string
+  name_ar?: string
+  name_en?: string
   category?: string
   brand?: string
   price: number
@@ -38,7 +40,11 @@ export interface Product {
   quantity: number
   weight?: number
   description?: string
+  description_ar?: string
+  description_en?: string
   bullet_points: string[]
+  bullet_points_ar?: string[]
+  bullet_points_en?: string[]
   keywords: string[]
   dimensions?: Record<string, unknown>
   images: string[]
@@ -51,6 +57,8 @@ export interface Product {
 export interface ProductCreate {
   sku: string
   name: string
+  name_ar?: string
+  name_en?: string
   category?: string
   brand?: string
   price: number
@@ -59,7 +67,11 @@ export interface ProductCreate {
   quantity?: number
   weight?: number
   description?: string
+  description_ar?: string
+  description_en?: string
   bullet_points?: string[]
+  bullet_points_ar?: string[]
+  bullet_points_en?: string[]
   keywords?: string[]
   dimensions?: Record<string, unknown>
   images?: string[]

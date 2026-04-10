@@ -65,3 +65,6 @@ export function useAmazonConnect() {
   if (!context) throw new Error('useAmazonConnect must be used within AmazonConnectProvider')
   return context
 }
+
+// Alias for SettingsPage compatibility
+export const useAmazonStatus = useAmazonConnect

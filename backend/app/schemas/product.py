@@ -15,6 +15,8 @@ class ProductCreate(BaseModel):
     """Schema for creating a new product"""
     sku: str = Field(..., min_length=1, max_length=100, description="Stock Keeping Unit")
     name: str = Field(..., min_length=2, max_length=500, description="Product name")
+    name_ar: Optional[str] = Field(None, max_length=500)
+    name_en: Optional[str] = Field(None, max_length=500)
     category: Optional[str] = Field(None, max_length=100)
     brand: Optional[str] = Field(None, max_length=200)
     price: Decimal = Field(..., gt=0, lt=999999, description="Product price")
@@ -23,7 +25,11 @@ class ProductCreate(BaseModel):
     quantity: int = Field(default=0, ge=0, description="Available quantity")
     weight: Optional[Decimal] = Field(None, gt=0)
     description: Optional[str] = None
+    description_ar: Optional[str] = None
+    description_en: Optional[str] = None
     bullet_points: list[str] = Field(default=[])
+    bullet_points_ar: list[str] = Field(default=[])
+    bullet_points_en: list[str] = Field(default=[])
     keywords: list[str] = Field(default=[])
     dimensions: Optional[dict[str, Any]] = None
     images: list[str] = Field(default=[])
@@ -58,10 +64,16 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     """Schema for updating an existing product"""
     name: Optional[str] = Field(None, min_length=2, max_length=500)
+    name_ar: Optional[str] = None
+    name_en: Optional[str] = None
     category: Optional[str] = None
     brand: Optional[str] = None
     description: Optional[str] = None
+    description_ar: Optional[str] = None
+    description_en: Optional[str] = None
     bullet_points: Optional[list[str]] = None
+    bullet_points_ar: Optional[list[str]] = None
+    bullet_points_en: Optional[list[str]] = None
     keywords: Optional[list[str]] = None
     price: Optional[Decimal] = Field(None, gt=0, lt=999999)
     compare_price: Optional[Decimal] = Field(None, gt=0)
@@ -79,6 +91,8 @@ class ProductResponse(BaseModel):
     id: str
     sku: str
     name: str
+    name_ar: Optional[str] = None
+    name_en: Optional[str] = None
     category: Optional[str] = None
     brand: Optional[str] = None
     price: Decimal
@@ -87,7 +101,11 @@ class ProductResponse(BaseModel):
     quantity: int
     weight: Optional[Decimal] = None
     description: Optional[str] = None
+    description_ar: Optional[str] = None
+    description_en: Optional[str] = None
     bullet_points: list[str] = []
+    bullet_points_ar: list[str] = []
+    bullet_points_en: list[str] = []
     keywords: list[str] = []
     dimensions: Optional[dict[str, Any]] = None
     images: list[str] = []

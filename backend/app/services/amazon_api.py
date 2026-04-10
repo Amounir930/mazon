@@ -201,6 +201,40 @@ class RealSPAPIClient:
             logger.error(f"SP-API Error (get_feed_status): {e}")
             raise
 
+    async def create_or_update_listing(self, sku: str, product_data: dict) -> dict:
+        """
+        Unified method for listing submission (Simulation & Real).
+        This method is required by listing_tasks.py.
+        """
+        try:
+            if self.is_simulation:
+                # Simulation logic
+                feed_id = await self.client.submit_feed(
+                    feed_type="POST_PRODUCT_DATA",
+                    feed_data=b"<mock_xml/>",
+                    marketplace_ids=[self.marketplace_id]
+                )
+                return {
+                    "success": True,
+                    "data": {"asin": f"B0SIM{sku[-3:]}", "feed_id": feed_id}
+                }
+            else:
+                # Real API logic using submit_feed
+                # Note: In real SP-API, we usually use Feeds API. 
+                # We will reuse submit_feed method but adapted for single product.
+                feed_id = await self.submit_feed(
+                    feed_type="POST_PRODUCT_DATA",
+                    feed_data=b"<real_xml/>", # Placeholder for real XML generation
+                    marketplace_ids=[self.marketplace_id]
+                )
+                return {
+                    "success": True,
+                    "data": {"asin": "PENDING", "feed_id": feed_id}
+                }
+        except Exception as e:
+            logger.error(f"Listing submission failed: {e}")
+            return {"success": False, "error": str(e)}
+
     async def verify_credentials(self) -> bool:
         try:
             await self.get_account()

@@ -1,19 +1,47 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2 } from 'lucide-react'
-import { useProducts } from '@/api/hooks'
+import { useProducts, useDeleteProduct, useSubmitListing } from '@/api/hooks'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import type { Product } from '@/types/api'
+import toast from 'react-hot-toast'
 
 export default function ProductListPage() {
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const { data, isLoading, isError } = useProducts({ page: 1 })
+  const deleteMutation = useDeleteProduct()
+  const listMutation = useSubmitListing()
 
   const filteredProducts = data?.items.filter(
     (p: Product) =>
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.sku.toLowerCase().includes(search.toLowerCase())
   )
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذا المنتج؟')) return
+
+    try {
+      await deleteMutation.mutateAsync(id)
+      toast.success('تم حذف المنتج بنجاح')
+    } catch (error) {
+      toast.error('فشل في حذف المنتج')
+    }
+  }
+
+  const handleList = async (id: string) => {
+    try {
+      await listMutation.mutateAsync(id)
+      toast.success('تم إرسال طلب الرفع للأمازون')
+    } catch (error) {
+      toast.error('فشل في إرسال طلب الرفع')
+    }
+  }
+
+  const handleEdit = (product: Product) => {
+    navigate('/products/create', { state: { editMode: true, editProduct: product } })
+  }
 
   if (isLoading) {
     return (
@@ -97,14 +125,36 @@ export default function ProductListPage() {
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
-                    <button className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-colors">
+                    <button
+                      onClick={() => handleEdit(product)}
+                      className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-colors"
+                      title="تعديل"
+                    >
                       <Edit2 className="w-4 h-4" />
                     </button>
-                    <button className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-colors">
-                      <Upload className="w-4 h-4" />
+                    <button
+                      onClick={() => handleList(product.id)}
+                      disabled={listMutation.isPending}
+                      className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-colors disabled:opacity-50"
+                      title="رفع للأمازون"
+                    >
+                      {listMutation.isPending && listMutation.variables === product.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Upload className="w-4 h-4" />
+                      )}
                     </button>
-                    <button className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
-                      <Trash2 className="w-4 h-4" />
+                    <button
+                      onClick={() => handleDelete(product.id)}
+                      disabled={deleteMutation.isPending}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+                      title="حذف"
+                    >
+                      {deleteMutation.isPending && deleteMutation.variables === product.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
                     </button>
                   </div>
                 </td>

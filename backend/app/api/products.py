@@ -19,7 +19,7 @@ def product_to_dict(product: Product) -> dict:
     """Convert Product model to dict (handle JSON strings)"""
     d = {c.name: getattr(product, c.name) for c in product.__table__.columns}
     # Parse JSON strings
-    for field in ['bullet_points', 'keywords', 'images', 'dimensions', 'attributes', 'optimized_data']:
+    for field in ['bullet_points', 'bullet_points_ar', 'bullet_points_en', 'keywords', 'images', 'dimensions', 'attributes', 'optimized_data']:
         val = d.get(field)
         if val and isinstance(val, str):
             try:
@@ -71,19 +71,29 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
     product = Product(
         sku=data.sku,
         name=data.name,
+        name_ar=data.name_ar,
+        name_en=data.name_en,
         category=data.category or "",
         brand=data.brand or "",
         price=data.price,
         quantity=data.quantity or 0,
         description=data.description or "",
+        description_ar=data.description_ar or "",
+        description_en=data.description_en or "",
         bullet_points=json.dumps(data.bullet_points or []),
+        bullet_points_ar=json.dumps(data.bullet_points_ar or []),
+        bullet_points_en=json.dumps(data.bullet_points_en or []),
         images=json.dumps(data.images or []),
         attributes=json.dumps(data.attributes or {}),
     )
     db.add(product)
     db.commit()
     db.refresh(product)
-    return product_to_dict(product)
+    
+    # Return product with listing_copies support info
+    result = product_to_dict(product)
+    result['listing_copies_supported'] = True
+    return result
 
 
 @router.delete("/{product_id}", response_model=MessageResponse)
@@ -94,3 +104,24 @@ async def delete_product(product_id: str, db: Session = Depends(get_db)):
     db.delete(product)
     db.commit()
     return {"message": "Product deleted successfully"}
+
+
+@router.put("/{product_id}")
+async def update_product(product_id: str, data: ProductUpdate, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+
+    # Handle JSON fields
+    json_fields = ['bullet_points', 'bullet_points_ar', 'bullet_points_en', 'keywords', 'images', 'dimensions', 'attributes', 'optimized_data']
+    for field, value in update_data.items():
+        if field in json_fields and value is not None:
+            setattr(product, field, json.dumps(value))
+        else:
+            setattr(product, field, value)
+
+    db.commit()
+    db.refresh(product)
+    return product_to_dict(product)

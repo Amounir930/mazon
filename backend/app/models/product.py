@@ -20,6 +20,8 @@ class Product(Base):
     parent_sku = Column(String(100), index=True)  # To support Variation logic
     is_parent = Column(Boolean, default=False)  # True if this is a parent container
     name = Column(String(500), nullable=False)
+    name_ar = Column(String(500))
+    name_en = Column(String(500))
     category = Column(String(100))
     brand = Column(String(200))
 
@@ -29,7 +31,11 @@ class Product(Base):
 
     # Content
     description = Column(Text)
+    description_ar = Column(Text)
+    description_en = Column(Text)
     bullet_points = Column(Text, default="[]")  # JSON string
+    bullet_points_ar = Column(Text, default="[]")
+    bullet_points_en = Column(Text, default="[]")
     keywords = Column(Text, default="[]")  # JSON string
 
     # Pricing
