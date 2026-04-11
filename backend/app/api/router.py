@@ -8,7 +8,7 @@ from app.api import sellers, products, listings, feeds, tasks, amazon_connect, p
 api_router = APIRouter()
 
 # Include all sub-routers
-api_router.include_router(auth_routes.router, prefix="/api/v1")
+api_router.include_router(auth_routes.router, prefix="")
 api_router.include_router(amazon_connect.router, prefix="/amazon", tags=["amazon"])
 api_router.include_router(sellers.router, prefix="/sellers", tags=["sellers"])
 api_router.include_router(products.router, prefix="/products", tags=["products"])

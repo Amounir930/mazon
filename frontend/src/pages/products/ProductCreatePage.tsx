@@ -464,6 +464,5 @@ function MultiListingTab({ formData, setFormData }: { formData: any, setFormData
         </div>
       </div>
     </div>
-  </div>
   )
 }

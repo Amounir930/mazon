@@ -6,7 +6,7 @@ const menuItems = [
   { to: '/products', label: 'المنتجات', icon: Package },
   { to: '/listings', label: 'طابور الرفع', icon: List },
   { to: '/reports', label: 'التقارير', icon: FileText },
-  { to: '/settings', label: 'الإعدادات', icon: Settings },
+  { to: '/settings', label: 'الاتصال والإعدادات', icon: Settings },
 ]
 
 export default function Sidebar() {
