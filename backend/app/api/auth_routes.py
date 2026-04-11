@@ -1,13 +1,14 @@
 """
 Authentication API Routes
 Handles browser login, OTP submission, session management, and SP-API login.
+Uses UnifiedAuthService for all auth methods.
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
-from app.services.browser_auth import BrowserAuth, verify_browser_session
+from app.services.unified_auth import UnifiedAuthService
 from app.services.session_store import (
     save_browser_session,
     save_spapi_session,
@@ -79,7 +80,7 @@ class LogoutResponse(BaseModel):
 # Active sessions store for OTP flow
 # ============================================================
 
-_active_login_sessions: Dict[str, BrowserAuth] = {}
+_active_login_sessions: Dict[str, Any] = {}
 
 
 # ============================================================
@@ -89,11 +90,8 @@ _active_login_sessions: Dict[str, BrowserAuth] = {}
 @router.post("/browser-login", response_model=BrowserLoginResponse)
 async def browser_login(req: BrowserLoginRequest):
     """
-    تسجيل دخول عبر المتصفح (Browser Login).
-    
-    يفتح Chromium معزول ويروح لصفحة تسجيل Amazon.
-    لو OTP مطلوب: يرجع needs_otp=True مع session_id
-    لو نجح: يحفظ الكوكيز ويرجع success=True
+    Browser auto login - opens Playwright, navigates to Amazon Seller Central,
+    fills credentials automatically, handles OTP if needed.
     """
     try:
         auth = BrowserAuth(
@@ -184,9 +182,10 @@ async def submit_otp(req: OTPSubmitRequest):
 async def spapi_login(req: SPAPILoginRequest):
     """
     تسجيل دخول عبر SP-API credentials (الطريقة الرسمية).
+    يتحقق من البيانات قبل الحفظ.
     """
     try:
-        session = save_spapi_session(
+        result = await UnifiedAuthService.spapi_login(
             lwa_client_id=req.lwa_client_id,
             lwa_client_secret=req.lwa_client_secret,
             refresh_token=req.refresh_token,
@@ -195,10 +194,17 @@ async def spapi_login(req: SPAPILoginRequest):
             aws_secret_key=req.aws_secret_key or "",
         )
 
-        return BrowserLoginResponse(
-            success=True,
-            message="تم حفظ بيانات SP-API بنجاح",
-        )
+        if result.get("success"):
+            return BrowserLoginResponse(
+                success=True,
+                seller_name=result.get("seller_name"),
+                message="تم الاتصال بنجاح",
+            )
+        else:
+            return BrowserLoginResponse(
+                success=False,
+                error=result.get("error", "فشل التحقق من البيانات"),
+            )
 
     except Exception as e:
         logger.error(f"SP-API login error: {e}")
@@ -293,13 +299,43 @@ async def logout(session_id: Optional[str] = None):
 @router.get("/supported-countries")
 async def get_supported_countries():
     """
-    قائمة الدول المدعومة لتسجيل الدخول عبر المتصفح.
+    قائمة الدول المدعومة (Amazon Marketplaces الحقيقية).
     """
-    from app.services.browser_auth import SELLER_CENTRAL_BASE
-
     return {
-        "countries": {
-            code: url.replace("https://sellercentral.", "")
-            for code, url in SELLER_CENTRAL_BASE.items()
-        }
+        "countries": UnifiedAuthService.get_supported_countries()
     }
+
+
+@router.post("/browser-manual-login")
+async def browser_manual_login():
+    """
+    فتح متصفح Amazon مصر الحقيقي للتسجيل اليدوي.
+    المستخدم يدخل بياناته بنفسه.
+    """
+    try:
+        result = await UnifiedAuthService.browser_manual_login(
+            timeout_seconds=180,
+        )
+
+        if result.get("success"):
+            session = save_browser_session(
+                email="manual_eg",
+                country_code="eg",
+                cookies=result.get("cookies", []),
+                seller_name=result.get("seller_name", "Manual User"),
+                expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+            )
+            return BrowserLoginResponse(
+                success=True,
+                seller_name=result.get("seller_name"),
+                country_code="eg",
+            )
+
+        return BrowserLoginResponse(
+            success=False,
+            error=result.get("error", "فشل تسجيل الدخول اليدوي"),
+        )
+
+    except Exception as e:
+        logger.error(f"Manual browser login error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

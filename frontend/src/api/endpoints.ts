@@ -139,6 +139,16 @@ export const syncApi = {
     api.post('/sync'),
 }
 
+// ==================== Export API ====================
+
+export const exportApi = {
+  priceInventory: () =>
+    api.post('/export/price-inventory', null, { responseType: 'blob' }),
+
+  listingLoader: () =>
+    api.post('/export/listing-loader', null, { responseType: 'blob' }),
+}
+
 // ==================== Bulk API ====================
 
 export const bulkApi = {

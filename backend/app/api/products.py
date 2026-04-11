@@ -10,6 +10,7 @@ from decimal import Decimal
 from app.database import get_db
 from app.models.product import Product
 from app.schemas.product import ProductCreate, ProductUpdate, ProductListResponse, MessageResponse
+from app.api.activity_log import create_activity_log
 from loguru import logger
 
 router = APIRouter()
@@ -30,6 +31,9 @@ def product_to_dict(product: Product) -> dict:
     for field in ['price', 'compare_price', 'cost', 'weight']:
         if d.get(field) is not None:
             d[field] = float(d[field])
+    # Default currency
+    if d.get('currency') is None:
+        d['currency'] = 'EGP'
     # Convert datetime to string
     for field in ['created_at', 'updated_at']:
         val = d.get(field)
@@ -42,16 +46,28 @@ def product_to_dict(product: Product) -> dict:
 async def list_products(
     status: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    seller_id: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
     query = db.query(Product)
 
+    if seller_id:
+        query = query.filter(Product.seller_id == seller_id)
     if status:
         query = query.filter(Product.status == status)
     if category:
         query = query.filter(Product.category == category)
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (Product.name.like(search_term)) |
+            (Product.name_ar.like(search_term)) |
+            (Product.name_en.like(search_term)) |
+            (Product.sku.like(search_term))
+        )
 
     total = query.count()
     products = query.offset((page - 1) * page_size).limit(page_size).all()
@@ -68,6 +84,18 @@ async def list_products(
 
 @router.post("", status_code=201)
 async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
+    # Check SKU uniqueness for this seller
+    existing = db.query(Product).filter(
+        Product.seller_id == data.seller_id,
+        Product.sku == data.sku
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="SKU already exists for this seller"
+        )
+
     product = Product(
         seller_id=data.seller_id,
         sku=data.sku,
@@ -77,6 +105,7 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
         category=data.category or "",
         brand=data.brand or "",
         price=data.price,
+        currency=data.currency or "EGP",
         quantity=data.quantity or 0,
         description=data.description or "",
         description_ar=data.description_ar or "",
@@ -86,11 +115,22 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
         bullet_points_en=json.dumps(data.bullet_points_en or []),
         images=json.dumps(data.images or []),
         attributes=json.dumps(data.attributes or {}),
+        condition=data.condition or "New",
+        fulfillment_channel=data.fulfillment_channel or "MFN",
+        handling_time=data.handling_time or 0,
+        product_type=data.product_type or "",
+        manufacturer=data.manufacturer or "",
+        model_number=data.model_number or "",
+        country_of_origin=data.country_of_origin or "",
+        package_quantity=data.package_quantity or 1,
     )
     db.add(product)
     db.commit()
     db.refresh(product)
-    
+
+    # Log activity
+    create_activity_log(db, product.id, "created", "success", {"sku": product.sku, "name": product.name})
+
     # Return product with listing_copies support info
     result = product_to_dict(product)
     result['listing_copies_supported'] = True
@@ -125,4 +165,20 @@ async def update_product(product_id: str, data: ProductUpdate, db: Session = Dep
 
     db.commit()
     db.refresh(product)
+
+    # Log activity
+    create_activity_log(db, product.id, "updated", "success", {"fields_updated": list(update_data.keys())})
+
     return product_to_dict(product)
+
+
+@router.post("/match-skus")
+async def match_skus(db: Session = Depends(get_db)):
+    """
+    Match local product SKUs with Amazon inventory.
+    Returns matched, unmatched, updated counts and list of SKUs needing listing.
+    """
+    from app.services.sku_matcher import SKUMatcher
+
+    result = await SKUMatcher.match_skus(db)
+    return result

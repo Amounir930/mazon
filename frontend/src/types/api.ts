@@ -82,6 +82,14 @@ export interface Product {
   images: string[]
   attributes: Record<string, unknown>
   status: 'draft' | 'queued' | 'processing' | 'published' | 'failed'
+  condition?: string
+  fulfillment_channel?: string
+  handling_time?: number
+  product_type?: string
+  manufacturer?: string
+  model_number?: string
+  country_of_origin?: string
+  package_quantity?: number
   created_at: string
   updated_at: string
 }
@@ -109,6 +117,14 @@ export interface ProductCreate {
   dimensions?: Record<string, unknown>
   images?: string[]
   attributes?: Record<string, unknown>
+  condition?: string
+  fulfillment_channel?: string
+  handling_time?: number
+  product_type?: string
+  manufacturer?: string
+  model_number?: string
+  country_of_origin?: string
+  package_quantity?: number
 }
 
 export interface ProductListResponse {
@@ -125,12 +141,15 @@ export interface ProductListResponse {
 export interface Listing {
   id: string
   product_id: string
+  seller_id: string
   feed_submission_id?: string
-  status: 'queued' | 'processing' | 'submitted' | 'success' | 'failed'
+  status: 'queued' | 'processing' | 'submitted' | 'success' | 'failed' | 'retrying'
+  stage?: string
   amazon_asin?: string
   amazon_url?: string
   error_message?: string
   queue_position?: number
+  retry_count?: number
   submitted_at?: string
   completed_at?: string
   created_at: string

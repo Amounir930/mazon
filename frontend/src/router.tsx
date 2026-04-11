@@ -6,7 +6,7 @@ import ProductListPage from './pages/products/ProductListPage'
 import ProductCreatePage from './pages/products/ProductCreatePage'
 import ListingQueuePage from './pages/listings/ListingQueuePage'
 import ReportsPage from './pages/reports/ReportsPage'
-import SettingsPage from './pages/settings/SettingsPage'
+import UnifiedAuthPage from './pages/settings/UnifiedAuthPage'
 
 function ConnectedLayout() {
   return <Outlet />
@@ -23,7 +23,7 @@ export default function AppRouter() {
           <Route path="products/create" element={<ProductCreatePage />} />
           <Route path="listings" element={<ListingQueuePage />} />
           <Route path="reports" element={<ReportsPage />} />
-          <Route path="settings" element={<SettingsPage />} />
+          <Route path="settings" element={<UnifiedAuthPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2 } from 'lucide-react'
-import { useProducts, useDeleteProduct, useSubmitListing } from '@/api/hooks'
+import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown } from 'lucide-react'
+import { useProducts, useDeleteProduct, useSubmitListing, useSyncFromAmazon, useExportPriceInventory, useExportListingLoader } from '@/api/hooks'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import type { Product } from '@/types/api'
 import toast from 'react-hot-toast'
@@ -9,15 +9,16 @@ import toast from 'react-hot-toast'
 export default function ProductListPage() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
-  const { data, isLoading, isError } = useProducts({ page: 1 })
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const { data, isLoading, isError, refetch } = useProducts({ page: 1, search: search || undefined })
   const deleteMutation = useDeleteProduct()
   const listMutation = useSubmitListing()
+  const syncMutation = useSyncFromAmazon()
+  const exportPriceMutation = useExportPriceInventory()
+  const exportListingMutation = useExportListingLoader()
 
-  const filteredProducts = data?.items.filter(
-    (p: Product) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.sku.toLowerCase().includes(search.toLowerCase())
-  )
+  // Backend handles search -- no client-side filtering needed
+  const products = data?.items ?? []
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('هل أنت متأكد من حذف هذا المنتج؟')) return
@@ -43,6 +44,34 @@ export default function ProductListPage() {
     navigate('/products/create', { state: { editMode: true, editProduct: product } })
   }
 
+  const handleSync = async () => {
+    try {
+      const result = await syncMutation.mutateAsync()
+      toast.success(result.message || 'تمت المزامنة بنجاح')
+      refetch()
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'فشلت المزامنة')
+    }
+  }
+
+  const handleExportPriceInventory = async () => {
+    try {
+      await exportPriceMutation.mutateAsync()
+      toast.success('تم تصدير ملف Price & Inventory بنجاح')
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'فشل التصدير')
+    }
+  }
+
+  const handleExportListingLoader = async () => {
+    try {
+      await exportListingMutation.mutateAsync()
+      toast.success('تم تصدير ملف Listing Loader بنجاح')
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'فشل التصدير')
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -66,13 +95,73 @@ export default function ProductListPage() {
           <h1 className="text-2xl font-bold text-white">المنتجات</h1>
           <p className="text-gray-400 mt-1">إدارة كتالوج المنتجات ({data?.total ?? 0})</p>
         </div>
-        <Link
-          to="/products/create"
-          className="flex items-center gap-2 bg-amazon-orange hover:bg-amazon-light text-amazon-dark font-semibold px-6 py-3 rounded-lg transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          إضافة منتج
-        </Link>
+        <div className="flex items-center gap-3">
+          {/* Export Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold px-4 py-3 rounded-lg transition-colors"
+            >
+              <FileDown className="w-5 h-5" />
+              تصدير Excel
+              <ChevronDown className="w-4 h-4" />
+            </button>
+            {showExportMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
+                <div className="absolute right-0 mt-2 w-64 bg-[#1a1a2e] border border-gray-700 rounded-lg shadow-xl z-20 overflow-hidden">
+                  <button
+                    onClick={() => { handleExportPriceInventory(); setShowExportMenu(false); }}
+                    disabled={exportPriceMutation.isPending}
+                    className="w-full px-4 py-3 text-right text-sm text-white hover:bg-gray-700 transition flex items-center justify-between gap-2 disabled:opacity-50"
+                  >
+                    {exportPriceMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                    <span>
+                      <span className="font-medium">Price & Inventory</span>
+                      <span className="text-gray-400 text-xs block">تحديث أسعار فقط</span>
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => { handleExportListingLoader(); setShowExportMenu(false); }}
+                    disabled={exportListingMutation.isPending}
+                    className="w-full px-4 py-3 text-right text-sm text-white hover:bg-gray-700 transition flex items-center justify-between gap-2 border-t border-gray-700 disabled:opacity-50"
+                  >
+                    {exportListingMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                    <span>
+                      <span className="font-medium">Listing Loader</span>
+                      <span className="text-gray-400 text-xs block">إضافة عروض لمنتجات موجودة</span>
+                    </span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <button
+            onClick={handleSync}
+            disabled={syncMutation.isPending}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {syncMutation.isPending ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                جاري المزامنة...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-5 h-5" />
+                مزامنة من Amazon
+              </>
+            )}
+          </button>
+          <Link
+            to="/products/create"
+            className="flex items-center gap-2 bg-amazon-orange hover:bg-amazon-light text-amazon-dark font-semibold px-6 py-3 rounded-lg transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            إضافة منتج
+          </Link>
+        </div>
       </div>
 
       {/* Search & Filter */}
@@ -83,7 +172,7 @@ export default function ProductListPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="بحث عن منتج..."
+            placeholder="بحث عن منتج... (اسم، SKU، الفئة)"
             className="w-full pr-10 pl-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange focus:border-amazon-orange"
           />
         </div>
@@ -108,7 +197,7 @@ export default function ProductListPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800/50">
-            {filteredProducts?.map((product: Product) => (
+            {products.map((product: Product) => (
               <tr key={product.id} className="hover:bg-[#1a1a2e] transition-colors">
                 <td className="px-6 py-4">
                   <p className="font-medium text-white">{product.name}</p>
@@ -163,7 +252,7 @@ export default function ProductListPage() {
           </tbody>
         </table>
 
-        {(!filteredProducts || filteredProducts.length === 0) && (
+        {(!products || products.length === 0) && (
           <div className="text-center py-12 text-gray-500">
             <p>لا توجد منتجات</p>
             <Link to="/products/create" className="text-orange-500 font-medium hover:underline mt-2 inline-block">

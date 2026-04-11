@@ -21,6 +21,7 @@ class Listing(Base):
     # Amazon Integration
     feed_submission_id = Column(String(100))
     status = Column(String(30), default="queued")  # queued, processing, submitted, success, failed
+    stage = Column(String(20), default="queued")  # queued, validating, processing, submitted, success, failed
 
     # Results
     amazon_asin = Column(String(20))  # Amazon Standard Identification Number
@@ -34,6 +35,9 @@ class Listing(Base):
     submitted_at = Column(DateTime(timezone=True))
     completed_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Retry tracking
+    retry_count = Column(Integer, default=0)
 
     # Relationships
     product = relationship("Product", back_populates="listings")

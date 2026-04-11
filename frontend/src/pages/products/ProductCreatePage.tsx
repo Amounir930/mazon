@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowRight, Package, DollarSign, Image, Settings, Layers, Save, Loader2, Globe } from 'lucide-react'
+import { ArrowRight, Package, DollarSign, Image, Settings, Layers, Save, Loader2, Globe, Truck, Tag } from 'lucide-react'
 import { useCreateProduct, useUpdateProduct, useSubmitListing, useSellerInfo } from '@/api/hooks'
 import { MediaUploader } from '@/components/common/MediaUploader'
 import toast from 'react-hot-toast'
@@ -10,6 +10,7 @@ const tabs = [
   { id: 'pricing', label: 'التسعير والمخزون', icon: DollarSign },
   { id: 'media', label: 'الصور والوسائط', icon: Image },
   { id: 'advanced', label: 'الخصائص المتقدمة', icon: Settings },
+  { id: 'amazon', label: 'تفاصيل Amazon', icon: Truck },
   { id: 'multi', label: 'رفع متعدد', icon: Layers },
 ]
 
@@ -31,6 +32,7 @@ export default function ProductCreatePage() {
     category: '',
     brand: '',
     price: 0,
+    currency: 'EGP',
     quantity: 0,
     description: '',
     description_ar: '',
@@ -43,6 +45,15 @@ export default function ProductCreatePage() {
     images: [] as string[],
     attributes: {} as Record<string, any>,
     listing_copies: 1,
+    // Amazon-specific fields
+    condition: 'New',
+    fulfillment_channel: 'MFN',
+    handling_time: 0,
+    product_type: '',
+    manufacturer: '',
+    model_number: '',
+    country_of_origin: '',
+    package_quantity: 1,
   })
 
   const editMode = location.state?.editMode || false
@@ -58,6 +69,7 @@ export default function ProductCreatePage() {
         category: editProduct.category || '',
         brand: editProduct.brand || '',
         price: Number(editProduct.price) || 0,
+        currency: editProduct.currency || 'EGP',
         quantity: Number(editProduct.quantity) || 0,
         description: editProduct.description || '',
         description_ar: editProduct.description_ar || '',
@@ -70,6 +82,15 @@ export default function ProductCreatePage() {
         images: editProduct.images || [],
         attributes: editProduct.attributes || {},
         listing_copies: 1,
+        // Amazon-specific fields
+        condition: editProduct.condition || 'New',
+        fulfillment_channel: editProduct.fulfillment_channel || 'MFN',
+        handling_time: Number(editProduct.handling_time) || 0,
+        product_type: editProduct.product_type || '',
+        manufacturer: editProduct.manufacturer || '',
+        model_number: editProduct.model_number || '',
+        country_of_origin: editProduct.country_of_origin || '',
+        package_quantity: Number(editProduct.package_quantity) || 1,
       })
     }
   }, [editMode, editProduct])
@@ -220,6 +241,7 @@ export default function ProductCreatePage() {
           {activeTab === 'pricing' && <PricingTab formData={formData} setFormData={setFormData} />}
           {activeTab === 'media' && <MediaTab formData={formData} setFormData={setFormData} />}
           {activeTab === 'advanced' && <AdvancedTab formData={formData} setFormData={setFormData} />}
+          {activeTab === 'amazon' && <AmazonDetailsTab formData={formData} setFormData={setFormData} />}
           {activeTab === 'multi' && <MultiListingTab formData={formData} setFormData={setFormData} />}
         </div>
 
@@ -314,9 +336,24 @@ function BasicInfoTab({ formData, setFormData }: { formData: any, setFormData: a
 function PricingTab({ formData, setFormData }: { formData: any, setFormData: any }) {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
-          <label className="block text-sm font-medium text-gray-400 mb-3">السعر (EGP) *</label>
+          <label className="block text-sm font-medium text-gray-400 mb-3">العملة</label>
+          <select
+            value={formData.currency}
+            onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+          >
+            <option value="EGP">EGP - جنيه مصري</option>
+            <option value="USD">USD - دولار أمريكي</option>
+            <option value="EUR">EUR - يورو</option>
+            <option value="GBP">GBP - جنيه إسترليني</option>
+            <option value="SAR">SAR - ريال سعودي</option>
+            <option value="AED">AED - درهم إماراتي</option>
+          </select>
+        </div>
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3">السعر ({formData.currency}) *</label>
           <div className="relative">
             <DollarSign className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amazon-orange" />
             <input
@@ -433,6 +470,175 @@ function AdvancedTab({ formData, setFormData }: { formData: any, setFormData: an
           </li>
         ))}
       </ul>
+    </div>
+  )
+}
+
+function AmazonDetailsTab({ formData, setFormData }: { formData: any, setFormData: any }) {
+  return (
+    <div className="space-y-8">
+      {/* UPC/EAN - GTIN Fields */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+            <Tag className="w-4 h-4 text-amazon-orange" /> UPC (12 digits)
+          </label>
+          <input
+            type="text"
+            value={formData.upc || ''}
+            onChange={(e) => setFormData({ ...formData, upc: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+            placeholder="مثال: 012345678905"
+            maxLength={12}
+          />
+          <p className="text-xs text-gray-500 mt-2">UPC: 12 رقم (مطلوب لمعظم فئات Amazon)</p>
+        </div>
+
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+            <Tag className="w-4 h-4 text-blue-400" /> EAN (13 digits)
+          </label>
+          <input
+            type="text"
+            value={formData.ean || ''}
+            onChange={(e) => setFormData({ ...formData, ean: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="مثال: 5901234123457"
+            maxLength={13}
+          />
+          <p className="text-xs text-gray-500 mt-2">EAN: 13 رقم (بديل UPC خارج أمريكا)</p>
+        </div>
+      </div>
+
+      {/* Condition & Fulfillment */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+            <Tag className="w-4 h-4 text-amazon-orange" /> حالة المنتج (Condition) *
+          </label>
+          <select
+            value={formData.condition}
+            onChange={(e) => setFormData({ ...formData, condition: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+          >
+            <option value="New">New - جديد</option>
+            <option value="UsedLikeNew">Used Like New - مستعمل كالجديد</option>
+            <option value="UsedVeryGood">Used Very Good - مستعمل جيد جداً</option>
+            <option value="UsedGood">Used Good - مستعمل جيد</option>
+            <option value="UsedAcceptable">Used Acceptable - مستعمل مقبول</option>
+            <option value="Refurbished">Refurbished - مجدد</option>
+          </select>
+          <p className="text-xs text-gray-500 mt-2">Amazon يتطلب Condition لكل عرض</p>
+        </div>
+
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+            <Truck className="w-4 h-4 text-blue-400" /> قناة الشحن (Fulfillment) *
+          </label>
+          <select
+            value={formData.fulfillment_channel}
+            onChange={(e) => setFormData({ ...formData, fulfillment_channel: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 outline-none"
+          >
+            <option value="MFN">MFN - شحن البائع (Seller Fulfilled)</option>
+            <option value="AFN">FBA - شحن أمازون (Fulfillment by Amazon)</option>
+          </select>
+          <p className="text-xs text-gray-500 mt-2">MFN = أنت بتشحن، FBA = أمازون بتشحّن</p>
+        </div>
+      </div>
+
+      {/* Product Type & Handling Time */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3">نوع المنتج (Product Type)</label>
+          <input
+            type="text"
+            value={formData.product_type}
+            onChange={(e) => setFormData({ ...formData, product_type: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+            placeholder="مثال: PRODUCT, APPAREL"
+          />
+          <p className="text-xs text-gray-500 mt-2">مطلوب في Product Template</p>
+        </div>
+
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3">وقت التجهيز (Handling Time)</label>
+          <input
+            type="number"
+            min={0}
+            max={30}
+            value={formData.handling_time}
+            onChange={(e) => setFormData({ ...formData, handling_time: Number(e.target.value) })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+            placeholder="0"
+          />
+          <p className="text-xs text-gray-500 mt-2">أيام التجهيز قبل الشحن</p>
+        </div>
+
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3">عدد العبوات (Package Qty)</label>
+          <input
+            type="number"
+            min={1}
+            value={formData.package_quantity}
+            onChange={(e) => setFormData({ ...formData, package_quantity: Number(e.target.value) })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+            placeholder="1"
+          />
+          <p className="text-xs text-gray-500 mt-2">عدد الوحدات في العبوة</p>
+        </div>
+      </div>
+
+      {/* Manufacturer, Model, Country */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3">الشركة المصنّعة (Manufacturer)</label>
+          <input
+            type="text"
+            value={formData.manufacturer}
+            onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+            placeholder="اسم الشركة المصنّعة"
+          />
+        </div>
+
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3">رقم الموديل (Model Number)</label>
+          <input
+            type="text"
+            value={formData.model_number}
+            onChange={(e) => setFormData({ ...formData, model_number: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+            placeholder="مثال: XYZ-1234"
+          />
+        </div>
+
+        <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+          <label className="block text-sm font-medium text-gray-400 mb-3">بلد المنشأ (Country of Origin)</label>
+          <input
+            type="text"
+            value={formData.country_of_origin}
+            onChange={(e) => setFormData({ ...formData, country_of_origin: e.target.value })}
+            className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+            placeholder="مثال: CN, US, EG"
+          />
+          <p className="text-xs text-gray-500 mt-2">رمز البلد (ISO 3166-1 alpha-2)</p>
+        </div>
+      </div>
+
+      {/* Info Box */}
+      <div className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-xl">
+        <h4 className="text-blue-400 font-semibold mb-2 flex items-center gap-2">
+          <Globe className="w-4 h-4" /> لماذا هذه الحقول مهمة؟
+        </h4>
+        <ul className="text-sm text-gray-300 space-y-1">
+          <li>✅ <strong>Condition</strong> — مطلوب من Amazon لكل عرض</li>
+          <li>✅ <strong>Fulfillment Channel</strong> — يحدد مين بيشحن (أنت ولا أمازون)</li>
+          <li>✅ <strong>Product Type</strong> — مطلوب في Amazon Product Template</li>
+          <li>✅ <strong>Handling Time</strong> — يؤثر على تجربة العميل</li>
+          <li>✅ <strong>Manufacturer / Model / Country</strong> — مطلوب في Compliance</li>
+        </ul>
+      </div>
     </div>
   )
 }

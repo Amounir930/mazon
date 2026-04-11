@@ -9,11 +9,19 @@ import asyncio
 import json
 from datetime import datetime
 from app.database import SessionLocal
+from app.database import Session as DBSession
 from app.models.seller import Seller
 from app.models.listing import Listing
 from app.models.product import Product
+from app.models.activity_log import ActivityLog
 from app.services.amazon_api import AmazonAPIClient
+from app.services.validation_service import ValidationService
 from loguru import logger
+import json
+
+# Retry configuration
+MAX_RETRIES = 3
+BACKOFF_FACTOR = 2  # seconds: 2, 4, 8
 
 
 def _parse_json_field(value: str, default=None):
@@ -58,45 +66,112 @@ async def submit_listing_task(product_id: str) -> dict:
             product_id=product.id,
             seller_id=product.seller_id,
             status="processing",
+            stage="validating",
             submitted_at=datetime.utcnow(),
         )
         db.add(listing)
         db.commit()
         logger.info(f"Listing created for product {product.sku} (ID: {listing.id})")
 
-        # Step 4: Submit to Amazon
+        # Log activity
+        _log_activity(db, product.id, "submitted", "success", listing.id, {"listing_id": listing.id})
+
+        # Step 4: Submit to Amazon — transition to processing
+        listing.stage = "processing"
+        db.commit()
+
+        # Validate product before submission
+        product_data = {
+            "sku": product.sku,
+            "name": product.name,
+            "price": float(product.price) if product.price else 0,
+            "images": _parse_json_field(product.images, []),
+            "brand": product.brand,
+        }
+        validation = ValidationService.validate_product_dict(product_data)
+        if not validation.valid:
+            listing.status = "failed"
+            listing.stage = "failed"
+            listing.error_message = f"Validation failed: {validation.to_dict()['errors']}"
+            listing.completed_at = datetime.utcnow()
+            db.commit()
+            _log_activity(db, product.id, "failed", "failed", listing.id, {"validation_errors": validation.to_dict()['errors']})
+            logger.error(f"❌ Validation failed for {product.sku}: {validation.to_dict()['errors']}")
+            return {"status": "failed", "error": validation.to_dict()['errors']}
+
+        # Transition to submitted stage before API call
+        listing.stage = "submitted"
+        db.commit()
+
+        # Step 4: Submit to Amazon with retry + backoff
         client = AmazonAPIClient(
             seller_id=seller.amazon_seller_id,
             marketplace_id=seller.marketplace_id,
             refresh_token=seller.lwa_refresh_token,
         )
 
-        result = await client.create_or_update_listing(
-            sku=product.sku,
-            product_data={
-                "name": product.name,
-                "brand": product.brand or "",
-                "description": product.description or "",
-                "bullet_points": _parse_json_field(product.bullet_points),
-                "price": float(product.price) if product.price else 0,
-                "quantity": product.quantity or 0,
-            },
-        )
+        result = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                listing.retry_count = attempt
+                listing.stage = "processing"
+                db.commit()
+
+                result = await client.create_or_update_listing(
+                    sku=product.sku,
+                    product_data={
+                        "name": product.name,
+                        "brand": product.brand or "",
+                        "description": product.description or "",
+                        "bullet_points": _parse_json_field(product.bullet_points),
+                        "price": float(product.price) if product.price else 0,
+                        "quantity": product.quantity or 0,
+                    },
+                )
+                # Success — break out of retry loop
+                break
+            except Exception as e:
+                if attempt == MAX_RETRIES - 1:
+                    # Final attempt failed
+                    logger.error(f"❌ All {MAX_RETRIES} retries exhausted for {product.sku}: {str(e)}")
+                    result = {"success": False, "error": str(e)}
+                else:
+                    wait_time = BACKOFF_FACTOR ** (attempt + 1)
+                    listing.status = "retrying"
+                    listing.stage = "processing"
+                    listing.retry_count = attempt + 1
+                    listing.error_message = f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {wait_time}s..."
+                    db.commit()
+                    _log_activity(db, product.id, "failed", "failed", listing.id, {
+                        "attempt": attempt + 1,
+                        "retry_in": wait_time,
+                        "error": str(e),
+                    })
+                    logger.warning(f"⚠️ Attempt {attempt + 1} failed for {product.sku}, retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
 
         # Step 5: Update listing with result
         if result.get("success"):
             listing.status = "success"
+            listing.stage = "success"
             listing.amazon_asin = result.get("data", {}).get("asin", "")
             listing.amazon_url = f"https://www.amazon.com/dp/{listing.amazon_asin}"
             listing.completed_at = datetime.utcnow()
             db.commit()
             logger.info(f"✅ Listing success: {product.sku} → ASIN {listing.amazon_asin}")
+
+            # Log activity
+            _log_activity(db, product.id, "published", "success", listing.id, {"asin": listing.amazon_asin})
         else:
             listing.status = "failed"
+            listing.stage = "failed"
             listing.error_message = str(result.get("error", "Unknown error"))
             listing.completed_at = datetime.utcnow()
             db.commit()
             logger.error(f"❌ Listing failed: {product.sku}")
+
+            # Log activity
+            _log_activity(db, product.id, "failed", "failed", listing.id, {"error": result.get("error", "Unknown error")})
 
         return {"status": listing.status, "asin": listing.amazon_asin}
 
@@ -111,6 +186,7 @@ async def submit_listing_task(product_id: str) -> dict:
             ).order_by(Listing.created_at.desc()).first()
             if listing:
                 listing.status = "failed"
+                listing.stage = "failed"
                 listing.error_message = str(e)
                 listing.completed_at = datetime.utcnow()
                 db.commit()
@@ -140,9 +216,15 @@ async def retry_listing_task(listing_id: str) -> dict:
         if listing.status not in ("failed",):
             return {"status": listing.status, "message": "Listing is not in failed state"}
 
+        # Check max retries
+        if listing.retry_count >= MAX_RETRIES:
+            return {"status": "failed", "message": f"Max retries ({MAX_RETRIES}) exceeded"}
+
         # Reset status
         listing.status = "queued"
+        listing.stage = "queued"
         listing.error_message = None
+        listing.retry_count = 0
         listing.submitted_at = None
         listing.completed_at = None
         db.commit()
@@ -159,3 +241,19 @@ async def retry_listing_task(listing_id: str) -> dict:
         return {"status": "failed", "error": str(e)}
     finally:
         db.close()
+
+
+def _log_activity(db: DBSession, product_id: str, action: str, status: str, listing_id: str | None = None, details: dict | None = None):
+    """Helper to log activity"""
+    log = ActivityLog(
+        product_id=product_id,
+        listing_id=listing_id,
+        action=action,
+        status=status,
+        details=json.dumps(details) if details else None,
+    )
+    db.add(log)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()

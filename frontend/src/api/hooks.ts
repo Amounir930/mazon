@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { productsApi, listingsApi, amazonApi, authApi, tasksApi, syncApi, bulkApi } from './endpoints'
+import { productsApi, listingsApi, amazonApi, authApi, tasksApi, syncApi, bulkApi, exportApi } from './endpoints'
 import type { ProductListResponse, Listing, SessionStatusResponse, BrowserLoginResponse } from '@/types/api'
 
 // ==================== Product Keys ====================
@@ -44,11 +44,18 @@ export const taskKeys = {
 
 // ==================== Product Hooks ====================
 
-export function useProducts(params?: { status?: string; category?: string; page?: number; page_size?: number }) {
+export function useProducts(params?: { status?: string; category?: string; search?: string; seller_id?: string; page?: number; page_size?: number }) {
   return useQuery({
     queryKey: productKeys.list(params),
     queryFn: async () => {
-      const { data } = await productsApi.list({ page: params?.page, page_size: params?.page_size, status: params?.status, category: params?.category })
+      const { data } = await productsApi.list({
+        page: params?.page,
+        page_size: params?.page_size,
+        status: params?.status,
+        category: params?.category,
+        search: params?.search,
+        seller_id: params?.seller_id,
+      })
       return data
     },
     staleTime: 1000 * 60 * 2,
@@ -237,12 +244,47 @@ export function useBulkUpload() {
   })
 }
 
-// ==================== Auth Hooks (Phase 0) ====================
+// ==================== Export Hooks ====================
 
-export const authKeys = {
-  session: ['auth', 'session'] as const,
-  countries: ['auth', 'countries'] as const,
+export function useExportPriceInventory() {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await exportApi.priceInventory()
+      // Trigger file download
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'price_inventory.xlsx'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      return { success: true }
+    },
+  })
 }
+
+export function useExportListingLoader() {
+  return useMutation({
+    mutationFn: async () => {
+      const response = await exportApi.listingLoader()
+      // Trigger file download
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'listing_loader.xlsx'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      return { success: true }
+    },
+  })
+}
+
+// ==================== Auth Hooks (Phase 0) ====================
 
 export function useSessionStatus() {
   return useQuery({

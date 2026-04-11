@@ -28,29 +28,9 @@ except ImportError:
     logger.warning("Playwright not installed. Browser login unavailable.")
 
 
-# Amazon Seller Central URLs by country
+# Amazon Seller Central URLs - Egypt only
 SELLER_CENTRAL_BASE = {
-    "us": "https://sellercentral.amazon.com",
-    "uk": "https://sellercentral.amazon.co.uk",
-    "de": "https://sellercentral.amazon.de",
-    "fr": "https://sellercentral.amazon.fr",
-    "it": "https://sellercentral.amazon.it",
-    "es": "https://sellercentral.amazon.es",
-    "ae": "https://sellercentral.amazon.ae",
-    "sa": "https://sellercentral.amazon.sa",
     "eg": "https://sellercentral.amazon.eg",
-    "in": "https://sellercentral.amazon.in",
-    "jp": "https://sellercentral.amazon.co.jp",
-    "ca": "https://sellercentral.amazon.ca",
-    "mx": "https://sellercentral.amazon.com.mx",
-    "au": "https://sellercentral.amazon.com.au",
-    "sg": "https://sellercentral.amazon.sg",
-    "nl": "https://sellercentral.amazon.nl",
-    "pl": "https://sellercentral.amazon.pl",
-    "se": "https://sellercentral.amazon.se",
-    "be": "https://sellercentral.amazon.com.be",
-    "tr": "https://sellercentral.amazon.com.tr",
-    "br": "https://sellercentral.amazon.com.br",
 }
 
 # Profile storage
@@ -172,7 +152,7 @@ class BrowserAuth:
                 logger.debug(f"Login state iteration {iteration}: {current_url}")
 
                 # Success: reached home/dashboard
-                if "/home" in current_url or "/dashboard" in current_url or "sellercentral" in current_url and "/ap/" not in current_url:
+                if "/home" in current_url or "/dashboard" in current_url or ("sellercentral" in current_url and "/ap/" not in current_url):
                     # Verify we're actually logged in (not redirected to signin)
                     title = await self._page.title()
                     if "Sign in" not in title:

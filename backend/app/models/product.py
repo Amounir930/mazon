@@ -44,6 +44,7 @@ class Product(Base):
     price = Column(Numeric(10, 2), nullable=False)
     compare_price = Column(Numeric(10, 2))  # Price before discount
     cost = Column(Numeric(10, 2))  # Cost for margin calculation
+    currency = Column(String(10), default="EGP")  # Currency code (ISO 4217)
 
     # Inventory
     quantity = Column(Integer, default=0)
@@ -57,6 +58,16 @@ class Product(Base):
 
     # Additional Attributes
     attributes = Column(Text, default="{}")  # JSON string
+
+    # Amazon-specific fields
+    condition = Column(String(20), default="New")  # New, Used, Refurbished
+    fulfillment_channel = Column(String(20), default="MFN")  # MFN (Merchant), AFN (Amazon)
+    handling_time = Column(Integer, default=0)  # days
+    product_type = Column(String(100))  # PRODUCT_TYPE
+    manufacturer = Column(String(200))
+    model_number = Column(String(100))
+    country_of_origin = Column(String(10))
+    package_quantity = Column(Integer, default=1)
 
     # Status
     status = Column(String(20), default="draft")  # draft, queued, processing, published, failed

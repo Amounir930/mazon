@@ -60,7 +60,7 @@ class FeedService:
         if product.get("price"):
             pricing_data = ET.SubElement(product_elem, "PricingData")
             standard_price = ET.SubElement(pricing_data, "StandardPrice")
-            standard_price.set("currency", "EGP")
+            standard_price.set("currency", product.get("currency", "EGP"))
             standard_price.text = str(product["price"])
 
         if product.get("quantity") is not None:
@@ -81,6 +81,7 @@ class FeedService:
                 "bullet_points": _parse_json_safe(product.bullet_points, []),
                 "price": float(product.price) if product.price else 0,
                 "quantity": product.quantity or 0,
+                "currency": product.currency or "EGP",
                 "upc": product.upc,
                 "ean": product.ean,
             }

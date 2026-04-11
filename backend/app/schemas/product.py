@@ -2,7 +2,7 @@
 Pydantic Schemas for Product Validation
 Request/Response models for API endpoints
 """
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, Any
 from datetime import datetime
 from decimal import Decimal
@@ -13,6 +13,7 @@ import re
 
 class ProductCreate(BaseModel):
     """Schema for creating a new product"""
+    model_config = ConfigDict(protected_namespaces=())
     sku: str = Field(..., min_length=1, max_length=100, description="Stock Keeping Unit")
     seller_id: str = Field(..., description="Owner seller ID")
     name: str = Field(..., min_length=2, max_length=500, description="Product name")
@@ -23,6 +24,7 @@ class ProductCreate(BaseModel):
     price: Decimal = Field(..., gt=0, lt=999999, description="Product price")
     compare_price: Optional[Decimal] = Field(None, gt=0, lt=999999)
     cost: Optional[Decimal] = Field(None, gt=0)
+    currency: str = Field(default="EGP", max_length=10, description="Currency code (ISO 4217)")
     quantity: int = Field(default=0, ge=0, description="Available quantity")
     weight: Optional[Decimal] = Field(None, gt=0)
     description: Optional[str] = None
@@ -35,6 +37,18 @@ class ProductCreate(BaseModel):
     dimensions: Optional[dict[str, Any]] = None
     images: list[str] = Field(default=[])
     attributes: dict[str, Any] = Field(default={})
+
+    # Amazon-specific fields
+    upc: Optional[str] = Field(None, max_length=50, description="UPC barcode (12 digits)")
+    ean: Optional[str] = Field(None, max_length=50, description="EAN barcode (13 digits)")
+    condition: str = Field(default="New", max_length=20)
+    fulfillment_channel: str = Field(default="MFN", max_length=20)
+    handling_time: int = Field(default=0, ge=0)
+    product_type: Optional[str] = Field(None, max_length=100)
+    manufacturer: Optional[str] = Field(None, max_length=200)
+    model_number: Optional[str] = Field(None, max_length=100)
+    country_of_origin: Optional[str] = Field(None, max_length=10)
+    package_quantity: int = Field(default=1, ge=1)
 
     @field_validator("sku")
     @classmethod
@@ -80,11 +94,22 @@ class ProductUpdate(BaseModel):
     price: Optional[Decimal] = Field(None, gt=0, lt=999999)
     compare_price: Optional[Decimal] = Field(None, gt=0)
     cost: Optional[Decimal] = Field(None, gt=0)
+    currency: Optional[str] = Field(None, max_length=10)
     quantity: Optional[int] = Field(None, ge=0)
     weight: Optional[Decimal] = Field(None, gt=0)
     dimensions: Optional[dict[str, Any]] = None
     images: Optional[list[str]] = None
     attributes: Optional[dict[str, Any]] = None
+    upc: Optional[str] = Field(None, max_length=50)
+    ean: Optional[str] = Field(None, max_length=50)
+    condition: Optional[str] = Field(None, max_length=20)
+    fulfillment_channel: Optional[str] = Field(None, max_length=20)
+    handling_time: Optional[int] = Field(None, ge=0)
+    product_type: Optional[str] = Field(None, max_length=100)
+    manufacturer: Optional[str] = Field(None, max_length=200)
+    model_number: Optional[str] = Field(None, max_length=100)
+    country_of_origin: Optional[str] = Field(None, max_length=10)
+    package_quantity: Optional[int] = Field(None, ge=1)
     status: Optional[str] = None
 
 
@@ -101,6 +126,7 @@ class ProductResponse(BaseModel):
     price: Decimal
     compare_price: Optional[Decimal] = None
     cost: Optional[Decimal] = None
+    currency: str = "EGP"
     quantity: int
     weight: Optional[Decimal] = None
     description: Optional[str] = None
@@ -113,6 +139,17 @@ class ProductResponse(BaseModel):
     dimensions: Optional[dict[str, Any]] = None
     images: list[str] = []
     attributes: dict[str, Any] = {}
+    # Amazon-specific fields
+    upc: Optional[str] = None
+    ean: Optional[str] = None
+    condition: str = "New"
+    fulfillment_channel: str = "MFN"
+    handling_time: int = 0
+    product_type: Optional[str] = None
+    manufacturer: Optional[str] = None
+    model_number: Optional[str] = None
+    country_of_origin: Optional[str] = None
+    package_quantity: int = 1
     status: str
     created_at: datetime
     updated_at: datetime
@@ -153,6 +190,7 @@ class ListingResponse(BaseModel):
     seller_id: str
     feed_submission_id: Optional[str] = None
     status: str
+    stage: Optional[str] = None
     amazon_asin: Optional[str] = None
     amazon_url: Optional[str] = None
     error_message: Optional[str] = None
@@ -160,6 +198,7 @@ class ListingResponse(BaseModel):
     submitted_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+    retry_count: int = 0
 
     class Config:
         from_attributes = True

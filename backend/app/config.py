@@ -39,11 +39,8 @@ class Settings(BaseSettings):
     # SQLite Database
     DATABASE_URL: str = f"sqlite:///{APP_DATA_DIR}/crazy_lister.db"
 
-    # Amazon SP-API (Strictly Production)
-    USE_AMAZON_MOCK: bool = False
-    SP_API_MOCK_MODE: bool = False
-
-    # AWS Credentials (Loaded from .env)
+    # Amazon SP-API (Real Production Only)
+    # AWS Credentials
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "eu-west-1"
