@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
 from app.services.unified_auth import UnifiedAuthService
+from app.services.browser_auth import BrowserAuth
 from app.services.session_store import (
     save_browser_session,
     save_spapi_session,
@@ -135,8 +136,12 @@ async def browser_login(req: BrowserLoginRequest):
         )
 
     except Exception as e:
+        # Never raise 500 - always return error in response body
         logger.error(f"Browser login error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return BrowserLoginResponse(
+            success=False,
+            error=f"خطأ في المتصفح: {str(e)[:100]}",
+        )
 
 
 @router.post("/submit-otp", response_model=BrowserLoginResponse)
@@ -194,6 +199,7 @@ async def spapi_login(req: SPAPILoginRequest):
             aws_secret_key=req.aws_secret_key or "",
         )
 
+        # Always return 200 with success/error in body
         if result.get("success"):
             return BrowserLoginResponse(
                 success=True,
@@ -207,8 +213,12 @@ async def spapi_login(req: SPAPILoginRequest):
             )
 
     except Exception as e:
+        # Never raise 500 - always return error in response body
         logger.error(f"SP-API login error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return BrowserLoginResponse(
+            success=False,
+            error=f"خطأ في الخادم: {str(e)[:100]}",
+        )
 
 
 @router.get("/session", response_model=SessionStatusResponse)

@@ -27,6 +27,11 @@ class ProductCreate(BaseModel):
     currency: str = Field(default="EGP", max_length=10, description="Currency code (ISO 4217)")
     quantity: int = Field(default=0, ge=0, description="Available quantity")
     weight: Optional[Decimal] = Field(None, gt=0)
+
+    # Sale pricing
+    sale_price: Optional[Decimal] = Field(None, gt=0, lt=999999, description="Promotional sale price")
+    sale_start_date: Optional[str] = Field(None, description="Sale start date (ISO format)")
+    sale_end_date: Optional[str] = Field(None, description="Sale end date (ISO format)")
     description: Optional[str] = None
     description_ar: Optional[str] = None
     description_en: Optional[str] = None
@@ -97,6 +102,11 @@ class ProductUpdate(BaseModel):
     currency: Optional[str] = Field(None, max_length=10)
     quantity: Optional[int] = Field(None, ge=0)
     weight: Optional[Decimal] = Field(None, gt=0)
+
+    # Sale pricing
+    sale_price: Optional[Decimal] = Field(None, gt=0)
+    sale_start_date: Optional[str] = Field(None)
+    sale_end_date: Optional[str] = Field(None)
     dimensions: Optional[dict[str, Any]] = None
     images: Optional[list[str]] = None
     attributes: Optional[dict[str, Any]] = None

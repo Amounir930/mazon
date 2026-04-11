@@ -46,6 +46,11 @@ class Product(Base):
     cost = Column(Numeric(10, 2))  # Cost for margin calculation
     currency = Column(String(10), default="EGP")  # Currency code (ISO 4217)
 
+    # Sale Pricing
+    sale_price = Column(Numeric(10, 2))  # Promotional price
+    sale_start_date = Column(DateTime(timezone=True))  # Sale start date
+    sale_end_date = Column(DateTime(timezone=True))  # Sale end date
+
     # Inventory
     quantity = Column(Integer, default=0)
     weight = Column(Numeric(8, 2))  # Weight in kg

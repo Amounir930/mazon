@@ -34,9 +34,11 @@ def _create_workbook(products: list[dict], template_type: str) -> bytes:
 
         # Headers
         headers = [
-            "SKU", "Price", "Currency", "Quantity",
+            "SKU", "UPC", "EAN", "Price", "Currency", "Quantity",
             "Min Price", "Max Price", "Handling Time (Days)",
-            "Fulfillment Channel", "Condition", "Product Name"
+            "Fulfillment Channel", "Condition", "Weight (KG)",
+            "Length (CM)", "Width (CM)", "Height (CM)",
+            "Product Name"
         ]
 
         # Style headers
@@ -52,16 +54,23 @@ def _create_workbook(products: list[dict], template_type: str) -> bytes:
 
         # Data
         for row_idx, product in enumerate(products, 2):
+            dims = product.get("dimensions", {}) or {}
             ws.cell(row=row_idx, column=1, value=product["sku"])
-            ws.cell(row=row_idx, column=2, value=product["price"])
-            ws.cell(row=row_idx, column=3, value=product.get("currency", "EGP"))
-            ws.cell(row=row_idx, column=4, value=product["quantity"])
-            ws.cell(row=row_idx, column=5, value=product.get("min_price", ""))
-            ws.cell(row=row_idx, column=6, value=product.get("max_price", ""))
-            ws.cell(row=row_idx, column=7, value=product.get("handling_time", 0))
-            ws.cell(row=row_idx, column=8, value=product.get("fulfillment_channel", "MFN"))
-            ws.cell(row=row_idx, column=9, value=product.get("condition", "New"))
-            ws.cell(row=row_idx, column=10, value=product["name"])
+            ws.cell(row=row_idx, column=2, value=product.get("upc", ""))
+            ws.cell(row=row_idx, column=3, value=product.get("ean", ""))
+            ws.cell(row=row_idx, column=4, value=product["price"])
+            ws.cell(row=row_idx, column=5, value=product.get("currency", "EGP"))
+            ws.cell(row=row_idx, column=6, value=product["quantity"])
+            ws.cell(row=row_idx, column=7, value=product.get("min_price", ""))
+            ws.cell(row=row_idx, column=8, value=product.get("max_price", ""))
+            ws.cell(row=row_idx, column=9, value=product.get("handling_time", 0))
+            ws.cell(row=row_idx, column=10, value=product.get("fulfillment_channel", "MFN"))
+            ws.cell(row=row_idx, column=11, value=product.get("condition", "New"))
+            ws.cell(row=row_idx, column=12, value=product.get("weight", ""))
+            ws.cell(row=row_idx, column=13, value=dims.get("length", ""))
+            ws.cell(row=row_idx, column=14, value=dims.get("width", ""))
+            ws.cell(row=row_idx, column=15, value=dims.get("height", ""))
+            ws.cell(row=row_idx, column=16, value=product["name"])
 
         # Auto-adjust column widths
         for col in ws.columns:
@@ -75,7 +84,11 @@ def _create_workbook(products: list[dict], template_type: str) -> bytes:
         headers = [
             "External ID", "External ID Type", "ASIN", "SKU",
             "Price", "Currency", "Quantity", "Condition",
-            "Product Name", "Brand", "Description"
+            "Product Name", "Brand", "Description",
+            "Manufacturer", "Model Number", "Country of Origin",
+            "Weight (KG)", "Length (CM)", "Width (CM)", "Height (CM)",
+            "Handling Time (Days)", "Fulfillment Channel",
+            "Product Type", "Bullet Point 1"
         ]
 
         header_font = Font(bold=True, color="FFFFFF")
@@ -90,8 +103,10 @@ def _create_workbook(products: list[dict], template_type: str) -> bytes:
 
         # Data
         for row_idx, product in enumerate(products, 2):
+            dims = product.get("dimensions", {}) or {}
+            bullets = product.get("bullet_points", []) or []
             ws.cell(row=row_idx, column=1, value=product.get("upc", product.get("ean", "")))
-            ws.cell(row=row_idx, column=2, value="UPC" if product.get("upc") else "EAN")
+            ws.cell(row=row_idx, column=2, value="UPC" if product.get("upc") else "EAN" if product.get("ean") else "")
             ws.cell(row=row_idx, column=3, value=product.get("asin", ""))
             ws.cell(row=row_idx, column=4, value=product["sku"])
             ws.cell(row=row_idx, column=5, value=product["price"])
@@ -101,6 +116,17 @@ def _create_workbook(products: list[dict], template_type: str) -> bytes:
             ws.cell(row=row_idx, column=9, value=product["name"])
             ws.cell(row=row_idx, column=10, value=product.get("brand", ""))
             ws.cell(row=row_idx, column=11, value=product.get("description", ""))
+            ws.cell(row=row_idx, column=12, value=product.get("manufacturer", ""))
+            ws.cell(row=row_idx, column=13, value=product.get("model_number", ""))
+            ws.cell(row=row_idx, column=14, value=product.get("country_of_origin", ""))
+            ws.cell(row=row_idx, column=15, value=product.get("weight", ""))
+            ws.cell(row=row_idx, column=16, value=dims.get("length", ""))
+            ws.cell(row=row_idx, column=17, value=dims.get("width", ""))
+            ws.cell(row=row_idx, column=18, value=dims.get("height", ""))
+            ws.cell(row=row_idx, column=19, value=product.get("handling_time", 0))
+            ws.cell(row=row_idx, column=20, value=product.get("fulfillment_channel", "MFN"))
+            ws.cell(row=row_idx, column=21, value=product.get("product_type", ""))
+            ws.cell(row=row_idx, column=22, value=bullets[0] if bullets else "")
 
         for col in ws.columns:
             max_length = max(len(str(cell.value or "")) for cell in col)
@@ -128,6 +154,14 @@ async def export_price_inventory(db: Session = Depends(get_db)):
 
     products_data = []
     for p in products:
+        dimensions_dict = {}
+        if p.dimensions:
+            try:
+                import json
+                dimensions_dict = json.loads(p.dimensions) if isinstance(p.dimensions, str) else p.dimensions
+            except Exception:
+                dimensions_dict = {}
+
         products_data.append({
             "sku": p.sku,
             "price": float(p.price) if p.price else 0,
@@ -139,6 +173,10 @@ async def export_price_inventory(db: Session = Depends(get_db)):
             "fulfillment_channel": getattr(p, 'fulfillment_channel', 'MFN') or 'MFN',
             "condition": getattr(p, 'condition', 'New') or 'New',
             "name": p.name,
+            "upc": p.upc or "",
+            "ean": p.ean or "",
+            "weight": float(p.weight) if p.weight else "",
+            "dimensions": dimensions_dict,
         })
 
     excel_bytes = _create_workbook(products_data, "price_inventory")
@@ -170,6 +208,22 @@ async def export_listing_loader(db: Session = Depends(get_db)):
 
     products_data = []
     for p in products:
+        dimensions_dict = {}
+        if p.dimensions:
+            try:
+                import json
+                dimensions_dict = json.loads(p.dimensions) if isinstance(p.dimensions, str) else p.dimensions
+            except Exception:
+                dimensions_dict = {}
+
+        bullets = []
+        if p.bullet_points:
+            try:
+                import json
+                bullets = json.loads(p.bullet_points) if isinstance(p.bullet_points, str) else p.bullet_points
+            except Exception:
+                bullets = []
+
         products_data.append({
             "sku": p.sku,
             "price": float(p.price) if p.price else 0,
@@ -181,7 +235,16 @@ async def export_listing_loader(db: Session = Depends(get_db)):
             "description": p.description or "",
             "upc": p.upc or "",
             "ean": p.ean or "",
-            "asin": "",  # Will be populated after Amazon listing
+            "asin": "",
+            "manufacturer": p.manufacturer or "",
+            "model_number": p.model_number or "",
+            "country_of_origin": p.country_of_origin or "",
+            "weight": float(p.weight) if p.weight else "",
+            "dimensions": dimensions_dict,
+            "handling_time": getattr(p, 'handling_time', 0) or 0,
+            "fulfillment_channel": getattr(p, 'fulfillment_channel', 'MFN') or 'MFN',
+            "product_type": p.product_type or "",
+            "bullet_points": bullets,
         })
 
     excel_bytes = _create_workbook(products_data, "listing_loader")

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useSessionStatus, useSpapiLogin, useLogout, useVerifySession } from '@/api/hooks'
-import { Shield, Key, AlertTriangle, Loader2, CheckCircle, LogOut, RefreshCw } from 'lucide-react'
+import { useSessionStatus, useBrowserLogin, useSubmitOtp, useSpapiLogin, useLogout, useVerifySession } from '@/api/hooks'
+import { Shield, Key, Monitor, AlertTriangle, Loader2, CheckCircle, LogOut, RefreshCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function UnifiedAuthPage() {
@@ -103,22 +103,102 @@ export default function UnifiedAuthPage() {
 }
 
 function AuthMethods({ onConnect }: { onConnect: () => void }) {
+  const [method, setMethod] = useState<'spapi' | 'auto'>('auto')
+
   return (
     <div className="space-y-4">
-      {/* Important notice */}
-      <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 flex items-start gap-3">
-        <Shield className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-        <div>
-          <h3 className="text-blue-300 font-bold text-sm mb-1">طريقة الاتصال الوحيدة: SP-API</h3>
-          <p className="text-blue-300/70 text-xs leading-relaxed">
-            Amazon يرفض تسجيل الدخول التلقائي عبر المتصفح. الطريقة الوحيدة المعتمدة هي
-            <strong> SP-API Credentials</strong> من Amazon Developer Console.
-          </p>
-        </div>
+      {/* Method Selector */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => setMethod('auto')}
+          className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
+            method === 'auto' ? 'border-orange-500 bg-orange-500/10' : 'border-gray-700 hover:border-gray-600'
+          }`}
+        >
+          <Monitor className={`w-6 h-6 ${method === 'auto' ? 'text-orange-500' : 'text-gray-400'}`} />
+          <span className="text-sm font-bold text-white">⚡ تسجيل مباشر</span>
+          <span className="text-xs text-gray-400">إيميل + باسوورد</span>
+        </button>
+        <button
+          onClick={() => setMethod('spapi')}
+          className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
+            method === 'spapi' ? 'border-blue-500 bg-blue-500/10' : 'border-gray-700 hover:border-gray-600'
+          }`}
+        >
+          <Key className={`w-6 h-6 ${method === 'spapi' ? 'text-blue-500' : 'text-gray-400'}`} />
+          <span className="text-sm font-bold text-white">🔑 SP-API</span>
+          <span className="text-xs text-gray-400">بيانات Developer Console</span>
+        </button>
       </div>
 
-      {/* Only SP-API form */}
-      <SpapiForm onSuccess={onConnect} />
+      {/* Selected Form */}
+      {method === 'auto' && <AutoForm onSuccess={onConnect} />}
+      {method === 'spapi' && <SpapiForm onSuccess={onConnect} />}
+    </div>
+  )
+}
+
+function AutoForm({ onSuccess }: { onSuccess: () => void }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [otp, setOtp] = useState('')
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const loginMutation = useBrowserLogin()
+  const otpMutation = useSubmitOtp()
+
+  const handleLogin = async () => {
+    if (!email || !password) { toast.error('أدخل الإيميل والباسوورد'); return }
+    const result = await loginMutation.mutateAsync({ email, password, country_code: 'eg' })
+    if (result.needs_otp) {
+      setSessionId(result.session_id || null)
+      toast.info('OTP مطلوب')
+    } else if (result.success) {
+      toast.success(`تم الاتصال! (${result.seller_name})`)
+      onSuccess()
+    } else {
+      toast.error(result.error || 'فشل تسجيل الدخول')
+    }
+  }
+
+  const handleOtp = async () => {
+    if (!sessionId || !otp) { toast.error('أدخل OTP'); return }
+    const result = await otpMutation.mutateAsync({ session_id: sessionId, otp })
+    if (result.success) {
+      toast.success(`تم الاتصال! (${result.seller_name})`)
+      onSuccess()
+    } else {
+      toast.error(result.error || 'OTP خطأ')
+    }
+  }
+
+  return (
+    <div className="bg-[#12121a] rounded-xl border border-gray-800/50 p-6 space-y-4">
+      <h3 className="text-white font-bold flex items-center gap-2">
+        <Monitor className="w-5 h-5 text-orange-500" />
+        تسجيل مباشر عبر المتصفح
+      </h3>
+
+      {sessionId ? (
+        <>
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-blue-300 text-sm">
+            أدخل رمز OTP المرسل لجوالك
+          </div>
+          <input
+            type="text"
+            value={otp}
+            onChange={e => setOtp(e.target.value)}
+            placeholder="رمز التحقق"
+            className="w-full bg-[#0a0a0f] border border-gray-700 rounded-lg px-4 py-3 text-white text-center text-2xl tracking-widest focus:border-blue-500 outline-none"
+          />
+          <SubmitBtn onClick={handleOtp} loading={otpMutation.isPending} label="تأكيد OTP" color="blue" />
+        </>
+      ) : (
+        <>
+          <Input label="البريد الإلكتروني" type="email" value={email} onChange={setEmail} placeholder="seller@example.com" />
+          <Input label="كلمة المرور" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
+          <SubmitBtn onClick={handleLogin} loading={loginMutation.isPending} label="تسجيل الدخول" />
+        </>
+      )}
     </div>
   )
 }
@@ -182,8 +262,11 @@ function Input({ label, value, onChange, type = 'text', placeholder }: any) {
   )
 }
 
-function SubmitBtn({ onClick, loading, label, color = 'blue' }: { onClick: () => void; loading?: boolean; label: string; color?: string }) {
-  const colors: Record<string, string> = { blue: 'bg-blue-500 hover:bg-blue-600' }
+function SubmitBtn({ onClick, loading, label, color = 'orange' }: { onClick: () => void; loading?: boolean; label: string; color?: string }) {
+  const colors: Record<string, string> = {
+    orange: 'bg-orange-500 hover:bg-orange-600',
+    blue: 'bg-blue-500 hover:bg-blue-600',
+  }
   return (
     <button
       onClick={onClick}

@@ -38,8 +38,32 @@ PROFILE_BASE = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming")) /
 PROFILE_BASE.mkdir(parents=True, exist_ok=True)
 
 
+# Anti-detection browser arguments (from ALister analysis)
+ANTI_DETECTION_ARGS = [
+    "--disable-blink-features=AutomationControlled",       # الأهم - يخفي إننا automation
+    "--disable-client-side-phishing-detection",
+    "--remote-allow-origins=*",
+    "--no-first-run",
+    "--no-service-autorun",
+    "--no-default-browser-check",
+    "--homepage=about:blank",
+    "--no-pings",
+    "--password-store=basic",
+    "--disable-infobars",
+    "--disable-breakpad",
+    "--disable-component-update",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-background-networking",
+    "--disable-dev-shm-usage",
+    "--disable-features=IsolateOrigins,site-per-process",
+    "--disable-session-crashed-bubble",
+    "--disable-web-security",
+    "--disable-features=TranslateUI",
+]
+
 class BrowserAuth:
-    """Amazon Seller Central browser login via Playwright"""
+    """Amazon Seller Central browser login via Playwright with anti-detection"""
 
     def __init__(self, email: str, password: str, country_code: str = "us"):
         self.email = email
@@ -86,19 +110,27 @@ class BrowserAuth:
         try:
             browser = await playwright.chromium.launch(
                 headless=False,
-                args=[
-                    f"--user-data-dir={profile_dir}",
-                    "--disable-blink-features=AutomationControlled",
-                    "--no-sandbox",
-                ],
+                args=ANTI_DETECTION_ARGS,
             )
 
             context = await browser.new_context(
                 no_viewport=True,
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 800},
+                locale="ar-EG",
             )
 
+            # Remove webdriver property (anti-detection)
             page = await context.new_page()
+            await page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                window.navigator.chrome = { runtime: {} };
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                Object.defineProperty(navigator, 'languages', { get: () => ['ar-EG', 'en-US', 'en'] });
+                Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+                window.outerWidth = 1280;
+                window.outerHeight = 800;
+            """)
             self._browser = browser
             self._context = context
             self._page = page

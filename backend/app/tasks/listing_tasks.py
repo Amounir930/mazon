@@ -87,6 +87,11 @@ async def submit_listing_task(product_id: str) -> dict:
             "price": float(product.price) if product.price else 0,
             "images": _parse_json_field(product.images, []),
             "brand": product.brand,
+            "product_type": product.product_type,
+            "condition": product.condition,
+            "fulfillment_channel": product.fulfillment_channel,
+            "upc": product.upc,
+            "ean": product.ean,
         }
         validation = ValidationService.validate_product_dict(product_data)
         if not validation.valid:
@@ -126,6 +131,19 @@ async def submit_listing_task(product_id: str) -> dict:
                         "bullet_points": _parse_json_field(product.bullet_points),
                         "price": float(product.price) if product.price else 0,
                         "quantity": product.quantity or 0,
+                        "upc": product.upc or "",
+                        "ean": product.ean or "",
+                        "condition": product.condition or "New",
+                        "fulfillment_channel": product.fulfillment_channel or "MFN",
+                        "handling_time": product.handling_time or 0,
+                        "product_type": product.product_type or "",
+                        "manufacturer": product.manufacturer or "",
+                        "model_number": product.model_number or "",
+                        "country_of_origin": product.country_of_origin or "",
+                        "package_quantity": product.package_quantity or 1,
+                        "images": _parse_json_field(product.images, []),
+                        "weight": float(product.weight) if product.weight else None,
+                        "dimensions": _parse_json_field(product.dimensions, {}),
                     },
                 )
                 # Success — break out of retry loop

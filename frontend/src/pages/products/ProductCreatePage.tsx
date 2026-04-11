@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowRight, Package, DollarSign, Image, Settings, Layers, Save, Loader2, Globe, Truck, Tag } from 'lucide-react'
+import { ArrowRight, Package, DollarSign, Image, Settings, Layers, Save, Loader2, Globe, Truck, Tag, Ruler } from 'lucide-react'
 import { useCreateProduct, useUpdateProduct, useSubmitListing, useSellerInfo } from '@/api/hooks'
 import { MediaUploader } from '@/components/common/MediaUploader'
 import toast from 'react-hot-toast'
@@ -42,10 +42,13 @@ export default function ProductCreatePage() {
     bullet_points_en: [] as string[],
     keywords: [] as string[],
     weight: 0,
+    dimensions: { length: 0, width: 0, height: 0 } as { length: number; width: number; height: number },
     images: [] as string[],
     attributes: {} as Record<string, any>,
     listing_copies: 1,
     // Amazon-specific fields
+    upc: '',
+    ean: '',
     condition: 'New',
     fulfillment_channel: 'MFN',
     handling_time: 0,
@@ -79,10 +82,13 @@ export default function ProductCreatePage() {
         bullet_points_en: editProduct.bullet_points_en || [],
         keywords: editProduct.keywords || [],
         weight: Number(editProduct.weight) || 0,
+        dimensions: editProduct.dimensions || { length: 0, width: 0, height: 0 },
         images: editProduct.images || [],
         attributes: editProduct.attributes || {},
         listing_copies: 1,
         // Amazon-specific fields
+        upc: editProduct.upc || '',
+        ean: editProduct.ean || '',
         condition: editProduct.condition || 'New',
         fulfillment_channel: editProduct.fulfillment_channel || 'MFN',
         handling_time: Number(editProduct.handling_time) || 0,
@@ -124,6 +130,11 @@ export default function ProductCreatePage() {
         price: Number(formData.price),
         quantity: Number(formData.quantity),
         weight: Number(formData.weight),
+        dimensions: {
+          length: Number(formData.dimensions?.length) || 0,
+          width: Number(formData.dimensions?.width) || 0,
+          height: Number(formData.dimensions?.height) || 0,
+        },
       }
 
       let product;
@@ -384,6 +395,57 @@ function PricingTab({ formData, setFormData }: { formData: any, setFormData: any
             className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white text-xl font-bold focus:ring-2 focus:ring-amazon-orange outline-none"
             placeholder="0.0"
           />
+        </div>
+      </div>
+
+      {/* Dimensions Section */}
+      <div className="border-t border-gray-800 pt-6 mt-6">
+        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+          <Ruler className="w-4 h-4 text-blue-400" /> أبعاد المنتج (سم)
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+            <label className="block text-sm font-medium text-gray-400 mb-3">الطول (CM)</label>
+            <input
+              type="number"
+              min={0}
+              value={formData.dimensions?.length || 0}
+              onChange={(e) => setFormData({
+                ...formData,
+                dimensions: { ...formData.dimensions, length: Number(e.target.value) }
+              })}
+              className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+              placeholder="0.0"
+            />
+          </div>
+          <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+            <label className="block text-sm font-medium text-gray-400 mb-3">العرض (CM)</label>
+            <input
+              type="number"
+              min={0}
+              value={formData.dimensions?.width || 0}
+              onChange={(e) => setFormData({
+                ...formData,
+                dimensions: { ...formData.dimensions, width: Number(e.target.value) }
+              })}
+              className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+              placeholder="0.0"
+            />
+          </div>
+          <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+            <label className="block text-sm font-medium text-gray-400 mb-3">الارتفاع (CM)</label>
+            <input
+              type="number"
+              min={0}
+              value={formData.dimensions?.height || 0}
+              onChange={(e) => setFormData({
+                ...formData,
+                dimensions: { ...formData.dimensions, height: Number(e.target.value) }
+              })}
+              className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none"
+              placeholder="0.0"
+            />
+          </div>
         </div>
       </div>
     </div>

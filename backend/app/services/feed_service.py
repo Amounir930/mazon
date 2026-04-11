@@ -39,6 +39,7 @@ class FeedService:
         product_elem = ET.SubElement(message, "Product")
         ET.SubElement(product_elem, "SKU").text = product.get("sku", "")
 
+        # Standard Product ID (UPC/EAN)
         standard_id = ET.SubElement(product_elem, "StandardProductID")
         if product.get("upc"):
             ET.SubElement(standard_id, "Type").text = "UPC"
@@ -47,6 +48,7 @@ class FeedService:
             ET.SubElement(standard_id, "Type").text = "EAN"
             ET.SubElement(standard_id, "Value").text = product["ean"]
 
+        # Description Data
         desc_data = ET.SubElement(product_elem, "DescriptionData")
         ET.SubElement(desc_data, "Title").text = product.get("name", "")
         if product.get("brand"):
@@ -57,12 +59,74 @@ class FeedService:
         for bullet in product.get("bullet_points", []):
             ET.SubElement(desc_data, "BulletPoint").text = bullet
 
+        # Manufacturer info
+        if product.get("manufacturer"):
+            ET.SubElement(desc_data, "Manufacturer").text = product["manufacturer"]
+        if product.get("model_number"):
+            ET.SubElement(desc_data, "MfrPartNumber").text = product["model_number"]
+        if product.get("country_of_origin"):
+            ET.SubElement(desc_data, "CountryOfOrigin").text = product["country_of_origin"]
+
+        # Product Type (required by Amazon)
+        if product.get("product_type"):
+            ET.SubElement(product_elem, "ProductType").text = product["product_type"]
+
+        # Condition Data (required by Amazon)
+        condition_data = ET.SubElement(product_elem, "ConditionData")
+        ET.SubElement(condition_data, "ConditionType").text = product.get("condition", "New")
+
+        # Fulfillment Channel
+        if product.get("fulfillment_channel"):
+            fulfillment_data = ET.SubElement(product_elem, "FulfillmentChannelData")
+            ET.SubElement(fulfillment_data, "FulfillmentChannel").text = product["fulfillment_channel"]
+
+        # Handling Time
+        if product.get("handling_time") is not None and product.get("handling_time") > 0:
+            ET.SubElement(product_elem, "HandlingTime").text = str(product["handling_time"])
+
+        # Package Quantity
+        if product.get("package_quantity") is not None and product.get("package_quantity") > 1:
+            ET.SubElement(product_elem, "PackageQuantity").text = str(product["package_quantity"])
+
+        # Images
+        images = product.get("images", [])
+        if images:
+            image_data = ET.SubElement(product_elem, "ImageData")
+            for idx, img_url in enumerate(images[:8]):  # Amazon allows max 8 images
+                suffix = "" if idx == 0 else str(idx + 1)
+                ET.SubElement(image_data, f"ImageLocation{suffix}", {"MIMEType": "image/jpeg"}).text = img_url
+
+        # Pricing Data
         if product.get("price"):
             pricing_data = ET.SubElement(product_elem, "PricingData")
             standard_price = ET.SubElement(pricing_data, "StandardPrice")
             standard_price.set("currency", product.get("currency", "EGP"))
             standard_price.text = str(product["price"])
 
+        # Weight
+        if product.get("weight"):
+            weight_elem = ET.SubElement(product_elem, "Weight")
+            weight_elem.set("unitOfMeasure", "KG")
+            weight_elem.text = str(product["weight"])
+
+        # Dimensions
+        dimensions = product.get("dimensions")
+        if dimensions and isinstance(dimensions, dict):
+            dim_data = ET.SubElement(product_elem, "DimensionData")
+            if dimensions.get("length"):
+                item_length = ET.SubElement(dim_data, "ItemLength")
+                item_length.set("unitOfMeasure", "CM")
+                item_length.text = str(dimensions["length"])
+            if dimensions.get("width"):
+                item_width = ET.SubElement(dim_data, "ItemWidth")
+                item_width.set("unitOfMeasure", "CM")
+                item_width.text = str(dimensions["width"])
+            if dimensions.get("height"):
+                item_height = ET.SubElement(dim_data, "ItemHeight")
+                item_height.set("unitOfMeasure", "CM")
+                item_height.text = str(dimensions["height"])
+
+        # Quantity
         if product.get("quantity") is not None:
             ET.SubElement(product_elem, "Quantity").text = str(product["quantity"])
 
@@ -84,6 +148,17 @@ class FeedService:
                 "currency": product.currency or "EGP",
                 "upc": product.upc,
                 "ean": product.ean,
+                "condition": product.condition or "New",
+                "fulfillment_channel": product.fulfillment_channel or "MFN",
+                "handling_time": product.handling_time or 0,
+                "product_type": product.product_type or "",
+                "manufacturer": product.manufacturer or "",
+                "model_number": product.model_number or "",
+                "country_of_origin": product.country_of_origin or "",
+                "package_quantity": product.package_quantity or 1,
+                "images": _parse_json_safe(product.images, []),
+                "weight": float(product.weight) if product.weight else None,
+                "dimensions": _parse_json_safe(product.dimensions, {}),
             }
 
             xml_data = FeedService.generate_product_xml(product_data, seller)
