@@ -71,6 +71,10 @@ class FeedService:
         if product.get("product_type"):
             ET.SubElement(product_elem, "ProductType").text = product["product_type"]
 
+        # Browse Node ID
+        if product.get("browse_node_id"):
+            ET.SubElement(product_elem, "BrowseNodeID").text = product["browse_node_id"]
+
         # Condition Data (required by Amazon)
         condition_data = ET.SubElement(product_elem, "ConditionData")
         ET.SubElement(condition_data, "ConditionType").text = product.get("condition", "New")
@@ -159,6 +163,7 @@ class FeedService:
                 "images": _parse_json_safe(product.images, []),
                 "weight": float(product.weight) if product.weight else None,
                 "dimensions": _parse_json_safe(product.dimensions, {}),
+                "browse_node_id": product.get("browse_node_id", ""),
             }
 
             xml_data = FeedService.generate_product_xml(product_data, seller)
@@ -188,6 +193,85 @@ class FeedService:
             listing.error_message = str(e)
             db.commit()
             logger.error(f"Listing submission failed: {listing.id}: {str(e)}")
+            return False
+
+    @staticmethod
+    def generate_price_xml(products: list[dict], seller: Seller) -> bytes:
+        """Generate Amazon SP-API compliant XML for price updates only (POST_PRODUCT_PRICING_DATA)"""
+        envelope = ET.Element("AmazonEnvelope", {
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:noNamespaceSchemaLocation": "amzn-envelope.xsd",
+        })
+
+        header = ET.SubElement(envelope, "Header")
+        ET.SubElement(header, "DocumentVersion").text = "1.01"
+        ET.SubElement(header, "MerchantIdentifier").text = seller.amazon_seller_id
+
+        ET.SubElement(envelope, "MessageType").text = "Price"
+
+        for idx, product in enumerate(products, 1):
+            message = ET.SubElement(envelope, "Message")
+            ET.SubElement(message, "MessageID").text = str(idx)
+            ET.SubElement(message, "OperationType").text = "Update"
+
+            price_elem = ET.SubElement(message, "Price")
+            ET.SubElement(price_elem, "SKU").text = product.get("sku", "")
+
+            standard_price = ET.SubElement(price_elem, "StandardPrice")
+            standard_price.set("currency", product.get("currency", "EGP"))
+            standard_price.text = str(product["price"])
+
+            # Sale price
+            if product.get("sale_price"):
+                sale_price_elem = ET.SubElement(price_elem, "Sale")
+                sale_price_value = ET.SubElement(sale_price_elem, "SalePrice")
+                sale_price_value.set("currency", product.get("currency", "EGP"))
+                sale_price_value.text = str(product["sale_price"])
+
+                if product.get("sale_start_date"):
+                    ET.SubElement(sale_price_elem, "StartDate").text = product["sale_start_date"]
+                if product.get("sale_end_date"):
+                    ET.SubElement(sale_price_elem, "EndDate").text = product["sale_end_date"]
+
+        return ET.tostring(envelope, encoding="UTF-8", xml_declaration=True)
+
+    @staticmethod
+    async def submit_price_update_to_amazon(db: Session, seller: Seller, product_skus: list[str]) -> bool:
+        """Submit price updates for multiple products to Amazon via SP-API"""
+        try:
+            from app.models.product import Product
+            products = db.query(Product).filter(Product.sku.in_(product_skus)).all()
+
+            products_data = []
+            for p in products:
+                product_data = {
+                    "sku": p.sku,
+                    "price": float(p.price) if p.price else 0,
+                    "currency": p.currency or "EGP",
+                    "sale_price": float(p.sale_price) if p.sale_price else None,
+                    "sale_start_date": str(p.sale_start_date) if p.sale_start_date else None,
+                    "sale_end_date": str(p.sale_end_date) if p.sale_end_date else None,
+                }
+                products_data.append(product_data)
+
+            xml_data = FeedService.generate_price_xml(products_data, seller)
+
+            client = AmazonAPIClient(
+                seller_id=seller.amazon_seller_id,
+                refresh_token=seller.lwa_refresh_token
+            )
+
+            feed_id = await client.submit_feed(
+                feed_type="POST_PRODUCT_PRICING_DATA",
+                feed_data=xml_data,
+                marketplace_ids=[seller.marketplace_id]
+            )
+
+            logger.info(f"Price update submitted to SP-API: {len(products_data)} products (Feed ID: {feed_id})")
+            return True
+
+        except Exception as e:
+            logger.error(f"Price update submission failed: {str(e)}")
             return False
 
     @staticmethod

@@ -144,6 +144,7 @@ async def submit_listing_task(product_id: str) -> dict:
                         "images": _parse_json_field(product.images, []),
                         "weight": float(product.weight) if product.weight else None,
                         "dimensions": _parse_json_field(product.dimensions, {}),
+                        "browse_node_id": product.browse_node_id or "",
                     },
                 )
                 # Success — break out of retry loop

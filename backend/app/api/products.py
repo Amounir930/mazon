@@ -28,7 +28,7 @@ def product_to_dict(product: Product) -> dict:
             except Exception:
                 d[field] = [] if field not in ('dimensions', 'attributes', 'optimized_data') else {}
     # Convert Decimal to float for JSON serialization
-    for field in ['price', 'compare_price', 'cost', 'weight']:
+    for field in ['price', 'compare_price', 'cost', 'weight', 'sale_price']:
         if d.get(field) is not None:
             d[field] = float(d[field])
     # Default currency
@@ -36,6 +36,12 @@ def product_to_dict(product: Product) -> dict:
         d['currency'] = 'EGP'
     # Convert datetime to string
     for field in ['created_at', 'updated_at']:
+        val = d.get(field)
+        if val and hasattr(val, 'isoformat'):
+            d[field] = val.isoformat()
+
+    # Handle sale dates
+    for field in ['sale_start_date', 'sale_end_date']:
         val = d.get(field)
         if val and hasattr(val, 'isoformat'):
             d[field] = val.isoformat()
@@ -125,6 +131,11 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
         model_number=data.model_number or "",
         country_of_origin=data.country_of_origin or "",
         package_quantity=data.package_quantity or 1,
+        # Sale pricing
+        sale_price=data.sale_price,
+        sale_start_date=data.sale_start_date,
+        sale_end_date=data.sale_end_date,
+        browse_node_id=data.browse_node_id or "",
     )
     db.add(product)
     db.commit()

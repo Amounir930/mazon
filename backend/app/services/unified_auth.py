@@ -16,7 +16,27 @@ def _sp_api_call_wrapper(
     marketplace_id: str,
 ) -> Dict[str, Any]:
     """
-    Blocking SP-API call - runs in thread pool via asyncio.to_thread.
+    SP-API verification against Amazon.
+
+    Note: sp_api library currently hangs on import due to network/config issues.
+    Until fixed, SP-API login is disabled. Use Browser Auto login instead.
+    """
+    # Validate inputs
+    if not lwa_client_id or not lwa_client_secret or not refresh_token:
+        return {
+            "success": False,
+            "error": "يرجى ملء جميع بيانات SP-API",
+        }
+
+    # SP-API library is currently unavailable - it hangs on import
+    # Return a clear error message instead of hanging
+    return {
+        "success": False,
+        "error": "خدمة SP-API غير متاحة حالياً - استخدم تسجيل المتصفح المباشر",
+        "details": "يجب إعداد Amazon Developer Credentials أولاً",
+    }
+
+    # The code below is kept for when sp_api library is fixed:
     """
     try:
         from sp_api.api import Sellers
@@ -92,6 +112,7 @@ def _sp_api_call_wrapper(
             "success": False,
             "error": f"خطأ غير متوقع: {str(e)[:200]}",
         }
+    """
 
 
 class UnifiedAuthResult:
@@ -127,17 +148,13 @@ class UnifiedAuthService:
             }
 
         try:
-            # Run blocking sp_api call in thread pool with timeout
-            async def _verify():
-                return await asyncio.to_thread(
-                    _sp_api_call_wrapper,
-                    lwa_client_id,
-                    lwa_client_secret,
-                    refresh_token,
-                    marketplace_id,
-                )
-
-            result = await asyncio.wait_for(_verify(), timeout=15)
+            # Direct call - _sp_api_call_wrapper handles all errors internally
+            result = _sp_api_call_wrapper(
+                lwa_client_id=lwa_client_id,
+                lwa_client_secret=lwa_client_secret,
+                refresh_token=refresh_token,
+                marketplace_id=marketplace_id,
+            )
             return result
 
         except asyncio.TimeoutError:

@@ -34,7 +34,7 @@ def _create_workbook(products: list[dict], template_type: str) -> bytes:
 
         # Headers
         headers = [
-            "SKU", "UPC", "EAN", "Price", "Currency", "Quantity",
+            "SKU", "UPC", "EAN", "Price", "Sale Price", "Sale Start", "Sale End", "Currency", "Quantity",
             "Min Price", "Max Price", "Handling Time (Days)",
             "Fulfillment Channel", "Condition", "Weight (KG)",
             "Length (CM)", "Width (CM)", "Height (CM)",
@@ -59,18 +59,21 @@ def _create_workbook(products: list[dict], template_type: str) -> bytes:
             ws.cell(row=row_idx, column=2, value=product.get("upc", ""))
             ws.cell(row=row_idx, column=3, value=product.get("ean", ""))
             ws.cell(row=row_idx, column=4, value=product["price"])
-            ws.cell(row=row_idx, column=5, value=product.get("currency", "EGP"))
-            ws.cell(row=row_idx, column=6, value=product["quantity"])
-            ws.cell(row=row_idx, column=7, value=product.get("min_price", ""))
-            ws.cell(row=row_idx, column=8, value=product.get("max_price", ""))
-            ws.cell(row=row_idx, column=9, value=product.get("handling_time", 0))
-            ws.cell(row=row_idx, column=10, value=product.get("fulfillment_channel", "MFN"))
-            ws.cell(row=row_idx, column=11, value=product.get("condition", "New"))
-            ws.cell(row=row_idx, column=12, value=product.get("weight", ""))
-            ws.cell(row=row_idx, column=13, value=dims.get("length", ""))
-            ws.cell(row=row_idx, column=14, value=dims.get("width", ""))
-            ws.cell(row=row_idx, column=15, value=dims.get("height", ""))
-            ws.cell(row=row_idx, column=16, value=product["name"])
+            ws.cell(row=row_idx, column=5, value=product.get("sale_price", ""))
+            ws.cell(row=row_idx, column=6, value=product.get("sale_start_date", ""))
+            ws.cell(row=row_idx, column=7, value=product.get("sale_end_date", ""))
+            ws.cell(row=row_idx, column=8, value=product.get("currency", "EGP"))
+            ws.cell(row=row_idx, column=9, value=product["quantity"])
+            ws.cell(row=row_idx, column=10, value=product.get("min_price", ""))
+            ws.cell(row=row_idx, column=11, value=product.get("max_price", ""))
+            ws.cell(row=row_idx, column=12, value=product.get("handling_time", 0))
+            ws.cell(row=row_idx, column=13, value=product.get("fulfillment_channel", "MFN"))
+            ws.cell(row=row_idx, column=14, value=product.get("condition", "New"))
+            ws.cell(row=row_idx, column=15, value=product.get("weight", ""))
+            ws.cell(row=row_idx, column=16, value=dims.get("length", ""))
+            ws.cell(row=row_idx, column=17, value=dims.get("width", ""))
+            ws.cell(row=row_idx, column=18, value=dims.get("height", ""))
+            ws.cell(row=row_idx, column=19, value=product["name"])
 
         # Auto-adjust column widths
         for col in ws.columns:
@@ -82,8 +85,8 @@ def _create_workbook(products: list[dict], template_type: str) -> bytes:
 
         # Headers
         headers = [
-            "External ID", "External ID Type", "ASIN", "SKU",
-            "Price", "Currency", "Quantity", "Condition",
+            "External ID", "External ID Type", "ASIN", "SKU", "Parent SKU", "Relationship Type",
+            "Variation Theme", "Price", "Sale Price", "Sale Start", "Sale End", "Currency", "Quantity", "Condition",
             "Product Name", "Brand", "Description",
             "Manufacturer", "Model Number", "Country of Origin",
             "Weight (KG)", "Length (CM)", "Width (CM)", "Height (CM)",
@@ -109,24 +112,30 @@ def _create_workbook(products: list[dict], template_type: str) -> bytes:
             ws.cell(row=row_idx, column=2, value="UPC" if product.get("upc") else "EAN" if product.get("ean") else "")
             ws.cell(row=row_idx, column=3, value=product.get("asin", ""))
             ws.cell(row=row_idx, column=4, value=product["sku"])
-            ws.cell(row=row_idx, column=5, value=product["price"])
-            ws.cell(row=row_idx, column=6, value=product.get("currency", "EGP"))
-            ws.cell(row=row_idx, column=7, value=product["quantity"])
-            ws.cell(row=row_idx, column=8, value=product.get("condition", "New"))
-            ws.cell(row=row_idx, column=9, value=product["name"])
-            ws.cell(row=row_idx, column=10, value=product.get("brand", ""))
-            ws.cell(row=row_idx, column=11, value=product.get("description", ""))
-            ws.cell(row=row_idx, column=12, value=product.get("manufacturer", ""))
-            ws.cell(row=row_idx, column=13, value=product.get("model_number", ""))
-            ws.cell(row=row_idx, column=14, value=product.get("country_of_origin", ""))
-            ws.cell(row=row_idx, column=15, value=product.get("weight", ""))
-            ws.cell(row=row_idx, column=16, value=dims.get("length", ""))
-            ws.cell(row=row_idx, column=17, value=dims.get("width", ""))
-            ws.cell(row=row_idx, column=18, value=dims.get("height", ""))
-            ws.cell(row=row_idx, column=19, value=product.get("handling_time", 0))
-            ws.cell(row=row_idx, column=20, value=product.get("fulfillment_channel", "MFN"))
-            ws.cell(row=row_idx, column=21, value=product.get("product_type", ""))
-            ws.cell(row=row_idx, column=22, value=bullets[0] if bullets else "")
+            ws.cell(row=row_idx, column=5, value=product.get("parent_sku", ""))
+            ws.cell(row=row_idx, column=6, value="Parent" if product.get("is_parent") else "Child" if product.get("parent_sku") else "")
+            ws.cell(row=row_idx, column=7, value=product.get("variation_theme", ""))
+            ws.cell(row=row_idx, column=8, value=product["price"])
+            ws.cell(row=row_idx, column=9, value=product.get("sale_price", ""))
+            ws.cell(row=row_idx, column=10, value=product.get("sale_start_date", ""))
+            ws.cell(row=row_idx, column=11, value=product.get("sale_end_date", ""))
+            ws.cell(row=row_idx, column=12, value=product.get("currency", "EGP"))
+            ws.cell(row=row_idx, column=13, value=product["quantity"])
+            ws.cell(row=row_idx, column=14, value=product.get("condition", "New"))
+            ws.cell(row=row_idx, column=15, value=product["name"])
+            ws.cell(row=row_idx, column=16, value=product.get("brand", ""))
+            ws.cell(row=row_idx, column=17, value=product.get("description", ""))
+            ws.cell(row=row_idx, column=18, value=product.get("manufacturer", ""))
+            ws.cell(row=row_idx, column=19, value=product.get("model_number", ""))
+            ws.cell(row=row_idx, column=20, value=product.get("country_of_origin", ""))
+            ws.cell(row=row_idx, column=21, value=product.get("weight", ""))
+            ws.cell(row=row_idx, column=22, value=dims.get("length", ""))
+            ws.cell(row=row_idx, column=23, value=dims.get("width", ""))
+            ws.cell(row=row_idx, column=24, value=dims.get("height", ""))
+            ws.cell(row=row_idx, column=25, value=product.get("handling_time", 0))
+            ws.cell(row=row_idx, column=26, value=product.get("fulfillment_channel", "MFN"))
+            ws.cell(row=row_idx, column=27, value=product.get("product_type", ""))
+            ws.cell(row=row_idx, column=28, value=bullets[0] if bullets else "")
 
         for col in ws.columns:
             max_length = max(len(str(cell.value or "")) for cell in col)
@@ -167,6 +176,9 @@ async def export_price_inventory(db: Session = Depends(get_db)):
             "price": float(p.price) if p.price else 0,
             "currency": getattr(p, 'currency', 'EGP') or 'EGP',
             "quantity": p.quantity or 0,
+            "sale_price": float(p.sale_price) if p.sale_price else "",
+            "sale_start_date": str(p.sale_start_date) if p.sale_start_date else "",
+            "sale_end_date": str(p.sale_end_date) if p.sale_end_date else "",
             "min_price": "",
             "max_price": "",
             "handling_time": getattr(p, 'handling_time', 0) or 0,
@@ -245,6 +257,13 @@ async def export_listing_loader(db: Session = Depends(get_db)):
             "fulfillment_channel": getattr(p, 'fulfillment_channel', 'MFN') or 'MFN',
             "product_type": p.product_type or "",
             "bullet_points": bullets,
+            "sale_price": float(p.sale_price) if p.sale_price else "",
+            "sale_start_date": str(p.sale_start_date) if p.sale_start_date else "",
+            "sale_end_date": str(p.sale_end_date) if p.sale_end_date else "",
+            # Variations
+            "is_parent": getattr(p, 'is_parent', False) or False,
+            "parent_sku": p.parent_sku or "",
+            "variation_theme": "",
         })
 
     excel_bytes = _create_workbook(products_data, "listing_loader")

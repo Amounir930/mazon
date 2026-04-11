@@ -54,6 +54,7 @@ class ProductCreate(BaseModel):
     model_number: Optional[str] = Field(None, max_length=100)
     country_of_origin: Optional[str] = Field(None, max_length=10)
     package_quantity: int = Field(default=1, ge=1)
+    browse_node_id: Optional[str] = Field(None, max_length=50, description="Amazon Browse Node ID")
 
     @field_validator("sku")
     @classmethod
@@ -120,6 +121,7 @@ class ProductUpdate(BaseModel):
     model_number: Optional[str] = Field(None, max_length=100)
     country_of_origin: Optional[str] = Field(None, max_length=10)
     package_quantity: Optional[int] = Field(None, ge=1)
+    browse_node_id: Optional[str] = Field(None, max_length=50)
     status: Optional[str] = None
 
 
@@ -139,6 +141,11 @@ class ProductResponse(BaseModel):
     currency: str = "EGP"
     quantity: int
     weight: Optional[Decimal] = None
+
+    # Sale pricing
+    sale_price: Optional[Decimal] = None
+    sale_start_date: Optional[str] = None
+    sale_end_date: Optional[str] = None
     description: Optional[str] = None
     description_ar: Optional[str] = None
     description_en: Optional[str] = None
@@ -160,6 +167,7 @@ class ProductResponse(BaseModel):
     model_number: Optional[str] = None
     country_of_origin: Optional[str] = None
     package_quantity: int = 1
+    browse_node_id: Optional[str] = None
     status: str
     created_at: datetime
     updated_at: datetime

@@ -91,57 +91,15 @@ _active_login_sessions: Dict[str, Any] = {}
 @router.post("/browser-login", response_model=BrowserLoginResponse)
 async def browser_login(req: BrowserLoginRequest):
     """
-    Browser auto login - opens Playwright, navigates to Amazon Seller Central,
-    fills credentials automatically, handles OTP if needed.
+    Browser auto login - currently disabled due to Windows/Uvicorn compatibility issues.
+    Use SP-API credentials instead.
     """
-    try:
-        auth = BrowserAuth(
-            email=req.email,
-            password=req.password,
-            country_code=req.country_code,
-        )
-
-        result = await auth.login()
-
-        # OTP مطلوب
-        if result.get("needs_otp"):
-            session_id = _save_temp(req.email, auth)
-            _active_login_sessions[session_id] = auth
-            return BrowserLoginResponse(
-                success=False,
-                needs_otp=True,
-                session_id=session_id,
-                message="OTP مطلوب - يرجى إدخال رمز التحقق",
-            )
-
-        # نجاح
-        if result.get("success"):
-            session = save_browser_session(
-                email=req.email,
-                country_code=req.country_code,
-                cookies=result["cookies"],
-                seller_name=result.get("seller_name", req.email),
-                expires_at=datetime.now(timezone.utc) + timedelta(days=30),
-            )
-            return BrowserLoginResponse(
-                success=True,
-                seller_name=result.get("seller_name"),
-                country_code=req.country_code,
-            )
-
-        # فشل
-        return BrowserLoginResponse(
-            success=False,
-            error=result.get("error", "فشل تسجيل الدخول"),
-        )
-
-    except Exception as e:
-        # Never raise 500 - always return error in response body
-        logger.error(f"Browser login error: {e}")
-        return BrowserLoginResponse(
-            success=False,
-            error=f"خطأ في المتصفح: {str(e)[:100]}",
-        )
+    logger.info(f"Browser login request for {req.email} - feature currently disabled")
+    return BrowserLoginResponse(
+        success=False,
+        error="تسجيل المتصفح غير متاح حالياً على Windows",
+        message="نظراً لمشاكل توافق Playwright مع Windows، استخدم SP-API credentials بدلاً منها",
+    )
 
 
 @router.post("/submit-otp", response_model=BrowserLoginResponse)

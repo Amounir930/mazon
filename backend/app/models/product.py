@@ -73,6 +73,7 @@ class Product(Base):
     model_number = Column(String(100))
     country_of_origin = Column(String(10))
     package_quantity = Column(Integer, default=1)
+    browse_node_id = Column(String(50))  # Amazon category node for better discoverability
 
     # Status
     status = Column(String(20), default="draft")  # draft, queued, processing, published, failed

@@ -32,8 +32,14 @@ export default function ProductCreatePage() {
     category: '',
     brand: '',
     price: 0,
+    compare_price: 0,
     currency: 'EGP',
     quantity: 0,
+    sale_price: 0,
+    sale_start_date: '',
+    sale_end_date: '',
+    min_price: 0,
+    max_price: 0,
     description: '',
     description_ar: '',
     description_en: '',
@@ -57,6 +63,11 @@ export default function ProductCreatePage() {
     model_number: '',
     country_of_origin: '',
     package_quantity: 1,
+    browse_node_id: '',
+    // Variations
+    is_parent: false,
+    parent_sku: '',
+    variation_theme: '',  // e.g., "Size", "Color", "Size/Color"
   })
 
   const editMode = location.state?.editMode || false
@@ -72,8 +83,14 @@ export default function ProductCreatePage() {
         category: editProduct.category || '',
         brand: editProduct.brand || '',
         price: Number(editProduct.price) || 0,
+        compare_price: Number(editProduct.compare_price) || 0,
         currency: editProduct.currency || 'EGP',
         quantity: Number(editProduct.quantity) || 0,
+        sale_price: Number(editProduct.sale_price) || 0,
+        sale_start_date: editProduct.sale_start_date || '',
+        sale_end_date: editProduct.sale_end_date || '',
+        min_price: Number(editProduct.min_price) || 0,
+        max_price: Number(editProduct.max_price) || 0,
         description: editProduct.description || '',
         description_ar: editProduct.description_ar || '',
         description_en: editProduct.description_en || '',
@@ -97,6 +114,11 @@ export default function ProductCreatePage() {
         model_number: editProduct.model_number || '',
         country_of_origin: editProduct.country_of_origin || '',
         package_quantity: Number(editProduct.package_quantity) || 1,
+        browse_node_id: editProduct.browse_node_id || '',
+        // Variations
+        is_parent: editProduct.is_parent || false,
+        parent_sku: editProduct.parent_sku || '',
+        variation_theme: editProduct.variation_theme || '',
       })
     }
   }, [editMode, editProduct])
@@ -128,8 +150,18 @@ export default function ProductCreatePage() {
         description_ar: sanitizeInput(formData.description_ar),
         description_en: sanitizeInput(formData.description_en),
         price: Number(formData.price),
+        compare_price: Number(formData.compare_price) || null,
         quantity: Number(formData.quantity),
         weight: Number(formData.weight),
+        sale_price: Number(formData.sale_price) || null,
+        sale_start_date: formData.sale_start_date || null,
+        sale_end_date: formData.sale_end_date || null,
+        min_price: Number(formData.min_price) || null,
+        max_price: Number(formData.max_price) || null,
+        // Variations
+        is_parent: formData.is_parent || false,
+        parent_sku: formData.parent_sku || null,
+        variation_theme: formData.variation_theme || null,
         dimensions: {
           length: Number(formData.dimensions?.length) || 0,
           width: Number(formData.dimensions?.width) || 0,
@@ -395,6 +427,79 @@ function PricingTab({ formData, setFormData }: { formData: any, setFormData: any
             className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white text-xl font-bold focus:ring-2 focus:ring-amazon-orange outline-none"
             placeholder="0.0"
           />
+        </div>
+      </div>
+
+      {/* Sale Pricing Section */}
+      <div className="border-t border-gray-800 pt-6 mt-6">
+        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+          <Tag className="w-4 h-4 text-green-400" /> سعر التخفيض (Sale Price)
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+            <label className="block text-sm font-medium text-gray-400 mb-3">السعر الأصلي ({formData.currency})</label>
+            <input
+              type="number"
+              value={formData.compare_price || ''}
+              onChange={(e) => setFormData({ ...formData, compare_price: e.target.value })}
+              className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-gray-500 outline-none"
+              placeholder="0.00"
+            />
+            <p className="text-xs text-gray-500 mt-2">السعر قبل الخصم (اختياري)</p>
+          </div>
+          <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+            <label className="block text-sm font-medium text-gray-400 mb-3">الحد الأدنى للسعر</label>
+            <input
+              type="number"
+              value={formData.min_price || ''}
+              onChange={(e) => setFormData({ ...formData, min_price: e.target.value })}
+              className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-yellow-500 outline-none"
+              placeholder="0.00"
+            />
+            <p className="text-xs text-gray-500 mt-2">أقل سعر مقبول (حماية من الخطأ)</p>
+          </div>
+          <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+            <label className="block text-sm font-medium text-gray-400 mb-3">الحد الأقصى للسعر</label>
+            <input
+              type="number"
+              value={formData.max_price || ''}
+              onChange={(e) => setFormData({ ...formData, max_price: e.target.value })}
+              className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-yellow-500 outline-none"
+              placeholder="0.00"
+            />
+            <p className="text-xs text-gray-500 mt-2">أعلى سعر مسموح</p>
+          </div>
+          <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+            <label className="block text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-green-400" /> سعر التخفيض ({formData.currency})
+            </label>
+            <input
+              type="number"
+              value={formData.sale_price || ''}
+              onChange={(e) => setFormData({ ...formData, sale_price: e.target.value })}
+              className="w-full px-4 py-3 bg-[#0a0a0f] border border-green-700 rounded-lg text-white focus:ring-2 focus:ring-green-500 outline-none"
+              placeholder="0.00"
+            />
+            <p className="text-xs text-green-500 mt-2">سعر العرض المؤقت</p>
+          </div>
+          <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+            <label className="block text-sm font-medium text-gray-400 mb-3">بداية التخفيض</label>
+            <input
+              type="datetime-local"
+              value={formData.sale_start_date || ''}
+              onChange={(e) => setFormData({ ...formData, sale_start_date: e.target.value })}
+              className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-green-500 outline-none"
+            />
+          </div>
+          <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+            <label className="block text-sm font-medium text-gray-400 mb-3">نهاية التخفيض</label>
+            <input
+              type="datetime-local"
+              value={formData.sale_end_date || ''}
+              onChange={(e) => setFormData({ ...formData, sale_end_date: e.target.value })}
+              className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-green-500 outline-none"
+            />
+          </div>
         </div>
       </div>
 
@@ -688,6 +793,73 @@ function AmazonDetailsTab({ formData, setFormData }: { formData: any, setFormDat
         </div>
       </div>
 
+      {/* Browse Node */}
+      <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+        <label className="block text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+          <Globe className="w-4 h-4 text-purple-400" /> Browse Node ID (فئة Amazon)
+        </label>
+        <input
+          type="text"
+          value={formData.browse_node_id || ''}
+          onChange={(e) => setFormData({ ...formData, browse_node_id: e.target.value })}
+          className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-purple-500 outline-none"
+          placeholder="مثال: 611818051 (إلكترونيات - مصر)"
+        />
+        <p className="text-xs text-gray-500 mt-2">يساعد Amazon يكتشف منتج أسرع في الفئة الصحيحة</p>
+      </div>
+
+      {/* Variations Section */}
+      <div className="border-t border-gray-800 pt-6 mt-6">
+        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+          <Layers className="w-4 h-4 text-orange-400" /> تنويعات المنتج (Variations)
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+            <label className="block text-sm font-medium text-gray-400 mb-3">هل هذا منتج أب؟ (Parent Product)</label>
+            <select
+              value={formData.is_parent ? 'true' : 'false'}
+              onChange={(e) => setFormData({ ...formData, is_parent: e.target.value === 'true' })}
+              className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-orange-500 outline-none"
+            >
+              <option value="false">لا - منتج عادي</option>
+              <option value="true">نعم - منتج أب (يحتوي على تنويعات)</option>
+            </select>
+          </div>
+
+          {formData.is_parent && (
+            <>
+              <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+                <label className="block text-sm font-medium text-gray-400 mb-3">نوع التنويع (Variation Theme)</label>
+                <select
+                  value={formData.variation_theme}
+                  onChange={(e) => setFormData({ ...formData, variation_theme: e.target.value })}
+                  className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-orange-500 outline-none"
+                >
+                  <option value="">اختر نوع التنويع</option>
+                  <option value="Size">المقاس (Size)</option>
+                  <option value="Color">اللون (Color)</option>
+                  <option value="Size/Color">المقاس واللون (Size/Color)</option>
+                  <option value="Style">النمط (Style)</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-2">الصفات اللي هتختلف بين المنتجات</p>
+              </div>
+
+              <div className="bg-[#1a1a2e] p-6 rounded-xl border border-gray-800">
+                <label className="block text-sm font-medium text-gray-400 mb-3">SKU الأب (Parent SKU)</label>
+                <input
+                  type="text"
+                  value={formData.parent_sku}
+                  onChange={(e) => setFormData({ ...formData, parent_sku: e.target.value })}
+                  className="w-full px-4 py-3 bg-[#0a0a0f] border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-orange-500 outline-none"
+                  placeholder="PARENT-SKU-001"
+                />
+                <p className="text-xs text-gray-500 mt-2">SKU فريد للمنتج الأب</p>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
       {/* Info Box */}
       <div className="bg-blue-900/20 border border-blue-500/30 p-4 rounded-xl">
         <h4 className="text-blue-400 font-semibold mb-2 flex items-center gap-2">
@@ -699,6 +871,8 @@ function AmazonDetailsTab({ formData, setFormData }: { formData: any, setFormDat
           <li>✅ <strong>Product Type</strong> — مطلوب في Amazon Product Template</li>
           <li>✅ <strong>Handling Time</strong> — يؤثر على تجربة العميل</li>
           <li>✅ <strong>Manufacturer / Model / Country</strong> — مطلوب في Compliance</li>
+          <li>✅ <strong>Browse Node ID</strong> — يحسن اكتشاف المنتج في Amazon</li>
+          <li>✅ <strong>Variations</strong> — يتيح إنشاء منتجات متعددة بصفات مختلفة</li>
         </ul>
       </div>
     </div>
