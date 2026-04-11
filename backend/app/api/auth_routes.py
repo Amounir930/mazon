@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
 from app.services.unified_auth import UnifiedAuthService
-from app.services.browser_auth import BrowserAuth
+from app.services.browser_worker import browser_login, browser_submit_otp
 from app.services.session_store import (
     save_browser_session,
     save_spapi_session,
@@ -89,17 +89,64 @@ _active_login_sessions: Dict[str, Any] = {}
 # ============================================================
 
 @router.post("/browser-login", response_model=BrowserLoginResponse)
-async def browser_login(req: BrowserLoginRequest):
+async def browser_login_route(req: BrowserLoginRequest):
     """
-    Browser auto login - currently disabled due to Windows/Uvicorn compatibility issues.
-    Use SP-API credentials instead.
+    Browser auto login using Playwright in a dedicated event loop thread.
+    Solves the Windows ProactorEventLoop + subprocess issue.
     """
-    logger.info(f"Browser login request for {req.email} - feature currently disabled")
-    return BrowserLoginResponse(
-        success=False,
-        error="تسجيل المتصفح غير متاح حالياً على Windows",
-        message="نظراً لمشاكل توافق Playwright مع Windows، استخدم SP-API credentials بدلاً منها",
-    )
+    logger.info(f"Browser login request for {req.email} ({req.country_code})")
+
+    try:
+        result = await browser_login(
+            email=req.email,
+            password=req.password,
+            country_code=req.country_code,
+        )
+
+        if result.get("needs_otp"):
+            # Store session for OTP submission
+            session_id = result.get("session_id")
+            if session_id:
+                _active_login_sessions[session_id] = {
+                    "email": req.email,
+                    "country_code": req.country_code,
+                }
+
+            return BrowserLoginResponse(
+                success=False,
+                needs_otp=True,
+                message=result.get("message", "OTP مطلوب"),
+                session_id=result.get("session_id"),
+            )
+
+        if result.get("success"):
+            # Save browser session
+            save_browser_session(
+                email=req.email,
+                country_code=req.country_code,
+                cookies=result.get("cookies", []),
+                seller_name=result.get("seller_name", req.email),
+                expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+            )
+
+            return BrowserLoginResponse(
+                success=True,
+                seller_name=result.get("seller_name"),
+                country_code=req.country_code,
+            )
+
+        return BrowserLoginResponse(
+            success=False,
+            error=result.get("error", "فشل تسجيل الدخول عبر المتصفح"),
+        )
+
+    except Exception as e:
+        logger.error(f"Browser login error: {e}", exc_info=True)
+        error_msg = str(e) if str(e) else type(e).__name__
+        return BrowserLoginResponse(
+            success=False,
+            error=f"خطأ غير متوقع: {error_msg[:150]}",
+        )
 
 
 @router.post("/submit-otp", response_model=BrowserLoginResponse)
@@ -107,19 +154,25 @@ async def submit_otp(req: OTPSubmitRequest):
     """
     إرسال OTP لتكملة تسجيل الدخول.
     """
-    auth = _active_login_sessions.get(req.session_id)
-    if not auth:
-        raise HTTPException(status_code=404, detail="Session expired or not found")
+    logger.info(f"OTP submission for session: {req.session_id}")
 
     try:
-        result = await auth.submit_otp(req.otp)
+        result = await browser_submit_otp(
+            session_id=req.session_id,
+            otp=req.otp,
+        )
 
         if result.get("success"):
+            # Get session info
+            session_info = _active_login_sessions.get(req.session_id, {})
+            email = session_info.get("email", "unknown")
+            country_code = session_info.get("country_code", "us")
+
             save_browser_session(
-                email=auth.email,
-                country_code=auth.country_code,
-                cookies=result["cookies"],
-                seller_name=result.get("seller_name", auth.email),
+                email=email,
+                country_code=country_code,
+                cookies=result.get("cookies", []),
+                seller_name=result.get("seller_name", email),
                 expires_at=datetime.now(timezone.utc) + timedelta(days=30),
             )
             _active_login_sessions.pop(req.session_id, None)
@@ -127,7 +180,7 @@ async def submit_otp(req: OTPSubmitRequest):
             return BrowserLoginResponse(
                 success=True,
                 seller_name=result.get("seller_name"),
-                country_code=auth.country_code,
+                country_code=country_code,
             )
 
         return BrowserLoginResponse(
@@ -138,7 +191,10 @@ async def submit_otp(req: OTPSubmitRequest):
     except Exception as e:
         logger.error(f"OTP submission error: {e}")
         _active_login_sessions.pop(req.session_id, None)
-        raise HTTPException(status_code=500, detail=str(e))
+        return BrowserLoginResponse(
+            success=False,
+            error=f"خطأ غير متوقع: {str(e)[:100]}",
+        )
 
 
 @router.post("/spapi-login", response_model=BrowserLoginResponse)

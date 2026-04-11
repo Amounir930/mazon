@@ -1,9 +1,9 @@
 """
-Unified Authentication Service
-Real Amazon SP-API authentication.
-No mock/fake data - all operations verified against Amazon.
+SP-API Authentication Service
+Uses python-amazon-sp-api library for real Amazon SP-API authentication.
 """
 import asyncio
+import os
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 from loguru import logger
@@ -14,49 +14,60 @@ def _sp_api_call_wrapper(
     lwa_client_secret: str,
     refresh_token: str,
     marketplace_id: str,
+    aws_access_key: str = "",
+    aws_secret_key: str = "",
+    aws_region: str = "eu-west-1",
 ) -> Dict[str, Any]:
     """
     SP-API verification against Amazon.
-
-    Note: sp_api library currently hangs on import due to network/config issues.
-    Until fixed, SP-API login is disabled. Use Browser Auto login instead.
+    Uses python-amazon-sp-api library.
     """
-    # Validate inputs
     if not lwa_client_id or not lwa_client_secret or not refresh_token:
-        return {
-            "success": False,
-            "error": "يرجى ملء جميع بيانات SP-API",
-        }
+        return {"success": False, "error": "يرجى ملء جميع بيانات SP-API"}
 
-    # SP-API library is currently unavailable - it hangs on import
-    # Return a clear error message instead of hanging
-    return {
-        "success": False,
-        "error": "خدمة SP-API غير متاحة حالياً - استخدم تسجيل المتصفح المباشر",
-        "details": "يجب إعداد Amazon Developer Credentials أولاً",
-    }
-
-    # The code below is kept for when sp_api library is fixed:
-    """
     try:
         from sp_api.api import Sellers
-        from sp_api.base import SellingApiException, Marketplaces
+        from sp_api.base import SellingApiException, Marketplaces, Credentials
 
+        # Map marketplace IDs
         marketplace_map = {
-            "ARBP9OOSHTCHU": Marketplaces.EG,
+            "ARBP9OOSHTCHU": Marketplaces.EG,  # Egypt
+            "A1F83G8C2ARO7P": Marketplaces.GB,  # UK
+            "ATVPDKIKX0DER": Marketplaces.US,   # US
+            "A1PA6795UKMFR9": Marketplaces.DE,   # Germany
+            "A13V1IB3VIYZZH": Marketplaces.FR,   # France
+            "A1RKKUPIHCS9HS": Marketplaces.ES,   # Spain
+            "APJ6JRA9NG5V4": Marketplaces.IT,    # Italy
+            "A1VC38T7YXB528": Marketplaces.JP,   # Japan
+            "A39IBJ37TRP1C6": Marketplaces.AU,   # Australia
+            "A2EUQ1WTGCTBG2": Marketplaces.CA,   # Canada
+            "A1AM78C64UM0Y8": Marketplaces.MX,   # Mexico
+            "AE08WJ6YKNBMC": Marketplaces.SA,    # Saudi Arabia
+            "A2VIGQ35RCS4UG": Marketplaces.AE,   # UAE
         }
         marketplace = marketplace_map.get(marketplace_id, Marketplaces.EG)
 
-        creds = {
+        # Build credentials
+        creds_kwargs = {
             "refresh_token": refresh_token,
             "lwa_app_id": lwa_client_id,
             "lwa_client_secret": lwa_client_secret,
         }
 
+        # Add AWS credentials if provided
+        if aws_access_key and aws_secret_key:
+            creds_kwargs.update({
+                "aws_access_key": aws_access_key,
+                "aws_secret_key": aws_secret_key,
+            })
+
+        # Create Sellers API instance
         sellers_api = Sellers(
-            credentials=creds,
+            credentials=creds_kwargs,
             marketplace=marketplace,
         )
+
+        # Call SP-API to verify
         response = sellers_api.get_account()
         payload = response.payload
 
@@ -71,6 +82,7 @@ def _sp_api_call_wrapper(
             "marketplace_id": marketplace_id,
             "account_status": account_status,
             "account_type": payload.get("accountType", ""),
+            "payload": payload,
         }
 
     except SellingApiException as e:
@@ -78,28 +90,16 @@ def _sp_api_call_wrapper(
         logger.error(f"SP-API verification failed: {e}")
 
         if "401" in error_str or "unauthorized" in error_str:
-            return {
-                "success": False,
-                "error": "بيانات غير صحيحة - Amazon رفض الدخول",
-            }
+            return {"success": False, "error": "بيانات غير صحيحة - Amazon رفض الدخول"}
         elif "403" in error_str or "forbidden" in error_str:
-            return {
-                "success": False,
-                "error": "لا توجد صلاحيات - تأكد من IAM Role",
-            }
+            return {"success": False, "error": "لا توجد صلاحيات - تأكد من IAM Role"}
         elif "400" in error_str or "bad request" in error_str:
-            return {
-                "success": False,
-                "error": "بيانات غير صالحة",
-            }
+            return {"success": False, "error": "بيانات غير صالحة"}
         else:
-            return {
-                "success": False,
-                "error": f"خطأ من Amazon: {str(e)[:200]}",
-            }
+            return {"success": False, "error": f"خطأ من Amazon: {str(e)[:200]}"}
 
-    except ImportError:
-        logger.error("python-amazon-sp-api not installed")
+    except ImportError as e:
+        logger.error(f"SP-API library not installed: {e}")
         return {
             "success": False,
             "error": "مكتبة SP-API غير مثبتة",
@@ -107,12 +107,8 @@ def _sp_api_call_wrapper(
         }
 
     except Exception as e:
-        logger.error(f"SP-API verification error: {e}")
-        return {
-            "success": False,
-            "error": f"خطأ غير متوقع: {str(e)[:200]}",
-        }
-    """
+        logger.error(f"SP-API verification error: {e}", exc_info=True)
+        return {"success": False, "error": f"خطأ غير متوقع: {str(e)[:200]}"}
 
 
 class UnifiedAuthResult:
@@ -134,12 +130,13 @@ class UnifiedAuthService:
         lwa_client_secret: str,
         refresh_token: str,
         marketplace_id: str,
+        aws_access_key: str = "",
+        aws_secret_key: str = "",
+        aws_region: str = "eu-west-1",
     ) -> Dict[str, Any]:
         """
         Verify SP-API credentials against REAL Amazon SP-API.
-        Returns proper error messages if credentials are empty or invalid.
         """
-        # Validate inputs first
         if not lwa_client_id or not lwa_client_secret or not refresh_token:
             return {
                 "success": False,
@@ -148,12 +145,14 @@ class UnifiedAuthService:
             }
 
         try:
-            # Direct call - _sp_api_call_wrapper handles all errors internally
             result = _sp_api_call_wrapper(
                 lwa_client_id=lwa_client_id,
                 lwa_client_secret=lwa_client_secret,
                 refresh_token=refresh_token,
                 marketplace_id=marketplace_id,
+                aws_access_key=aws_access_key,
+                aws_secret_key=aws_secret_key,
+                aws_region=aws_region,
             )
             return result
 
@@ -164,7 +163,7 @@ class UnifiedAuthService:
                 "error": "انتهت مهلة الاتصال بـ Amazon - تحقق من الإنترنت وحاول مرة أخرى",
             }
         except Exception as e:
-            logger.error(f"SP-API verification error: {e}")
+            logger.error(f"SP-API verification error: {e}", exc_info=True)
             return {
                 "success": False,
                 "error": f"خطأ غير متوقع: {str(e)[:150]}",
@@ -192,6 +191,8 @@ class UnifiedAuthService:
                 lwa_client_secret=lwa_client_secret,
                 refresh_token=refresh_token,
                 marketplace_id=marketplace_id,
+                aws_access_key=aws_access_key,
+                aws_secret_key=aws_secret_key,
             )
 
             if not result.get("success"):
@@ -227,7 +228,7 @@ class UnifiedAuthService:
                 }
 
         except Exception as e:
-            logger.error(f"SP-API login error: {e}")
+            logger.error(f"SP-API login error: {e}", exc_info=True)
             return {
                 "success": False,
                 "error": f"خطأ غير متوقع: {str(e)[:100]}",
@@ -246,18 +247,16 @@ class UnifiedAuthService:
     ) -> Dict[str, Any]:
         """
         Browser auto login to REAL Amazon Seller Central.
-        Uses Playwright to navigate and login.
+        Uses BrowserWorker (dedicated event loop thread) to avoid Windows asyncio issues.
         """
-        from app.services.browser_auth import BrowserAuth
+        from app.services.browser_worker import browser_login as worker_browser_login
 
-        auth = BrowserAuth(
+        result = await worker_browser_login(
             email=email,
             password=password,
             country_code=country_code,
-            otp=otp,
+            otp=otp or None,
         )
-
-        result = await auth.login(otp=otp)
         return result
 
     # =========================================================================
@@ -288,5 +287,5 @@ class UnifiedAuthService:
     @staticmethod
     def get_supported_countries() -> Dict[str, str]:
         """Get list of real Amazon marketplaces"""
-        from app.services.browser_auth import SELLER_CENTRAL_BASE
+        from app.services.browser_worker import SELLER_CENTRAL_BASE
         return SELLER_CENTRAL_BASE

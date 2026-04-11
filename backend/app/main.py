@@ -55,6 +55,12 @@ async def startup_event():
     """Application startup - initialize database and services"""
     logger.info("Starting Crazy Lister v3.0")
 
+    # Start BrowserWorker (dedicated event loop thread for Playwright on Windows)
+    from app.services.browser_worker import get_browser_worker
+    worker = get_browser_worker()
+    worker.start()
+    logger.info("BrowserWorker initialized")
+
     # Create database tables
     logger.info("Initializing database...")
     init_db()
@@ -102,6 +108,12 @@ async def startup_event():
 async def shutdown_event():
     """Application shutdown - cleanup resources"""
     logger.info("Shutting down Crazy Lister v3.0")
+
+    # Stop BrowserWorker
+    from app.services.browser_worker import get_browser_worker
+    worker = get_browser_worker()
+    worker.stop()
+    logger.info("BrowserWorker stopped")
 
     # Stop task manager
     from app.tasks.task_manager import task_manager

@@ -103,37 +103,22 @@ export default function UnifiedAuthPage() {
 }
 
 function AuthMethods({ onConnect }: { onConnect: () => void }) {
-  const [method, setMethod] = useState<'spapi' | 'auto'>('auto')
-
   return (
     <div className="space-y-4">
-      {/* Method Selector */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          onClick={() => setMethod('auto')}
-          className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
-            method === 'auto' ? 'border-orange-500 bg-orange-500/10' : 'border-gray-700 hover:border-gray-600'
-          }`}
-        >
-          <Monitor className={`w-6 h-6 ${method === 'auto' ? 'text-orange-500' : 'text-gray-400'}`} />
-          <span className="text-sm font-bold text-white">⚡ تسجيل مباشر</span>
-          <span className="text-xs text-gray-400">إيميل + باسوورد</span>
-        </button>
-        <button
-          onClick={() => setMethod('spapi')}
-          className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
-            method === 'spapi' ? 'border-blue-500 bg-blue-500/10' : 'border-gray-700 hover:border-gray-600'
-          }`}
-        >
-          <Key className={`w-6 h-6 ${method === 'spapi' ? 'text-blue-500' : 'text-gray-400'}`} />
-          <span className="text-sm font-bold text-white">🔑 SP-API</span>
-          <span className="text-xs text-gray-400">بيانات Developer Console</span>
-        </button>
+      {/* Important notice */}
+      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 flex items-start gap-3">
+        <Shield className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+        <div>
+          <h3 className="text-yellow-300 font-bold text-sm mb-1">⚠️ تسجيل المتصفح غير متاح حالياً</h3>
+          <p className="text-yellow-300/70 text-xs leading-relaxed">
+            نظراً لمشاكل توافق Playwright مع Windows/Uvicorn، استخدم
+            <strong> SP-API credentials</strong> بدلاً منها.
+          </p>
+        </div>
       </div>
 
-      {/* Selected Form */}
-      {method === 'auto' && <AutoForm onSuccess={onConnect} />}
-      {method === 'spapi' && <SpapiForm onSuccess={onConnect} />}
+      {/* Only SP-API form */}
+      <SpapiForm onSuccess={onConnect} />
     </div>
   )
 }
