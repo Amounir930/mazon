@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowRight, Package, DollarSign, Image, Settings, Layers, Save, Loader2, Globe } from 'lucide-react'
-import { useCreateProduct, useUpdateProduct, useSubmitListing } from '@/api/hooks'
+import { useCreateProduct, useUpdateProduct, useSubmitListing, useSellerInfo } from '@/api/hooks'
 import { MediaUploader } from '@/components/common/MediaUploader'
 import toast from 'react-hot-toast'
 
@@ -19,10 +19,9 @@ export default function ProductCreatePage() {
   const createMutation = useCreateProduct()
   const updateMutation = useUpdateProduct()
   const submitListingMutation = useSubmitListing()
+  const { data: sellerInfo, isLoading: sellerLoading } = useSellerInfo()
 
-  const editMode = location.state?.editMode || false
-  const editProduct = location.state?.editProduct || null
-
+  // All hooks MUST be before any conditional return
   const [activeTab, setActiveTab] = useState('basic')
   const [formData, setFormData] = useState({
     sku: '',
@@ -45,6 +44,9 @@ export default function ProductCreatePage() {
     attributes: {} as Record<string, any>,
     listing_copies: 1,
   })
+
+  const editMode = location.state?.editMode || false
+  const editProduct = location.state?.editProduct || null
 
   useEffect(() => {
     if (editMode && editProduct) {
@@ -117,6 +119,7 @@ export default function ProductCreatePage() {
         for (let i = 1; i <= copies; i++) {
           const multiPayload = {
             ...payload,
+            seller_id: sellerInfo?.id,
             sku: `${payload.sku}-${i.toString().padStart(2, '0')}`,
             name: `${payload.name} (نسخة ${i})`,
           }
@@ -126,7 +129,11 @@ export default function ProductCreatePage() {
         }
         toast.success(`تم إنشاء ${copies} منتج وإضافتها لقائمة الرفع!`)
       } else {
-        product = await createMutation.mutateAsync(payload)
+        const payloadWithSellerId = {
+          ...payload,
+          seller_id: sellerInfo?.id,
+        }
+        product = await createMutation.mutateAsync(payloadWithSellerId)
         await submitListingMutation.mutateAsync(product.id)
         toast.success('تم إنشاء المنتج بنجاح!')
       }
@@ -137,7 +144,30 @@ export default function ProductCreatePage() {
     }
   }
 
-  return (
+  // Loading state
+  if (sellerLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 text-amazon-orange animate-spin" />
+      </div>
+    )
+  }
+
+  // No seller connected - show message inline (not early return to preserve hooks)
+  const sellerNotConnected = !sellerLoading && !sellerInfo?.id
+
+  return sellerNotConnected ? (
+    <div className="flex flex-col items-center justify-center h-96" dir="rtl">
+      <h2 className="text-xl font-bold text-white mb-4">لا يوجد بائع متصل</h2>
+      <p className="text-gray-400 mb-4">يرجى الاتصال بـ Amazon أولاً من صفحة الإعدادات</p>
+      <button
+        onClick={() => navigate('/settings')}
+        className="px-6 py-3 bg-amazon-orange text-white rounded-lg hover:bg-orange-600 transition"
+      >
+        الذهاب للإعدادات
+      </button>
+    </div>
+  ) : (
     <div className="space-y-6" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
@@ -146,7 +176,7 @@ export default function ProductCreatePage() {
             <span className="text-xs bg-amazon-orange/20 text-amazon-orange px-2 py-1 rounded">Bilingual Enabled</span>
           </h1>
           <p className="text-gray-400 mt-1">
-            {editMode ? `تعديل SKU: ${editProduct.sku}` : 'أدخل بيانات المنتج بالعربية والإنجليزية للرفع العالمي'}
+            {editMode ? `تعديل SKU: ${editProduct?.sku}` : 'أدخل بيانات المنتج بالعربية والإنجليزية للرفع العالمي'}
           </p>
         </div>
         <button
@@ -434,5 +464,6 @@ function MultiListingTab({ formData, setFormData }: { formData: any, setFormData
         </div>
       </div>
     </div>
+  </div>
   )
 }

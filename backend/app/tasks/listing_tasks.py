@@ -56,6 +56,7 @@ async def submit_listing_task(product_id: str) -> dict:
         # Step 3: Create listing record
         listing = Listing(
             product_id=product.id,
+            seller_id=product.seller_id,
             status="processing",
             submitted_at=datetime.utcnow(),
         )

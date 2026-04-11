@@ -14,6 +14,7 @@ import re
 class ProductCreate(BaseModel):
     """Schema for creating a new product"""
     sku: str = Field(..., min_length=1, max_length=100, description="Stock Keeping Unit")
+    seller_id: str = Field(..., description="Owner seller ID")
     name: str = Field(..., min_length=2, max_length=500, description="Product name")
     name_ar: Optional[str] = Field(None, max_length=500)
     name_en: Optional[str] = Field(None, max_length=500)
@@ -63,6 +64,7 @@ class ProductCreate(BaseModel):
 
 class ProductUpdate(BaseModel):
     """Schema for updating an existing product"""
+    seller_id: Optional[str] = None
     name: Optional[str] = Field(None, min_length=2, max_length=500)
     name_ar: Optional[str] = None
     name_en: Optional[str] = None
@@ -89,6 +91,7 @@ class ProductUpdate(BaseModel):
 class ProductResponse(BaseModel):
     """Schema for product response"""
     id: str
+    seller_id: str
     sku: str
     name: str
     name_ar: Optional[str] = None
@@ -133,3 +136,30 @@ class ProductListResponse(BaseModel):
 class MessageResponse(BaseModel):
     """Generic message response"""
     message: str
+
+
+# ============ Listing Schemas ============
+
+class ListingCreate(BaseModel):
+    """Schema for creating a listing submission"""
+    product_id: str
+    seller_id: str
+
+
+class ListingResponse(BaseModel):
+    """Schema for listing response"""
+    id: str
+    product_id: str
+    seller_id: str
+    feed_submission_id: Optional[str] = None
+    status: str
+    amazon_asin: Optional[str] = None
+    amazon_url: Optional[str] = None
+    error_message: Optional[str] = None
+    queue_position: Optional[int] = None
+    submitted_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

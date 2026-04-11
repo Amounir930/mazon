@@ -24,6 +24,72 @@ export const amazonApi = {
     api.get<AmazonConnectResponse>('/amazon/status'),
 }
 
+// ==================== Auth API (Phase 0 - New) ====================
+
+export interface BrowserLoginRequest {
+  email: string
+  password: string
+  country_code: string
+}
+
+export interface BrowserLoginResponse {
+  success: boolean
+  needs_otp: boolean
+  seller_name?: string
+  country_code?: string
+  session_id?: string
+  error?: string
+  message?: string
+}
+
+export interface SessionStatusResponse {
+  is_connected: boolean
+  auth_method?: string
+  seller_name?: string
+  email?: string
+  country_code?: string
+  marketplace_id?: string
+  is_valid: boolean
+  last_verified_at?: string
+}
+
+export const authApi = {
+  browserLogin: (data: BrowserLoginRequest) =>
+    api.post<BrowserLoginResponse>('/auth/browser-login', data),
+
+  submitOtp: (session_id: string, otp: string) =>
+    api.post<BrowserLoginResponse>('/auth/submit-otp', { session_id, otp }),
+
+  spapiLogin: (data: {
+    lwa_client_id: string
+    lwa_client_secret: string
+    refresh_token: string
+    marketplace_id: string
+    aws_access_key?: string
+    aws_secret_key?: string
+  }) =>
+    api.post<BrowserLoginResponse>('/auth/spapi-login', data),
+
+  getSession: () =>
+    api.get<SessionStatusResponse>('/auth/session'),
+
+  verifySession: () =>
+    api.post<SessionStatusResponse>('/auth/verify-session'),
+
+  logout: (session_id?: string) =>
+    api.post('/auth/logout', null, { params: { session_id } }),
+
+  getSupportedCountries: () =>
+    api.get<{ countries: Record<string, string> }>('/auth/supported-countries'),
+}
+
+// ==================== Sellers API ====================
+
+export const sellersApi = {
+  info: () =>
+    api.get('/sellers/info'),
+}
+
 // ==================== Products API ====================
 
 export const productsApi = {

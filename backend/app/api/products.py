@@ -69,6 +69,7 @@ async def list_products(
 @router.post("", status_code=201)
 async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
     product = Product(
+        seller_id=data.seller_id,
         sku=data.sku,
         name=data.name,
         name_ar=data.name_ar,

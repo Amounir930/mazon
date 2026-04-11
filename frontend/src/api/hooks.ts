@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { productsApi, listingsApi, amazonApi, tasksApi, syncApi, bulkApi } from './endpoints'
-import type { ProductListResponse, Listing } from '@/types/api'
+import { productsApi, listingsApi, amazonApi, authApi, tasksApi, syncApi, bulkApi } from './endpoints'
+import type { ProductListResponse, Listing, SessionStatusResponse, BrowserLoginResponse } from '@/types/api'
 
 // ==================== Product Keys ====================
 
@@ -22,6 +22,17 @@ export const listingKeys = {
 
 export const amazonKeys = {
   status: ['amazon', 'status'] as const,
+}
+
+export const sellerKeys = {
+  info: ['sellers', 'info'] as const,
+}
+
+// ==================== Auth Keys ====================
+
+export const authKeys = {
+  session: ['auth', 'session'] as const,
+  countries: ['auth', 'countries'] as const,
 }
 
 // ==================== Task Keys ====================
@@ -144,6 +155,17 @@ export function useAmazonStatus() {
   })
 }
 
+export function useSellerInfo() {
+  return useQuery({
+    queryKey: sellerKeys.info,
+    queryFn: async () => {
+      const { data } = await sellersApi.info()
+      return data
+    },
+    staleTime: 1000 * 60 * 5,
+  })
+}
+
 export function useConnectAmazon() {
   const queryClient = useQueryClient()
 
@@ -212,5 +234,106 @@ export function useBulkUpload() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: productKeys.lists() })
     },
+  })
+}
+
+// ==================== Auth Hooks (Phase 0) ====================
+
+export const authKeys = {
+  session: ['auth', 'session'] as const,
+  countries: ['auth', 'countries'] as const,
+}
+
+export function useSessionStatus() {
+  return useQuery({
+    queryKey: authKeys.session,
+    queryFn: async () => {
+      const { data } = await authApi.getSession()
+      return data
+    },
+    staleTime: 1000 * 60 * 2,
+    refetchInterval: 30000,
+  })
+}
+
+export function useBrowserLogin() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (data: BrowserLoginRequest) => {
+      const { data: result } = await authApi.browserLogin(data)
+      return result
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        queryClient.invalidateQueries({ queryKey: authKeys.session })
+      }
+    },
+  })
+}
+
+export function useSubmitOtp() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ session_id, otp }: { session_id: string; otp: string }) => {
+      const { data: result } = await authApi.submitOtp(session_id, otp)
+      return result
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        queryClient.invalidateQueries({ queryKey: authKeys.session })
+      }
+    },
+  })
+}
+
+export function useSpapiLogin() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (data: Parameters<typeof authApi.spapiLogin>[0]) => {
+      const { data: result } = await authApi.spapiLogin(data)
+      return result
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        queryClient.invalidateQueries({ queryKey: authKeys.session })
+      }
+    },
+  })
+}
+
+export function useLogout() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (session_id?: string) => {
+      const { data } = await authApi.logout(session_id)
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: authKeys.session })
+    },
+  })
+}
+
+export function useVerifySession() {
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await authApi.verifySession()
+      return data
+    },
+  })
+}
+
+export function useSupportedCountries() {
+  return useQuery({
+    queryKey: authKeys.countries,
+    queryFn: async () => {
+      const { data } = await authApi.getSupportedCountries()
+      return data
+    },
+    staleTime: 1000 * 60 * 60 * 24,
   })
 }

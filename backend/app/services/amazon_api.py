@@ -15,70 +15,67 @@ settings = get_settings()
 # ==========================================
 # HIGH-FIDELITY SIMULATION (For Testing)
 # ==========================================
+import httpx
+
+MOCK_API_BASE_URL = "http://localhost:9500"
+
 class SimulatedAmazonClient:
     """
-    Simulates Amazon SP-API behavior with 100% realistic data structures.
-    Used when USE_AMAZON_MOCK=True to test the full system without real keys.
+    Simulates Amazon SP-API behavior by calling the local Node.js Mock API.
     """
     def __init__(self, seller_id: str, refresh_token: str, marketplace_id: str):
         self.seller_id = seller_id
         self.marketplace_id = marketplace_id
-        logger.info(f"[SIMULATION] Connected to Amazon Sandbox for Seller: {seller_id}")
+        self.client = httpx.AsyncClient(base_url=MOCK_API_BASE_URL, timeout=10.0)
+        logger.info(f"[SIMULATION] Proxying to Mock API at {MOCK_API_BASE_URL} for Seller: {seller_id}")
 
     async def get_account(self):
-        """Simulates Sellers API"""
-        await asyncio.sleep(0.5) # Network delay
-        return {
-            "seller_id": self.seller_id,
-            "marketplace_id": self.marketplace_id,
-            "business_name": "Global Trade Solutions LLC",
-            "status": "ACTIVE",
-            "account_type": "PROFESSIONAL"
-        }
+        """Proxy to Mock API Sellers Account"""
+        try:
+            # Pass sellerId as a query param since that's how SP-API headers/params work usually
+            # and our middleware checks for it if it's in the route, but here we use it as a param for simplicity
+            response = await self.client.get("/sellers/v1/account", params={"sellerId": self.seller_id})
+            
+            if response.status_code == 403:
+                raise ValueError("Invalid Seller ID for Mock API.")
+                
+            response.raise_for_status()
+            data = response.json()
+            return data["payload"]
+        except Exception as e:
+            logger.error(f"Mock API Account verification failed: {e}")
+            raise
 
-    async def get_listings(self):
-        """Simulates Listings API with realistic data"""
-        await asyncio.sleep(1.2) # Network delay
-        # Return a mix of products with different statuses
-        return [
-            {
-                "sku": "TS-BLK-XL-001",
-                "title": "Premium Cotton T-Shirt - Black (XL)",
-                "price": {"currency": "USD", "amount": 24.99},
-                "quantity": 150,
-                "asin": "B09X7K2M4P",
-                "status": "ACTIVE",
-                "brand": "UrbanStyle",
-                "category": "Apparel",
-                "bullet_points": ["100% Organic Cotton", "Machine Washable", "Classic Fit"],
-                "images": ["https://m.media-amazon.com/images/I/71+MockImage1.jpg"]
-            },
-            {
-                "sku": "BT-SPK-BLK-002",
-                "title": "Wireless Bluetooth Speaker - Waterproof",
-                "price": {"currency": "USD", "amount": 45.00},
-                "quantity": 85,
-                "asin": "B08N5M7S6K",
-                "status": "ACTIVE",
-                "brand": "SoundMax",
-                "category": "Electronics",
-                "bullet_points": ["IPX7 Waterproof", "24h Battery Life", "Deep Bass"],
-                "images": ["https://m.media-amazon.com/images/I/71+MockImage2.jpg"]
-            },
-            {
-                "sku": "YGA-MAT-PRP-003",
-                "title": "Non-Slip Yoga Mat - Purple (6mm)",
-                "price": {"currency": "USD", "amount": 32.50},
-                "quantity": 200,
-                "asin": "B07Y4R6T8L",
-                "status": "INCOMPLETE",
-                "brand": "FitLife",
-                "category": "Sports & Outdoors",
-                "bullet_points": ["Extra Thick", "Eco-Friendly Material", "Carrying Strap Included"],
-                "images": ["https://m.media-amazon.com/images/I/71+MockImage3.jpg"]
-            }
-        ]
+    async def get_listings(self, sku: Optional[str] = None):
+        """Proxy to Mock API GET listings"""
+        try:
+            if sku:
+                # Call mock API for specific SKU
+                response = await self.client.get(
+                    f"/listings/2021-08-01/items/{self.seller_id}/{sku}",
+                    params={"sellerId": self.seller_id}
+                )
+                response.raise_for_status()
+                return response.json().get("payload", {})
 
+            # Return sample listings when no SKU specified
+            return [
+                {
+                    "sku": "TS-BLK-XL-001",
+                    "title": "Premium Cotton T-Shirt - Black (XL)",
+                    "price": {"currency": "USD", "amount": 24.99},
+                    "quantity": 150,
+                    "asin": "B09X7K2M4P",
+                    "status": "ACTIVE",
+                    "brand": "UrbanStyle",
+                    "category": "Apparel",
+                    "bullet_points": ["100% Organic Cotton", "Machine Washable", "Classic Fit"],
+                    "images": ["https://m.media-amazon.com/images/I/71+MockImage1.jpg"]
+                }
+            ]
+        except Exception as e:
+            logger.error(f"Mock API Listings failed: {e}")
+            return []
     async def submit_feed(self, feed_type: str, feed_data: bytes, marketplace_ids: list[str]) -> str:
         """Simulates Feed Submission"""
         await asyncio.sleep(0.8)
@@ -169,18 +166,31 @@ class RealSPAPIClient:
             logger.error(f"SP-API Error (get_account): {e}")
             raise
 
-    async def get_listings(self):
+    async def get_listings(self, sku: Optional[str] = None):
+        """
+        Get listings from Amazon SP-API.
+        If sku is provided, fetches that specific listing.
+        If sku is None, searches all listings for the seller.
+        """
         if self.is_simulation:
             return await self.client.get_listings()
         try:
-            # Note: Real API needs a specific SKU or search method. 
-            # For now, this assumes we can fetch or requires adjustment based on specific needs.
-            res = ListingsItems(credentials=self.creds).get_listings_item(
-                sellerId=self.seller_id,
-                sku="", # This usually requires a specific SKU in real API
-                marketplaceIds=[self.marketplace_id]
-            )
-            return res.payload
+            listings_api = ListingsItems(credentials=self.creds)
+            if sku:
+                # Get a specific listing by SKU
+                res = listings_api.get_listings_item(
+                    sellerId=self.seller_id,
+                    sku=sku,
+                    marketplaceIds=[self.marketplace_id]
+                )
+                return res.payload
+            else:
+                # Search/list all listings for this seller
+                res = listings_api.search_listings_items(
+                    sellerId=self.seller_id,
+                    marketplaceIds=[self.marketplace_id],
+                )
+                return res.payload
         except SellingApiException as e:
             logger.error(f"SP-API Error (get_listings): {e}")
             raise

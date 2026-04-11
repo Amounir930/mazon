@@ -24,26 +24,26 @@ class ListingService:
         product = db.query(Product).filter(Product.id == listing_data.product_id).first()
         if not product:
             raise ValueError(f"Product not found: {listing_data.product_id}")
-        
+
         # Verify seller owns the product
         if product.seller_id != listing_data.seller_id:
             raise ValueError("Product does not belong to the specified seller")
-        
+
         # Check for duplicate pending listing
         existing = db.query(Listing).filter(
             Listing.product_id == listing_data.product_id,
             Listing.status.in_(["queued", "processing", "submitted"]),
         ).first()
-        
+
         if existing:
             raise ValueError(f"Product already has a pending listing: {existing.id}")
-        
+
         # Get next queue position
         max_position = db.query(Listing).filter(
             Listing.seller_id == listing_data.seller_id,
             Listing.status == "queued",
         ).count()
-        
+
         # Create listing
         listing = Listing(
             product_id=listing_data.product_id,
@@ -51,13 +51,13 @@ class ListingService:
             status="queued",
             queue_position=max_position + 1,
         )
-        
+
         db.add(listing)
         db.flush()
-        
+
         # Update product status
         product.status = "queued"
-        
+
         logger.info(f"Listing created: {listing.id} for product {listing_data.product_id}")
         return listing
     

@@ -10,17 +10,49 @@ export interface AmazonConnectRequest {
 }
 
 export interface AmazonConnectResponse {
-  seller_id: string | null
-  amazon_seller_id: string | null
   is_connected: boolean
-  display_name: string | null
-  marketplace_id: string | null
-  last_sync_at: string | null
-  message: string
+  amazon_seller_id?: string
+  display_name?: string
+  marketplace_id?: string
+  region?: string
+  message?: string
 }
 
 export interface AmazonVerifyResponse {
+  success: boolean
+  message: string
+}
+
+// ==================== Auth (Phase 0) ====================
+
+export interface BrowserLoginRequest {
+  email: string
+  password: string
+  country_code: string
+}
+
+export interface BrowserLoginResponse {
+  success: boolean
+  needs_otp: boolean
+  seller_name?: string
+  country_code?: string
+  session_id?: string
+  error?: string
+  message?: string
+}
+
+export interface SessionStatusResponse {
   is_connected: boolean
+  auth_method?: string
+  seller_name?: string
+  email?: string
+  country_code?: string
+  marketplace_id?: string
+  is_valid: boolean
+  last_verified_at?: string
+}
+
+export interface MessageResponse {
   message: string
 }
 
@@ -56,6 +88,7 @@ export interface Product {
 
 export interface ProductCreate {
   sku: string
+  seller_id: string
   name: string
   name_ar?: string
   name_en?: string

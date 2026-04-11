@@ -9,11 +9,37 @@ const express = require('express')
 const cors = require('cors')
 const { v4: uuidv4 } = require('uuid')
 
+// ============ إعدادات الوصول (Credentials) ============
+const validCredentials = {
+  clientId: 'test123',
+  clientSecret: 'test123',
+  refreshToken: 'Atzr|test123',
+  sellerId: 'test123', // يدعم أيضاً test123 كـ Seller ID
+  mockSellerId: 'MOCK-SELLER-01'
+}
+
 const app = express()
 const PORT = 9500
 
 app.use(cors())
 app.use(express.json())
+
+// ============ Middleware للتحقق من الصلاحيات ============
+function authenticateAmazonRequest(req, res, next) {
+  // محاكاة التحقق من الـ Seller ID
+  const sellerId = req.params.sellerId || req.query.sellerId
+  if (sellerId && sellerId !== validCredentials.sellerId && sellerId !== validCredentials.mockSellerId) {
+    return res.status(403).json({
+      errors: [
+        {
+          code: 'Unauthorized',
+          message: `Access denied for Seller ID: ${sellerId}. Use 'test123' or 'MOCK-SELLER-01'.`,
+        },
+      ],
+    })
+  }
+  next()
+}
 
 // ============ محاكاة قاعدة بيانات Amazon ============
 
@@ -90,7 +116,7 @@ function simulateAmazonResponse(successRate = 0.85) {
  * POST /listings/2021-08-01/items/{sellerId}/{sku}
  * إنشاء أو تحديث منتج على Amazon
  */
-app.post('/listings/2021-08-01/items/:sellerId/:sku', async (req, res) => {
+app.post('/listings/2021-08-01/items/:sellerId/:sku', authenticateAmazonRequest, async (req, res) => {
   await delay(800 + Math.random() * 1200) // محاكاة وقت استجابة واقعي
 
   const { sellerId, sku } = req.params
@@ -133,7 +159,7 @@ app.post('/listings/2021-08-01/items/:sellerId/:sku', async (req, res) => {
  * GET /listings/2021-08-01/items/{sellerId}/{sku}
  * جلب تفاصيل منتج من Amazon
  */
-app.get('/listings/2021-08-01/items/:sellerId/:sku', async (req, res) => {
+app.get('/listings/2021-08-01/items/:sellerId/:sku', authenticateAmazonRequest, async (req, res) => {
   await delay(400 + Math.random() * 600)
 
   const { sellerId, sku } = req.params
@@ -167,7 +193,7 @@ app.get('/listings/2021-08-01/items/:sellerId/:sku', async (req, res) => {
  * DELETE /listings/2021-08-01/items/{sellerId}/{sku}
  * حذف منتج من Amazon
  */
-app.delete('/listings/2021-08-01/items/:sellerId/:sku', async (req, res) => {
+app.delete('/listings/2021-08-01/items/:sellerId/:sku', authenticateAmazonRequest, async (req, res) => {
   await delay(600 + Math.random() * 400)
 
   const { sellerId, sku } = req.params
@@ -463,6 +489,23 @@ app.post('/fba/inbound/v0/shipments', async (req, res) => {
 })
 
 /**
+ * GET /sellers/v1/account
+ * جلب بيانات الحساب (للتحقق من الاتصال)
+ */
+app.get('/sellers/v1/account', authenticateAmazonRequest, async (req, res) => {
+  await delay(500)
+  res.json({
+    payload: {
+      sellerId: req.query.sellerId || 'test123',
+      marketplaceId: 'ARBP9OOSHTCHU',
+      businessName: 'Global Trade Solutions LLC (Mock)',
+      status: 'ACTIVE',
+      accountType: 'PROFESSIONAL'
+    }
+  })
+})
+
+/**
  * GET /seller/orders/v1/orders
  * جلب الطلبات (محاكاة)
  */
@@ -502,7 +545,7 @@ app.get('/seller/orders/v1/orders', async (req, res) => {
  * POST /listings/2021-08-01/items/{sellerId}/{sku} (PUT)
  * تحديث منتج كامل
  */
-app.put('/listings/2021-08-01/items/:sellerId/:sku', async (req, res) => {
+app.put('/listings/2021-08-01/items/:sellerId/:sku', authenticateAmazonRequest, async (req, res) => {
   await delay(800 + Math.random() * 1200)
 
   const result = simulateAmazonResponse(0.90)
@@ -524,7 +567,7 @@ app.put('/listings/2021-08-01/items/:sellerId/:sku', async (req, res) => {
  * POST /listings/2021-08-01/items/{sellerId}/{sku} (PATCH)
  * تحديث جزئي للمنتج
  */
-app.patch('/listings/2021-08-01/items/:sellerId/:sku', async (req, res) => {
+app.patch('/listings/2021-08-01/items/:sellerId/:sku', authenticateAmazonRequest, async (req, res) => {
   await delay(600 + Math.random() * 800)
 
   const result = simulateAmazonResponse(0.92)
@@ -546,7 +589,7 @@ app.patch('/listings/2021-08-01/items/:sellerId/:sku', async (req, res) => {
  * DELETE /listings/2021-08-01/items/{sellerId}/{sku}
  * حذف منتج
  */
-app.delete('/listings/2021-08-01/items/:sellerId/:sku', async (req, res) => {
+app.delete('/listings/2021-08-01/items/:sellerId/:sku', authenticateAmazonRequest, async (req, res) => {
   await delay(500 + Math.random() * 700)
 
   const { sellerId, sku } = req.params
@@ -631,6 +674,11 @@ app.use((err, req, res, next) => {
 // ============ Start Server ============
 app.listen(PORT, () => {
   console.log(`\n🟠 Amazon SP-API Mock Server running on http://localhost:${PORT}`)
+  console.log(`\n📋 Valid Credentials for Mocking:`)
+  console.log(`   Client ID:      test123`)
+  console.log(`   Client Secret:  test123`)
+  console.log(`   Refresh Token:  Atzr|test123`)
+  console.log(`   Seller ID:      test123 (or MOCK-SELLER-01)`)
   console.log(`\n📋 Available endpoints:`)
   console.log(`   POST   /listings/2021-08-01/items/{sellerId}/{sku}`)
   console.log(`   GET    /listings/2021-08-01/items/{sellerId}/{sku}`)

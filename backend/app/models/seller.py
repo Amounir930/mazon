@@ -3,6 +3,7 @@ Seller Account Model - Single Client
 Stores Amazon SP-API credentials
 """
 from sqlalchemy import Column, String, Boolean, DateTime, Text
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
 from app.database import Base
@@ -33,6 +34,10 @@ class Seller(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    products = relationship("Product", back_populates="seller")
+    listings = relationship("Listing", back_populates="seller")
 
     def __repr__(self):
         return f"<Seller {self.display_name} ({self.amazon_seller_id})>"

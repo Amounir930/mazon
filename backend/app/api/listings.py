@@ -24,10 +24,16 @@ async def list_listings(
     if status:
         query = query.filter(Listing.status == status)
     listings = query.all()
-    return [
-        {c.name: getattr(l, c.name) for c in l.__table__.columns}
-        for l in listings
-    ]
+    result = []
+    for l in listings:
+        item = {c.name: getattr(l, c.name) for c in l.__table__.columns}
+        # Convert datetime to string for JSON serialization
+        for field in ['submitted_at', 'completed_at', 'created_at']:
+            val = item.get(field)
+            if val and hasattr(val, 'isoformat'):
+                item[field] = val.isoformat()
+        result.append(item)
+    return result
 
 
 @router.post("/submit")

@@ -38,3 +38,8 @@ pyinstaller==6.5.0
 
 # Utils
 python-dotenv==1.0.0
+
+# Authentication (Phase 0)
+playwright>=1.40.0
+niquests>=3.18.0
+cryptography>=41.0.0

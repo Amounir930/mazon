@@ -2,7 +2,8 @@
 Product Model
 Represents a product in the catalog
 """
-from sqlalchemy import Column, String, Integer, Numeric, Text, DateTime, Boolean
+from sqlalchemy import Column, String, Integer, Numeric, Text, DateTime, Boolean, ForeignKey
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
 from app.database import Base
@@ -14,6 +15,7 @@ class Product(Base):
     __tablename__ = "products"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    seller_id = Column(String(36), ForeignKey("sellers.id"), nullable=False, index=True)
 
     # Basic Information
     sku = Column(String(100), nullable=False, index=True)
@@ -65,6 +67,10 @@ class Product(Base):
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    seller = relationship("Seller", back_populates="products")
+    listings = relationship("Listing", back_populates="product")
 
     def __repr__(self):
         return f"<Product {self.sku}: {self.name}>"

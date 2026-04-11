@@ -50,16 +50,44 @@ def get_db() -> Generator[Session, None, None]:
 
 def init_db():
     """
-    Initialize database - create all tables.
+    Initialize database - create all tables and seed initial data.
     Call this on application startup.
     """
     # Import all models here to ensure they're registered with Base
     from app.models.seller import Seller
     from app.models.product import Product
     from app.models.listing import Listing
+    from app.models.session import Session  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     logger.info(f"Database initialized at: {APP_DATA_DIR}/crazy_lister.db")
+
+    # Seed initial mock seller if database is empty
+    from app.config import get_settings
+    settings = get_settings()
+    if getattr(settings, 'USE_AMAZON_MOCK', False):
+        db = SessionLocal()
+        try:
+            existing_seller = db.query(Seller).first()
+            if not existing_seller:
+                mock_seller = Seller(
+                    lwa_client_id="test123",
+                    lwa_client_secret="test123",
+                    lwa_refresh_token="Atzr|test123",
+                    amazon_seller_id="test123",
+                    display_name="Mock Seller",
+                    marketplace_id="ARBP9OOSHTCHU",
+                    region="EU",
+                    is_connected=True,
+                )
+                db.add(mock_seller)
+                db.commit()
+                logger.info("Seeded mock seller for development")
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"Could not seed mock seller: {e}")
+        finally:
+            db.close()
 
 
 # Enable WAL mode for better performance

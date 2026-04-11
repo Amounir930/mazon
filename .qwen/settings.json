@@ -38,7 +38,13 @@
       "Bash(echo *)",
       "Bash(pip show *)",
       "Bash(npm install)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(mkdir *)",
+      "Bash(set *)",
+      "Bash(alembic *)",
+      "Bash(echo.)",
+      "Read(C:\\Users\\Dell\\Desktop\\ALister-Reverse\\ALister-decompiled\\PYZ.pyz_extracted\\backend/**)",
+      "Bash(rmdir *)"
     ]
   },
   "$version": 3
