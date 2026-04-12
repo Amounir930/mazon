@@ -38,6 +38,8 @@ class Seller(Base):
     # Relationships
     products = relationship("Product", back_populates="seller")
     listings = relationship("Listing", back_populates="seller")
+    orders = relationship("Order", back_populates="seller")
+    inventories = relationship("Inventory", back_populates="seller")
 
     def __repr__(self):
         return f"<Seller {self.display_name} ({self.amazon_seller_id})>"

@@ -1,26 +1,20 @@
 """
-Authentication API Routes
-Handles browser login, OTP submission, session management, and SP-API login.
-Uses UnifiedAuthService for all auth methods.
+Authentication API Routes - PyWebView Login + Cookie-based
+بيدعم تسجيل الدخول عبر:
+1. PyWebView Login (الطريقة الأساسية)
+2. Cookie Connect (اختياري)
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
-from datetime import datetime, timezone, timedelta
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timezone
 
 from app.services.unified_auth import UnifiedAuthService
-from app.services.browser_worker import browser_login, browser_submit_otp
+from app.services.pywebview_login import start_amazon_login, get_login_status
 from app.services.session_store import (
-    save_browser_session,
-    save_spapi_session,
     get_active_session,
-    get_browser_cookies,
     deactivate_session,
     deactivate_all_sessions,
-    update_session_validity,
-    save_temp_session as _save_temp,
-    get_temp_session as _get_temp,
-    remove_temp_session as _remove_temp,
 )
 from loguru import logger
 
@@ -31,211 +25,201 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 # Request/Response Schemas
 # ============================================================
 
-class BrowserLoginRequest(BaseModel):
-    email: str = Field(..., description="Amazon account email")
-    password: str = Field(..., description="Amazon account password")
-    country_code: str = Field(default="us", description="Marketplace country code (us, uk, ae, sa, eg, ...)")
+class LoginUrlRequest(BaseModel):
+    country_code: str = Field(default="eg", description="Marketplace country code")
 
 
-class BrowserLoginResponse(BaseModel):
+class LoginUrlResponse(BaseModel):
     success: bool
-    needs_otp: bool = False
+    login_url: str
+    country_code: str
+
+
+class CookieConnectRequest(BaseModel):
+    email: str = Field(..., description="Amazon account email")
+    cookies: List[Dict[str, Any]] = Field(..., description="Browser cookies from PyWebView")
+    country_code: str = Field(default="eg", description="Marketplace country code")
+    seller_name: Optional[str] = Field(default=None, description="Seller display name")
+
+
+class CookieConnectResponse(BaseModel):
+    success: bool
     seller_name: Optional[str] = None
     country_code: Optional[str] = None
-    session_id: Optional[str] = None  # For OTP flow
+    session_id: Optional[str] = None
     error: Optional[str] = None
     message: Optional[str] = None
 
 
-class OTPSubmitRequest(BaseModel):
-    session_id: str = Field(..., description="Session ID from browser-login response")
-    otp: str = Field(..., description="OTP / verification code")
-
-
-class SPAPILoginRequest(BaseModel):
-    lwa_client_id: str = Field(..., description="LWA Client ID")
-    lwa_client_secret: str = Field(..., description="LWA Client Secret")
-    refresh_token: str = Field(..., description="LWA Refresh Token")
-    marketplace_id: str = Field(default="ARBP9OOSHTCHU", description="Amazon Marketplace ID")
-    aws_access_key: Optional[str] = Field(default="", description="AWS Access Key (optional)")
-    aws_secret_key: Optional[str] = Field(default="", description="AWS Secret Key (optional)")
-
-
 class SessionStatusResponse(BaseModel):
     is_connected: bool
-    auth_method: Optional[str] = None  # 'browser' or 'sp_api'
+    auth_method: Optional[str] = None
     seller_name: Optional[str] = None
     email: Optional[str] = None
     country_code: Optional[str] = None
-    marketplace_id: Optional[str] = None
     is_valid: bool = False
     last_verified_at: Optional[str] = None
 
 
-class LogoutResponse(BaseModel):
+class DisconnectRequest(BaseModel):
+    email: str = Field(..., description="Amazon account email to disconnect")
+
+
+class DisconnectResponse(BaseModel):
     success: bool
     message: str
 
 
-# ============================================================
-# Active sessions store for OTP flow
-# ============================================================
+class PyWebViewLoginRequest(BaseModel):
+    email: str = Field(..., description="Amazon account email")
+    country_code: str = Field(default="eg", description="Marketplace country code")
 
-_active_login_sessions: Dict[str, Any] = {}
+
+class PyWebViewLoginResponse(BaseModel):
+    success: bool
+    session_id: Optional[str] = None
+    error: Optional[str] = None
+    message: Optional[str] = None
 
 
 # ============================================================
 # Routes
 # ============================================================
 
-@router.post("/browser-login", response_model=BrowserLoginResponse)
-async def browser_login_route(req: BrowserLoginRequest):
+@router.post("/pywebview-login")
+async def pywebview_login(country_code: str = "eg"):
     """
-    Browser auto login using Playwright in a dedicated event loop thread.
-    Solves the Windows ProactorEventLoop + subprocess issue.
+    يفتح نافذة Amazon عبر PyWebView من الـ Backend مباشرة.
+    المستخدم بيدخل في النافذة → الـ Backend بيقرا الـ cookies تلقائياً.
+    
+    ده بيشتغل 100% لأن الـ Backend هو اللي بيفتح النافذة وبيقرا الـ cookies.
     """
-    logger.info(f"Browser login request for {req.email} ({req.country_code})")
-
+    logger.info(f"PyWebView login initiated for country: {country_code}")
+    
     try:
-        result = await browser_login(
-            email=req.email,
-            password=req.password,
-            country_code=req.country_code,
-        )
-
-        if result.get("needs_otp"):
-            # Store session for OTP submission
-            session_id = result.get("session_id")
-            if session_id:
-                _active_login_sessions[session_id] = {
-                    "email": req.email,
-                    "country_code": req.country_code,
-                }
-
-            return BrowserLoginResponse(
-                success=False,
-                needs_otp=True,
-                message=result.get("message", "OTP مطلوب"),
-                session_id=result.get("session_id"),
-            )
-
+        result = await start_amazon_login(country_code)
+        
         if result.get("success"):
-            # Save browser session
-            save_browser_session(
-                email=req.email,
-                country_code=req.country_code,
-                cookies=result.get("cookies", []),
-                seller_name=result.get("seller_name", req.email),
-                expires_at=datetime.now(timezone.utc) + timedelta(days=30),
-            )
-
-            return BrowserLoginResponse(
-                success=True,
-                seller_name=result.get("seller_name"),
-                country_code=req.country_code,
-            )
-
-        return BrowserLoginResponse(
-            success=False,
-            error=result.get("error", "فشل تسجيل الدخول عبر المتصفح"),
-        )
-
-    except Exception as e:
-        logger.error(f"Browser login error: {e}", exc_info=True)
-        error_msg = str(e) if str(e) else type(e).__name__
-        return BrowserLoginResponse(
-            success=False,
-            error=f"خطأ غير متوقع: {error_msg[:150]}",
-        )
-
-
-@router.post("/submit-otp", response_model=BrowserLoginResponse)
-async def submit_otp(req: OTPSubmitRequest):
-    """
-    إرسال OTP لتكملة تسجيل الدخول.
-    """
-    logger.info(f"OTP submission for session: {req.session_id}")
-
-    try:
-        result = await browser_submit_otp(
-            session_id=req.session_id,
-            otp=req.otp,
-        )
-
-        if result.get("success"):
-            # Get session info
-            session_info = _active_login_sessions.get(req.session_id, {})
-            email = session_info.get("email", "unknown")
-            country_code = session_info.get("country_code", "us")
-
-            save_browser_session(
+            # Save cookies to database
+            cookies = result.get("cookies", [])
+            email = "unknown"  # نحتاج نعرفه من الـ cookies أو نطلبه من الـ Frontend
+            
+            # Extract email from cookies if possible
+            for c in cookies:
+                if c.get("name") in ["ubid-main", "session-id"]:
+                    # We have valid Amazon cookies
+                    email = f"amazon_{country_code}"
+                    break
+            
+            # For now, save with a generic email - user can specify later
+            from app.services.cookie_auth import CookieAuth
+            session = CookieAuth.save_cookies(
                 email=email,
+                cookies=cookies,
                 country_code=country_code,
-                cookies=result.get("cookies", []),
-                seller_name=result.get("seller_name", email),
-                expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+                seller_name=email,
             )
-            _active_login_sessions.pop(req.session_id, None)
-
-            return BrowserLoginResponse(
-                success=True,
-                seller_name=result.get("seller_name"),
-                country_code=country_code,
-            )
-
-        return BrowserLoginResponse(
-            success=False,
-            error=result.get("error", "OTP غير صحيح"),
-        )
-
+            
+            return {
+                "success": True,
+                "seller_name": email,
+                "country_code": country_code,
+                "session_id": session.id,
+                "cookie_count": len(cookies),
+                "message": "تم الاتصال بنجاح!",
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "فشل تسجيل الدخول"),
+                "session_id": result.get("session_id"),
+            }
+            
     except Exception as e:
-        logger.error(f"OTP submission error: {e}")
-        _active_login_sessions.pop(req.session_id, None)
-        return BrowserLoginResponse(
-            success=False,
-            error=f"خطأ غير متوقع: {str(e)[:100]}",
-        )
+        logger.error(f"PyWebView login error: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": f"خطأ غير متوقع: {str(e)[:150]}",
+        }
 
 
-@router.post("/spapi-login", response_model=BrowserLoginResponse)
-async def spapi_login(req: SPAPILoginRequest):
+@router.get("/pywebview-status/{session_id}")
+async def pywebview_login_status(session_id: str):
     """
-    تسجيل دخول عبر SP-API credentials (الطريقة الرسمية).
-    يتحقق من البيانات قبل الحفظ.
+    يتتبع حالة تسجيل الدخول عبر PyWebView.
+    """
+    status = await get_login_status(session_id)
+    return status
+
+
+@router.get("/login-url", response_model=LoginUrlResponse)
+async def get_login_url(country_code: str = "eg"):
+    """
+    Get Amazon Seller Central login URL for a specific country.
+    الـ Frontend هيستخدم الرابط ده لفتح PyWebView.
     """
     try:
-        result = await UnifiedAuthService.spapi_login(
-            lwa_client_id=req.lwa_client_id,
-            lwa_client_secret=req.lwa_client_secret,
-            refresh_token=req.refresh_token,
-            marketplace_id=req.marketplace_id,
-            aws_access_key=req.aws_access_key or "",
-            aws_secret_key=req.aws_secret_key or "",
+        login_url = UnifiedAuthService.generate_login_url(country_code)
+        
+        return LoginUrlResponse(
+            success=True,
+            login_url=login_url,
+            country_code=country_code,
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate login URL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/connect", response_model=CookieConnectResponse)
+async def connect_with_cookies(req: CookieConnectRequest):
+    """
+    Connect using cookies from PyWebView.
+    الـ Frontend بيبعت الـ cookies بعد ما المستخدم يسجل دخول.
+    """
+    logger.info(f"Cookie connection request for {req.email} ({req.country_code})")
+    logger.info(f"Cookies received: {len(req.cookies)} cookies")
+    
+    # Log cookie names to see what we got
+    if req.cookies:
+        cookie_names = [c.get("name", "unknown") for c in req.cookies[:10]]
+        logger.info(f"Cookie names: {cookie_names}")
+    else:
+        logger.warning("⚠️ NO COOKIES RECEIVED from frontend!")
+        logger.warning("This means the frontend couldn't read cookies from the popup window.")
+        logger.warning("Root cause: Cross-origin policy prevents JS from reading Amazon cookies.")
+
+    try:
+        result = await UnifiedAuthService.connect_with_cookies(
+            email=req.email,
+            cookies=req.cookies,
+            country_code=req.country_code,
+            seller_name=req.seller_name,
         )
 
-        # Always return 200 with success/error in body
         if result.get("success"):
-            return BrowserLoginResponse(
+            return CookieConnectResponse(
                 success=True,
                 seller_name=result.get("seller_name"),
+                country_code=result.get("country_code"),
+                session_id=result.get("session_id"),
                 message="تم الاتصال بنجاح",
             )
         else:
-            return BrowserLoginResponse(
+            return CookieConnectResponse(
                 success=False,
-                error=result.get("error", "فشل التحقق من البيانات"),
+                error=result.get("error", "فشل تسجيل الدخول"),
             )
 
     except Exception as e:
-        # Never raise 500 - always return error in response body
-        logger.error(f"SP-API login error: {e}")
-        return BrowserLoginResponse(
+        logger.error(f"Cookie connection error: {e}", exc_info=True)
+        return CookieConnectResponse(
             success=False,
-            error=f"خطأ في الخادم: {str(e)[:100]}",
+            error=f"خطأ غير متوقع: {str(e)[:150]}",
         )
 
 
-@router.get("/session", response_model=SessionStatusResponse)
+@router.get("/status", response_model=SessionStatusResponse)
 async def get_session_status():
     """
     حالة الجلسة الحالية.
@@ -251,7 +235,6 @@ async def get_session_status():
         seller_name=session.seller_name,
         email=session.email,
         country_code=session.country_code,
-        marketplace_id=session.marketplace_id,
         is_valid=session.is_valid,
         last_verified_at=session.last_verified_at.isoformat() if session.last_verified_at else None,
     )
@@ -261,14 +244,20 @@ async def get_session_status():
 async def verify_session():
     """
     التحقق من صلاحية الجلسة الحالية.
-    للـ browser: يتأكد إن الكوكيز لسه صالحة.
     """
+    from app.services.session_store import get_active_session, update_session_validity
+    from app.services.cookie_auth import CookieAuth
+    
     session = get_active_session()
 
     if not session:
         return SessionStatusResponse(is_connected=False)
 
     if session.auth_method == "browser":
+        # Get decrypted cookies
+        from app.services.session_store import decrypt_data, get_browser_cookies
+        import json
+        
         cookies = get_browser_cookies(session.id)
         if not cookies:
             update_session_validity(session.id, False)
@@ -282,7 +271,8 @@ async def verify_session():
                 last_verified_at=session.last_verified_at.isoformat() if session.last_verified_at else None,
             )
 
-        is_valid = await verify_browser_session(cookies, session.country_code or "us")
+        # Verify cookies are still valid
+        is_valid = CookieAuth.verify_cookies(cookies, session.country_code or "eg")
         update_session_validity(session.id, is_valid)
 
         return SessionStatusResponse(
@@ -305,61 +295,81 @@ async def verify_session():
     )
 
 
-@router.post("/logout", response_model=LogoutResponse)
-async def logout(session_id: Optional[str] = None):
+@router.post("/disconnect", response_model=DisconnectResponse)
+async def disconnect(req: DisconnectRequest):
     """
-    تسجيل الخروج.
-    لو session_id محدد: يسوي deactivate له.
-    لو بدون: يسوي logout للكل.
+    تسجيل خروج لحساب معين.
     """
-    if session_id:
-        deactivate_session(session_id)
-        return LogoutResponse(success=True, message="تم تسجيل الخروج")
-    else:
+    try:
+        success = UnifiedAuthService.disconnect(email=req.email)
+        
+        if success:
+            return DisconnectResponse(
+                success=True,
+                message="تم تسجيل الخروج بنجاح",
+            )
+        else:
+            return DisconnectResponse(
+                success=False,
+                message="لم يتم العثور على جلسة نشطة",
+            )
+    except Exception as e:
+        logger.error(f"Disconnect error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/logout", response_model=DisconnectResponse)
+async def logout():
+    """
+    تسجيل خروج من كل الحسابات.
+    """
+    try:
         deactivate_all_sessions()
-        return LogoutResponse(success=True, message="تم تسجيل الخروج من جميع الحسابات")
+        return DisconnectResponse(
+            success=True,
+            message="تم تسجيل الخروج من جميع الحسابات",
+        )
+    except Exception as e:
+        logger.error(f"Logout error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/supported-countries")
 async def get_supported_countries():
     """
-    قائمة الدول المدعومة (Amazon Marketplaces الحقيقية).
+    قائمة الدول المدعومة (Amazon Marketplaces).
     """
     return {
         "countries": UnifiedAuthService.get_supported_countries()
     }
 
 
-@router.post("/browser-manual-login")
-async def browser_manual_login():
+@router.get("/sync/products")
+async def sync_products(email: str):
     """
-    فتح متصفح Amazon مصر الحقيقي للتسجيل اليدوي.
-    المستخدم يدخل بياناته بنفسه.
+    Sync المنتجات من Amazon باستخدام cookies.
     """
     try:
-        result = await UnifiedAuthService.browser_manual_login(
-            timeout_seconds=180,
-        )
-
-        if result.get("success"):
-            session = save_browser_session(
-                email="manual_eg",
-                country_code="eg",
-                cookies=result.get("cookies", []),
-                seller_name=result.get("seller_name", "Manual User"),
-                expires_at=datetime.now(timezone.utc) + timedelta(days=30),
-            )
-            return BrowserLoginResponse(
-                success=True,
-                seller_name=result.get("seller_name"),
-                country_code="eg",
-            )
-
-        return BrowserLoginResponse(
-            success=False,
-            error=result.get("error", "فشل تسجيل الدخول اليدوي"),
-        )
-
+        from app.services.cookie_scraper import CookieScraper
+        
+        scraper = CookieScraper()
+        result = await scraper.sync_products(email)
+        scraper.close()
+        
+        return result
     except Exception as e:
-        logger.error(f"Manual browser login error: {e}")
+        logger.error(f"Failed to sync products: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sync/orders")
+async def sync_orders(email: str):
+    """
+    Sync الطلبات من Amazon باستخدام cookies.
+    """
+    try:
+        result = await UnifiedAuthService.sync_orders(email=email)
+        return result
+    except Exception as e:
+        logger.error(f"Failed to sync orders: {e}")
         raise HTTPException(status_code=500, detail=str(e))

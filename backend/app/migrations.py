@@ -66,6 +66,122 @@ def run_migrations(engine) -> None:
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_activity_logs_listing_id ON activity_logs(listing_id)"))
             logger.info("Migration: 'activity_logs' table created")
 
+        # ==========================================
+        # Migration 5: Create orders table (Cookie Scraping)
+        # ==========================================
+        if "orders" not in existing_tables:
+            logger.info("Migration: Creating 'orders' table...")
+            conn.execute(text("""
+                CREATE TABLE orders (
+                    id VARCHAR(36) PRIMARY KEY,
+                    seller_id VARCHAR(36),
+                    amazon_order_id VARCHAR(50) NOT NULL UNIQUE,
+                    merchant_order_id VARCHAR(50),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    purchase_date TIMESTAMP,
+                    last_update_date TIMESTAMP,
+                    order_status VARCHAR(30) DEFAULT 'Pending',
+                    fulfillment_channel VARCHAR(20) DEFAULT 'MFN',
+                    sales_channel VARCHAR(50),
+                    buyer_name VARCHAR(200),
+                    buyer_email VARCHAR(200),
+                    buyer_phone VARCHAR(50),
+                    ship_address TEXT,
+                    ship_city VARCHAR(100),
+                    ship_state VARCHAR(100),
+                    ship_postal_code VARCHAR(20),
+                    ship_country VARCHAR(10),
+                    total NUMERIC(10, 2) DEFAULT 0,
+                    item_total NUMERIC(10, 2) DEFAULT 0,
+                    shipping_total NUMERIC(10, 2) DEFAULT 0,
+                    tax_total NUMERIC(10, 2) DEFAULT 0,
+                    currency VARCHAR(10) DEFAULT 'EGP',
+                    items TEXT,
+                    raw_data TEXT,
+                    synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    source VARCHAR(20) DEFAULT 'cookie',
+                    FOREIGN KEY (seller_id) REFERENCES sellers(id)
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_seller_id ON orders(seller_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_amazon_order_id ON orders(amazon_order_id)"))
+            logger.info("Migration: 'orders' table created")
+
+        # ==========================================
+        # Migration 6: Create inventory table (Cookie Scraping)
+        # ==========================================
+        if "inventory" not in existing_tables:
+            logger.info("Migration: Creating 'inventory' table...")
+            conn.execute(text("""
+                CREATE TABLE inventory (
+                    id VARCHAR(36) PRIMARY KEY,
+                    seller_id VARCHAR(36),
+                    product_id VARCHAR(36),
+                    sku VARCHAR(100) NOT NULL,
+                    asin VARCHAR(20),
+                    product_name VARCHAR(500),
+                    available INTEGER DEFAULT 0,
+                    reserved INTEGER DEFAULT 0,
+                    inbound INTEGER DEFAULT 0,
+                    unfulfillable INTEGER DEFAULT 0,
+                    fulfillment_channel VARCHAR(20) DEFAULT 'MFN',
+                    fba BOOLEAN DEFAULT FALSE,
+                    fbm BOOLEAN DEFAULT TRUE,
+                    price NUMERIC(10, 2) DEFAULT 0,
+                    currency VARCHAR(10) DEFAULT 'EGP',
+                    status VARCHAR(30) DEFAULT 'Active',
+                    raw_data TEXT,
+                    synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    source VARCHAR(20) DEFAULT 'cookie',
+                    FOREIGN KEY (seller_id) REFERENCES sellers(id),
+                    FOREIGN KEY (product_id) REFERENCES products(id)
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_inventory_seller_id ON inventory(seller_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_inventory_product_id ON inventory(product_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_inventory_sku ON inventory(sku)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_inventory_asin ON inventory(asin)"))
+            logger.info("Migration: 'inventory' table created")
+
+        # ==========================================
+        # Migration 7: Add browse_node_id to products (FIX)
+        # ==========================================
+        if "products" in existing_tables:
+            _add_column_if_missing(conn, "products", "browse_node_id", "VARCHAR(50)")
+
+        # ==========================================
+        # Migration 8: Add sale_price to products (FIX)
+        # ==========================================
+        if "products" in existing_tables:
+            _add_column_if_missing(conn, "products", "sale_price", "NUMERIC(10, 2)")
+            _add_column_if_missing(conn, "products", "sale_start_date", "TIMESTAMP")
+            _add_column_if_missing(conn, "products", "sale_end_date", "TIMESTAMP")
+            _add_column_if_missing(conn, "products", "compare_price", "NUMERIC(10, 2)")
+            _add_column_if_missing(conn, "products", "cost", "NUMERIC(10, 2)")
+
+        # ==========================================
+        # Migration 9: Add parent_sku and is_parent to products (FIX)
+        # ==========================================
+        if "products" in existing_tables:
+            _add_column_if_missing(conn, "products", "parent_sku", "VARCHAR(100)")
+            _add_column_if_missing(conn, "products", "is_parent", "BOOLEAN DEFAULT FALSE")
+            _add_column_if_missing(conn, "products", "name_ar", "VARCHAR(500)")
+            _add_column_if_missing(conn, "products", "name_en", "VARCHAR(500)")
+            _add_column_if_missing(conn, "products", "description_ar", "TEXT")
+            _add_column_if_missing(conn, "products", "description_en", "TEXT")
+            _add_column_if_missing(conn, "products", "bullet_points_ar", "TEXT DEFAULT '[]'")
+            _add_column_if_missing(conn, "products", "bullet_points_en", "TEXT DEFAULT '[]'")
+            _add_column_if_missing(conn, "products", "keywords", "TEXT DEFAULT '[]'")
+            _add_column_if_missing(conn, "products", "weight", "NUMERIC(8, 2)")
+            _add_column_if_missing(conn, "products", "dimensions", "TEXT DEFAULT '{}'")
+            _add_column_if_missing(conn, "products", "optimized_data", "TEXT")
+
+        # ==========================================
+        # Migration 10: Add name_ar to products (FIX)
+        # ==========================================
+        if "products" in existing_tables:
+            _add_column_if_missing(conn, "products", "name_ar", "VARCHAR(500)")
+
         conn.commit()
 
     logger.info("Database migration completed successfully")

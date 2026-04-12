@@ -26,22 +26,6 @@ export const amazonApi = {
 
 // ==================== Auth API (Phase 0 - New) ====================
 
-export interface BrowserLoginRequest {
-  email: string
-  password: string
-  country_code: string
-}
-
-export interface BrowserLoginResponse {
-  success: boolean
-  needs_otp: boolean
-  seller_name?: string
-  country_code?: string
-  session_id?: string
-  error?: string
-  message?: string
-}
-
 export interface SessionStatusResponse {
   is_connected: boolean
   auth_method?: string
@@ -53,25 +37,34 @@ export interface SessionStatusResponse {
   last_verified_at?: string
 }
 
+export interface CookieConnectRequest {
+  email: string
+  cookies: Array<Record<string, any>>
+  country_code: string
+  seller_name?: string
+}
+
+export interface CookieConnectResponse {
+  success: boolean
+  seller_name?: string
+  country_code?: string
+  session_id?: string
+  error?: string
+  message?: string
+}
+
 export const authApi = {
-  browserLogin: (data: BrowserLoginRequest) =>
-    api.post<BrowserLoginResponse>('/auth/browser-login', data),
+  getLoginUrl: (country_code = 'eg') =>
+    api.get<{ success: boolean; login_url: string; country_code: string }>('/auth/login-url', { params: { country_code } }),
 
-  submitOtp: (session_id: string, otp: string) =>
-    api.post<BrowserLoginResponse>('/auth/submit-otp', { session_id, otp }),
+  connectWithCookies: (data: CookieConnectRequest) =>
+    api.post<CookieConnectResponse>('/auth/connect', data),
 
-  spapiLogin: (data: {
-    lwa_client_id: string
-    lwa_client_secret: string
-    refresh_token: string
-    marketplace_id: string
-    aws_access_key?: string
-    aws_secret_key?: string
-  }) =>
-    api.post<BrowserLoginResponse>('/auth/spapi-login', data),
+  disconnect: (email: string) =>
+    api.post<{ success: boolean; message: string }>('/auth/disconnect', { email }),
 
   getSession: () =>
-    api.get<SessionStatusResponse>('/auth/session'),
+    api.get<SessionStatusResponse>('/auth/status'),  // Changed from /session to /status
 
   verifySession: () =>
     api.post<SessionStatusResponse>('/auth/verify-session'),

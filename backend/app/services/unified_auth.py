@@ -1,291 +1,248 @@
 """
-SP-API Authentication Service
-Uses python-amazon-sp-api library for real Amazon SP-API authentication.
+Unified Authentication Service
+يدعم كل طرق المصادقة: Cookie-based (الأساسية) + SP-API (اختياري)
 """
 import asyncio
-import os
-from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
+from typing import Optional, Dict, Any, List
 from loguru import logger
 
+from app.services.cookie_auth import CookieAuth
 
-def _sp_api_call_wrapper(
-    lwa_client_id: str,
-    lwa_client_secret: str,
-    refresh_token: str,
-    marketplace_id: str,
-    aws_access_key: str = "",
-    aws_secret_key: str = "",
-    aws_region: str = "eu-west-1",
-) -> Dict[str, Any]:
-    """
-    SP-API verification against Amazon.
-    Uses python-amazon-sp-api library.
-    """
-    if not lwa_client_id or not lwa_client_secret or not refresh_token:
-        return {"success": False, "error": "يرجى ملء جميع بيانات SP-API"}
 
-    try:
-        from sp_api.api import Sellers
-        from sp_api.base import SellingApiException, Marketplaces, Credentials
-
-        # Map marketplace IDs
-        marketplace_map = {
-            "ARBP9OOSHTCHU": Marketplaces.EG,  # Egypt
-            "A1F83G8C2ARO7P": Marketplaces.GB,  # UK
-            "ATVPDKIKX0DER": Marketplaces.US,   # US
-            "A1PA6795UKMFR9": Marketplaces.DE,   # Germany
-            "A13V1IB3VIYZZH": Marketplaces.FR,   # France
-            "A1RKKUPIHCS9HS": Marketplaces.ES,   # Spain
-            "APJ6JRA9NG5V4": Marketplaces.IT,    # Italy
-            "A1VC38T7YXB528": Marketplaces.JP,   # Japan
-            "A39IBJ37TRP1C6": Marketplaces.AU,   # Australia
-            "A2EUQ1WTGCTBG2": Marketplaces.CA,   # Canada
-            "A1AM78C64UM0Y8": Marketplaces.MX,   # Mexico
-            "AE08WJ6YKNBMC": Marketplaces.SA,    # Saudi Arabia
-            "A2VIGQ35RCS4UG": Marketplaces.AE,   # UAE
-        }
-        marketplace = marketplace_map.get(marketplace_id, Marketplaces.EG)
-
-        # Build credentials
-        creds_kwargs = {
-            "refresh_token": refresh_token,
-            "lwa_app_id": lwa_client_id,
-            "lwa_client_secret": lwa_client_secret,
-        }
-
-        # Add AWS credentials if provided
-        if aws_access_key and aws_secret_key:
-            creds_kwargs.update({
-                "aws_access_key": aws_access_key,
-                "aws_secret_key": aws_secret_key,
-            })
-
-        # Create Sellers API instance
-        sellers_api = Sellers(
-            credentials=creds_kwargs,
-            marketplace=marketplace,
-        )
-
-        # Call SP-API to verify
-        response = sellers_api.get_account()
-        payload = response.payload
-
-        seller_name = payload.get("businessName", "Unknown")
-        account_status = payload.get("status", "UNKNOWN")
-
-        logger.info(f"SP-API verified: {seller_name} ({account_status})")
-
-        return {
-            "success": True,
-            "seller_name": seller_name,
-            "marketplace_id": marketplace_id,
-            "account_status": account_status,
-            "account_type": payload.get("accountType", ""),
-            "payload": payload,
-        }
-
-    except SellingApiException as e:
-        error_str = str(e).lower()
-        logger.error(f"SP-API verification failed: {e}")
-
-        if "401" in error_str or "unauthorized" in error_str:
-            return {"success": False, "error": "بيانات غير صحيحة - Amazon رفض الدخول"}
-        elif "403" in error_str or "forbidden" in error_str:
-            return {"success": False, "error": "لا توجد صلاحيات - تأكد من IAM Role"}
-        elif "400" in error_str or "bad request" in error_str:
-            return {"success": False, "error": "بيانات غير صالحة"}
-        else:
-            return {"success": False, "error": f"خطأ من Amazon: {str(e)[:200]}"}
-
-    except ImportError as e:
-        logger.error(f"SP-API library not installed: {e}")
-        return {
-            "success": False,
-            "error": "مكتبة SP-API غير مثبتة",
-            "details": "شغل: pip install python-amazon-sp-api",
-        }
-
-    except Exception as e:
-        logger.error(f"SP-API verification error: {e}", exc_info=True)
-        return {"success": False, "error": f"خطأ غير متوقع: {str(e)[:200]}"}
-
+# ============================================================
+# Auth Result Types
+# ============================================================
 
 class UnifiedAuthResult:
     SUCCESS = "success"
     FAILED = "failed"
-    NEEDS_OTP = "needs_otp"
+    NEEDS_LOGIN = "needs_login"
 
+
+# ============================================================
+# UnifiedAuthService
+# ============================================================
 
 class UnifiedAuthService:
-    """Real Amazon SP-API authentication"""
+    """
+    Unified authentication service supporting:
+    1. Cookie-based auth (primary - via PyWebView)
+    2. SP-API auth (optional - for advanced users)
+    """
 
     # =========================================================================
-    # SP-API Authentication (REAL - Verified against Amazon)
+    # Cookie-based Authentication (Primary)
     # =========================================================================
 
     @staticmethod
-    async def verify_spapi_credentials(
-        lwa_client_id: str,
-        lwa_client_secret: str,
-        refresh_token: str,
-        marketplace_id: str,
-        aws_access_key: str = "",
-        aws_secret_key: str = "",
-        aws_region: str = "eu-west-1",
+    def generate_login_url(country_code: str = "eg") -> str:
+        """
+        Generate Amazon Seller Central login URL.
+        
+        Args:
+            country_code: Country code (eg, sa, ae, uk, us, ...)
+            
+        Returns:
+            Full URL to Amazon Seller Central login page
+        """
+        return CookieAuth.generate_login_url(country_code)
+
+    @staticmethod
+    async def connect_with_cookies(
+        email: str,
+        cookies: List[Dict[str, Any]],
+        country_code: str = "eg",
+        seller_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Verify SP-API credentials against REAL Amazon SP-API.
+        Connect using cookies from PyWebView.
+        
+        Flow:
+        1. Verify cookies are valid
+        2. Save encrypted cookies to database
+        3. Return success with seller info
+        
+        Args:
+            email: Amazon account email
+            cookies: List of cookie dictionaries from browser
+            country_code: Marketplace country code
+            seller_name: Optional seller name
+            
+        Returns:
+            Dictionary with success status and session info
         """
-        if not lwa_client_id or not lwa_client_secret or not refresh_token:
-            return {
-                "success": False,
-                "error": "يرجى ملء جميع بيانات SP-API",
-                "details": "Client ID و Secret و Refresh Token مطلوبة",
-            }
-
         try:
-            result = _sp_api_call_wrapper(
-                lwa_client_id=lwa_client_id,
-                lwa_client_secret=lwa_client_secret,
-                refresh_token=refresh_token,
-                marketplace_id=marketplace_id,
-                aws_access_key=aws_access_key,
-                aws_secret_key=aws_secret_key,
-                aws_region=aws_region,
-            )
-            return result
+            # Step 1: Verify cookies
+            is_valid = CookieAuth.verify_cookies(cookies, country_code)
+            if not is_valid:
+                return {
+                    "success": False,
+                    "error": "Cookies غير صالحة - يرجى تسجيل الدخول مرة أخرى",
+                }
 
-        except asyncio.TimeoutError:
-            logger.error("SP-API verification timed out (15s)")
+            # Step 2: Save cookies
+            session = CookieAuth.save_cookies(
+                email=email,
+                cookies=cookies,
+                country_code=country_code,
+                seller_name=seller_name,
+            )
+
+            logger.info(f"Cookie connection successful: {email}")
             return {
-                "success": False,
-                "error": "انتهت مهلة الاتصال بـ Amazon - تحقق من الإنترنت وحاول مرة أخرى",
+                "success": True,
+                "seller_name": seller_name or email,
+                "country_code": country_code,
+                "session_id": session.id,
             }
+
         except Exception as e:
-            logger.error(f"SP-API verification error: {e}", exc_info=True)
+            logger.error(f"Cookie connection error: {e}", exc_info=True)
             return {
                 "success": False,
                 "error": f"خطأ غير متوقع: {str(e)[:150]}",
             }
 
     @staticmethod
-    async def spapi_login(
-        lwa_client_id: str,
-        lwa_client_secret: str,
-        refresh_token: str,
-        marketplace_id: str,
-        aws_access_key: str = "",
-        aws_secret_key: str = "",
-    ) -> Dict[str, Any]:
+    def get_active_session(email: str) -> Optional[Dict[str, Any]]:
         """
-        Full SP-API login flow:
-        1. Verify credentials against REAL Amazon
-        2. If valid, save encrypted session
-        3. Return result
+        Get active session info for an email.
+        
+        Args:
+            email: Amazon account email
+            
+        Returns:
+            Dictionary with session info or None
         """
-        try:
-            # Step 1: REAL verification
-            result = await UnifiedAuthService.verify_spapi_credentials(
-                lwa_client_id=lwa_client_id,
-                lwa_client_secret=lwa_client_secret,
-                refresh_token=refresh_token,
-                marketplace_id=marketplace_id,
-                aws_access_key=aws_access_key,
-                aws_secret_key=aws_secret_key,
-            )
+        cookies = CookieAuth.get_active_cookies(email)
+        if not cookies:
+            return None
 
-            if not result.get("success"):
-                return result
+        return {
+            "email": email,
+            "has_cookies": True,
+            "cookie_count": len(cookies),
+        }
 
-            # Step 2: Save verified session
-            from app.services.session_store import save_spapi_session
+    @staticmethod
+    def disconnect(email: str) -> bool:
+        """
+        Disconnect and invalidate cookies for an email.
+        
+        Args:
+            email: Amazon account email
+            
+        Returns:
+            True if session was found and deactivated, False otherwise
+        """
+        return CookieAuth.disconnect(email)
 
-            try:
-                session = save_spapi_session(
-                    lwa_client_id=lwa_client_id,
-                    lwa_client_secret=lwa_client_secret,
-                    refresh_token=refresh_token,
-                    marketplace_id=marketplace_id,
-                    aws_access_key=aws_access_key,
-                    aws_secret_key=aws_secret_key,
-                    seller_name=result.get("seller_name", ""),
-                    expires_at=datetime.now(timezone.utc) + timedelta(days=365),
-                )
+    # =========================================================================
+    # Data Sync Operations (Cookie-based)
+    # =========================================================================
 
-                logger.info(f"SP-API session saved: {session.id} for {result.get('seller_name')}")
-                return {
-                    "success": True,
-                    "seller_name": result.get("seller_name"),
-                    "marketplace_id": marketplace_id,
-                    "session_id": session.id,
-                }
-            except Exception as e:
-                logger.error(f"Failed to save SP-API session: {e}")
-                return {
-                    "success": False,
-                    "error": "فشل حفظ الجلسة - حاول مرة أخرى",
-                }
-
-        except Exception as e:
-            logger.error(f"SP-API login error: {e}", exc_info=True)
+    @staticmethod
+    async def sync_products(email: str) -> Dict[str, Any]:
+        """
+        Sync products using active cookies.
+        
+        Args:
+            email: Amazon account email
+            
+        Returns:
+            Dictionary with products list and metadata
+        """
+        cookies = CookieAuth.get_active_cookies(email)
+        if not cookies:
             return {
                 "success": False,
-                "error": f"خطأ غير متوقع: {str(e)[:100]}",
+                "error": "No active session - please login first",
+                "products": [],
             }
 
-    # =========================================================================
-    # Browser Auto Authentication (REAL Amazon Seller Central)
-    # =========================================================================
+        # Get country code from session (need to query DB)
+        from app.database import SessionLocal
+        from app.models.session import Session
+        
+        db = SessionLocal()
+        try:
+            session = db.query(Session).filter(
+                Session.auth_method == "browser",
+                Session.email == email,
+                Session.is_active == True,
+            ).first()
+            
+            country_code = session.country_code if session else "eg"
+        finally:
+            db.close()
+
+        return await CookieAuth.sync_products(cookies, country_code)
 
     @staticmethod
-    async def browser_auto_login(
-        email: str,
-        password: str,
-        country_code: str,
-        otp: str = "",
-    ) -> Dict[str, Any]:
+    async def sync_orders(email: str) -> Dict[str, Any]:
         """
-        Browser auto login to REAL Amazon Seller Central.
-        Uses BrowserWorker (dedicated event loop thread) to avoid Windows asyncio issues.
+        Sync orders using active cookies.
+        
+        Args:
+            email: Amazon account email
+            
+        Returns:
+            Dictionary with orders list and metadata
         """
-        from app.services.browser_worker import browser_login as worker_browser_login
+        cookies = CookieAuth.get_active_cookies(email)
+        if not cookies:
+            return {
+                "success": False,
+                "error": "No active session - please login first",
+                "orders": [],
+            }
 
-        result = await worker_browser_login(
-            email=email,
-            password=password,
-            country_code=country_code,
-            otp=otp or None,
-        )
-        return result
+        # Get country code from session
+        from app.database import SessionLocal
+        from app.models.session import Session
+        
+        db = SessionLocal()
+        try:
+            session = db.query(Session).filter(
+                Session.auth_method == "browser",
+                Session.email == email,
+                Session.is_active == True,
+            ).first()
+            
+            country_code = session.country_code if session else "eg"
+        finally:
+            db.close()
+
+        return await CookieAuth.sync_orders(cookies, country_code)
 
     # =========================================================================
-    # Browser Manual Authentication (REAL Amazon)
-    # =========================================================================
-
-    @staticmethod
-    async def browser_manual_login(
-        timeout_seconds: int = 180,
-    ) -> Dict[str, Any]:
-        """
-        Opens REAL Amazon Seller Central (Egypt) for manual login.
-        User enters credentials themselves.
-        """
-        from app.services.browser_manual_auth import BrowserManualAuth
-
-        auth = BrowserManualAuth(
-            timeout_seconds=timeout_seconds,
-        )
-
-        result = await auth.login()
-        return result
-
-    # =========================================================================
-    # Supported Countries (Real Amazon Marketplaces)
+    # Supported Countries
     # =========================================================================
 
     @staticmethod
     def get_supported_countries() -> Dict[str, str]:
-        """Get list of real Amazon marketplaces"""
-        from app.services.browser_worker import SELLER_CENTRAL_BASE
-        return SELLER_CENTRAL_BASE
+        """
+        Get list of supported Amazon marketplaces.
+        
+        Returns:
+            Dictionary mapping country codes to display names
+        """
+        from app.services.cookie_auth import SELLER_CENTRAL_BASE
+        
+        country_names = {
+            "eg": "Egypt",
+            "sa": "Saudi Arabia",
+            "ae": "UAE",
+            "uk": "United Kingdom",
+            "us": "United States",
+            "de": "Germany",
+            "fr": "France",
+            "it": "Italy",
+            "es": "Spain",
+        }
+        
+        return {
+            code: country_names.get(code, code.upper())
+            for code in SELLER_CENTRAL_BASE.keys()
+        }

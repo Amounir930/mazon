@@ -298,54 +298,6 @@ export function useSessionStatus() {
   })
 }
 
-export function useBrowserLogin() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (data: BrowserLoginRequest) => {
-      const { data: result } = await authApi.browserLogin(data)
-      return result
-    },
-    onSuccess: (data) => {
-      if (data.success) {
-        queryClient.invalidateQueries({ queryKey: authKeys.session })
-      }
-    },
-  })
-}
-
-export function useSubmitOtp() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async ({ session_id, otp }: { session_id: string; otp: string }) => {
-      const { data: result } = await authApi.submitOtp(session_id, otp)
-      return result
-    },
-    onSuccess: (data) => {
-      if (data.success) {
-        queryClient.invalidateQueries({ queryKey: authKeys.session })
-      }
-    },
-  })
-}
-
-export function useSpapiLogin() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (data: Parameters<typeof authApi.spapiLogin>[0]) => {
-      const { data: result } = await authApi.spapiLogin(data)
-      return result
-    },
-    onSuccess: (data) => {
-      if (data.success) {
-        queryClient.invalidateQueries({ queryKey: authKeys.session })
-      }
-    },
-  })
-}
-
 export function useLogout() {
   const queryClient = useQueryClient()
 
@@ -377,5 +329,44 @@ export function useSupportedCountries() {
       return data
     },
     staleTime: 1000 * 60 * 60 * 24,
+  })
+}
+
+export function useGetLoginUrl() {
+  return useMutation({
+    mutationFn: async (country_code: string) => {
+      const { data } = await authApi.getLoginUrl(country_code)
+      return data
+    },
+  })
+}
+
+export function useConnectWithCookies() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (data: Parameters<typeof authApi.connectWithCookies>[0]) => {
+      const { data: result } = await authApi.connectWithCookies(data)
+      return result
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        queryClient.invalidateQueries({ queryKey: authKeys.session })
+      }
+    },
+  })
+}
+
+export function useDisconnectAmazon() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (email: string) => {
+      const { data } = await authApi.disconnect(email)
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: authKeys.session })
+    },
   })
 }

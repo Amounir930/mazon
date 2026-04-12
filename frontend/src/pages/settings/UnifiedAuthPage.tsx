@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { useSessionStatus, useBrowserLogin, useSubmitOtp, useSpapiLogin, useLogout, useVerifySession } from '@/api/hooks'
-import { Shield, Key, Monitor, AlertTriangle, Loader2, CheckCircle, LogOut, RefreshCw } from 'lucide-react'
+import { useSessionStatus, useLogout, useVerifySession, useDisconnectAmazon } from '@/api/hooks'
+import { Shield, AlertTriangle, Loader2, CheckCircle, LogOut, RefreshCw, Mail } from 'lucide-react'
+import AmazonLoginDirect from './AmazonLoginDirect'
 import toast from 'react-hot-toast'
 
 export default function UnifiedAuthPage() {
   const { data: session, isLoading, refetch } = useSessionStatus()
   const logoutMutation = useLogout()
   const verifyMutation = useVerifySession()
+  const disconnectMutation = useDisconnectAmazon()
 
   const isConnected = session?.is_connected
 
@@ -14,6 +16,14 @@ export default function UnifiedAuthPage() {
     await logoutMutation.mutateAsync()
     toast.success('تم تسجيل الخروج')
     refetch()
+  }
+
+  const handleDisconnect = async () => {
+    if (session?.email) {
+      await disconnectMutation.mutateAsync(session.email)
+      toast.success('تم قطع الاتصال')
+      refetch()
+    }
   }
 
   const handleVerify = async () => {
@@ -30,6 +40,10 @@ export default function UnifiedAuthPage() {
     refetch()
   }
 
+  const handleLoginSuccess = () => {
+    refetch()
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -43,7 +57,7 @@ export default function UnifiedAuthPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">🔐 تسجيل الدخول بـ Amazon</h1>
-        <p className="text-gray-400 mt-1">SP-API حقيقي - بدون بيانات وهمية</p>
+        <p className="text-gray-400 mt-1">سجل دخولك مباشرة عبر Amazon Seller Central</p>
       </div>
 
       {/* Connection Status Banner */}
@@ -57,7 +71,7 @@ export default function UnifiedAuthPage() {
                   ✅ متصل ({session?.auth_method === 'browser' ? 'Browser' : 'SP-API'})
                 </h3>
                 <p className="text-xs text-gray-400">
-                  {session?.email || session?.marketplace_id}
+                  {session?.email || session?.seller_name}
                 </p>
               </div>
             </div>
@@ -71,6 +85,14 @@ export default function UnifiedAuthPage() {
                 تحقق
               </button>
               <button
+                onClick={handleDisconnect}
+                disabled={disconnectMutation.isPending}
+                className="px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 rounded-lg flex items-center gap-2 text-sm disabled:opacity-50"
+              >
+                <LogOut className="w-4 h-4" />
+                قطع
+              </button>
+              <button
                 onClick={handleLogout}
                 disabled={logoutMutation.isPending}
                 className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg flex items-center gap-2 text-sm disabled:opacity-50"
@@ -82,7 +104,7 @@ export default function UnifiedAuthPage() {
           </div>
           <div className="mt-3 bg-gray-800/50 rounded-lg p-3">
             <p className="text-gray-400 text-xs">
-              🔒 الخانات مقفلة لأنك متصل بالفعل. سجل خروج لتغيير الطريقة.
+              🔒 متصل بنجاح. يمكنك استخدام باقي النظام الآن.
             </p>
           </div>
         </div>
@@ -91,175 +113,79 @@ export default function UnifiedAuthPage() {
           <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
           <div>
             <h3 className="text-red-400 font-bold">غير متصل</h3>
-            <p className="text-xs text-gray-400">اختر طريقة تسجيل الدخول أدناه</p>
+            <p className="text-xs text-gray-400">سجل دخولك عبر Amazon للمتابعة</p>
           </div>
         </div>
       )}
 
-      {/* Auth Methods - only show if not connected */}
-      {!isConnected && <AuthMethods onConnect={() => refetch()} />}
+      {/* Login Form - only show if not connected */}
+      {!isConnected && <LoginForm onSuccess={handleLoginSuccess} />}
     </div>
   )
 }
 
-function AuthMethods({ onConnect }: { onConnect: () => void }) {
+function LoginForm({ onSuccess }: { onSuccess: () => void }) {
+  const [email, setEmail] = useState('')
+  const [countryCode, setCountryCode] = useState('eg')
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Important notice */}
-      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 flex items-start gap-3">
-        <Shield className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+      <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 flex items-start gap-3">
+        <Shield className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
         <div>
-          <h3 className="text-yellow-300 font-bold text-sm mb-1">⚠️ تسجيل المتصفح غير متاح حالياً</h3>
-          <p className="text-yellow-300/70 text-xs leading-relaxed">
-            نظراً لمشاكل توافق Playwright مع Windows/Uvicorn، استخدم
-            <strong> SP-API credentials</strong> بدلاً منها.
+          <h3 className="text-blue-300 font-bold text-sm mb-1">ℹ️ تسجيل الدخول المباشر</h3>
+          <p className="text-blue-300/70 text-xs leading-relaxed">
+            سيتم فتح صفحة Amazon Seller Central في نافذة جديدة.
+            <br />
+            أدخل بياناتك مباشرة وسيتم الاتصال تلقائياً.
           </p>
         </div>
       </div>
 
-      {/* Only SP-API form */}
-      <SpapiForm onSuccess={onConnect} />
-    </div>
-  )
-}
+      {/* Email & Country Input */}
+      <div className="bg-[#12121a] rounded-xl border border-gray-800/50 p-6 space-y-4">
+        <h3 className="text-white font-bold flex items-center gap-2">
+          <Mail className="w-5 h-5 text-amazon-orange" />
+          بيانات الحساب
+        </h3>
 
-function AutoForm({ onSuccess }: { onSuccess: () => void }) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [otp, setOtp] = useState('')
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const loginMutation = useBrowserLogin()
-  const otpMutation = useSubmitOtp()
-
-  const handleLogin = async () => {
-    if (!email || !password) { toast.error('أدخل الإيميل والباسوورد'); return }
-    const result = await loginMutation.mutateAsync({ email, password, country_code: 'eg' })
-    if (result.needs_otp) {
-      setSessionId(result.session_id || null)
-      toast.info('OTP مطلوب')
-    } else if (result.success) {
-      toast.success(`تم الاتصال! (${result.seller_name})`)
-      onSuccess()
-    } else {
-      toast.error(result.error || 'فشل تسجيل الدخول')
-    }
-  }
-
-  const handleOtp = async () => {
-    if (!sessionId || !otp) { toast.error('أدخل OTP'); return }
-    const result = await otpMutation.mutateAsync({ session_id: sessionId, otp })
-    if (result.success) {
-      toast.success(`تم الاتصال! (${result.seller_name})`)
-      onSuccess()
-    } else {
-      toast.error(result.error || 'OTP خطأ')
-    }
-  }
-
-  return (
-    <div className="bg-[#12121a] rounded-xl border border-gray-800/50 p-6 space-y-4">
-      <h3 className="text-white font-bold flex items-center gap-2">
-        <Monitor className="w-5 h-5 text-orange-500" />
-        تسجيل مباشر عبر المتصفح
-      </h3>
-
-      {sessionId ? (
-        <>
-          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-blue-300 text-sm">
-            أدخل رمز OTP المرسل لجوالك
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-1">
+            البريد الإلكتروني
+          </label>
           <input
-            type="text"
-            value={otp}
-            onChange={e => setOtp(e.target.value)}
-            placeholder="رمز التحقق"
-            className="w-full bg-[#0a0a0f] border border-gray-700 rounded-lg px-4 py-3 text-white text-center text-2xl tracking-widest focus:border-blue-500 outline-none"
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="seller@example.com"
+            className="w-full bg-[#0a0a0f] border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-amazon-orange outline-none"
           />
-          <SubmitBtn onClick={handleOtp} loading={otpMutation.isPending} label="تأكيد OTP" color="blue" />
-        </>
-      ) : (
-        <>
-          <Input label="البريد الإلكتروني" type="email" value={email} onChange={setEmail} placeholder="seller@example.com" />
-          <Input label="كلمة المرور" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
-          <SubmitBtn onClick={handleLogin} loading={loginMutation.isPending} label="تسجيل الدخول" />
-        </>
-      )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-400 mb-1">
+            الدولة
+          </label>
+          <select
+            value={countryCode}
+            onChange={e => setCountryCode(e.target.value)}
+            className="w-full bg-[#0a0a0f] border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-amazon-orange outline-none"
+          >
+            <option value="eg">🇪🇬 مصر</option>
+            <option value="sa">🇸🇦 السعودية</option>
+            <option value="ae">🇦🇪 الإمارات</option>
+            <option value="uk">🇬🇧 المملكة المتحدة</option>
+            <option value="us">🇺🇸 الولايات المتحدة</option>
+          </select>
+        </div>
+
+        {/* Amazon Login Direct - Backend opens PyWebView window */}
+        <AmazonLoginDirect
+          country_code={countryCode}
+          onSuccess={onSuccess}
+        />
+      </div>
     </div>
-  )
-}
-
-function SpapiForm({ onSuccess }: { onSuccess: () => void }) {
-  const [form, setForm] = useState({ clientId: '', clientSecret: '', refreshToken: '', marketplaceId: 'ARBP9OOSHTCHU' })
-  const mutation = useSpapiLogin()
-
-  const handleSubmit = async () => {
-    if (!form.clientId || !form.clientSecret || !form.refreshToken) {
-      toast.error('يرجى ملء جميع الحقول')
-      return
-    }
-    const result = await mutation.mutateAsync({
-      lwa_client_id: form.clientId,
-      lwa_client_secret: form.clientSecret,
-      refresh_token: form.refreshToken,
-      marketplace_id: form.marketplaceId,
-    })
-    if (result.success) {
-      toast.success(`تم الاتصال! (${result.seller_name || 'SP-API'})`)
-      onSuccess()
-    } else {
-      toast.error(result.error || 'فشل الاتصال')
-    }
-  }
-
-  return (
-    <div className="bg-[#12121a] rounded-xl border border-gray-800/50 p-6 space-y-4">
-      <h3 className="text-white font-bold flex items-center gap-2">
-        <Key className="w-5 h-5 text-blue-500" />
-        SP-API Credentials
-      </h3>
-      <p className="text-gray-400 text-xs">
-        احصل على هذه البيانات من{' '}
-        <a href="https://developer.amazon.com" target="_blank" rel="noreferrer" className="text-blue-400 underline">
-          Amazon Developer Console
-        </a>
-      </p>
-      <Input label="LWA Client ID" value={form.clientId} onChange={v => setForm({...form, clientId: v})} placeholder="amzn1.application-oa2-client..." />
-      <Input label="LWA Client Secret" type="password" value={form.clientSecret} onChange={v => setForm({...form, clientSecret: v})} placeholder="••••••••" />
-      <Input label="Refresh Token" type="password" value={form.refreshToken} onChange={v => setForm({...form, refreshToken: v})} placeholder="Atzr|..." />
-      <Input label="Marketplace ID" value={form.marketplaceId} onChange={v => setForm({...form, marketplaceId: v})} placeholder="ARBP9OOSHTCHU" />
-      <SubmitBtn onClick={handleSubmit} loading={mutation.isPending} label="حفظ والاتصال" color="blue" />
-    </div>
-  )
-}
-
-function Input({ label, value, onChange, type = 'text', placeholder }: any) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-400 mb-1">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full bg-[#0a0a0f] border border-gray-700 rounded-lg px-4 py-3 text-white focus:border-orange-500 outline-none"
-      />
-    </div>
-  )
-}
-
-function SubmitBtn({ onClick, loading, label, color = 'orange' }: { onClick: () => void; loading?: boolean; label: string; color?: string }) {
-  const colors: Record<string, string> = {
-    orange: 'bg-orange-500 hover:bg-orange-600',
-    blue: 'bg-blue-500 hover:bg-blue-600',
-  }
-  return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      className={`w-full ${colors[color]} text-white font-bold py-3 rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50`}
-    >
-      {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}
-      {label}
-    </button>
   )
 }
