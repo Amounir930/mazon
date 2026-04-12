@@ -75,8 +75,20 @@ class Product(Base):
     package_quantity = Column(Integer, default=1)
     browse_node_id = Column(String(50))  # Amazon category node for better discoverability
 
+    # Additional Amazon fields (from Page 2)
+    material = Column(String(200))  # Material / Composition
+    number_of_items = Column(Integer, default=1)  # Number of items in package
+    unit_count = Column(Text)  # JSON: {"value": 500, "type": "Grams"}
+    target_audience = Column(String(100))  # Target audience (Adults, Kids, etc.)
+
     # Status
-    status = Column(String(20), default="draft")  # draft, queued, processing, published, failed
+    # draft: جديد في النظام
+    # incomplete: ناقص بيانات Amazon (صور، UPC/EAN، bullet points)
+    # queued: في قائمة الانتظار للرفع
+    # processing: جاري الرفع لـ Amazon
+    # published: تم الرفع بنجاح
+    # failed: فشل الرفع
+    status = Column(String(20), default="draft")
 
     # AI Optimization
     optimized_data = Column(Text)  # JSON string

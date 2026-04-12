@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from app.database import get_db
 from app.models.product import Product
+from app.models.seller import Seller
 from app.schemas.product import ProductCreate, ProductUpdate, ProductListResponse, MessageResponse
 from app.api.activity_log import create_activity_log
 from loguru import logger
@@ -91,9 +92,18 @@ async def list_products(
 
 @router.post("", status_code=201)
 async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
+    # Auto-assign seller_id if empty (use first available seller)
+    seller_id = data.seller_id or ""
+    if not seller_id:
+        first_seller = db.query(Seller).first()
+        if first_seller:
+            seller_id = first_seller.id
+        else:
+            raise HTTPException(status_code=400, detail="No sellers configured. Please add a seller first.")
+
     # Check SKU uniqueness for this seller
     existing = db.query(Product).filter(
-        Product.seller_id == data.seller_id,
+        Product.seller_id == seller_id,
         Product.sku == data.sku
     ).first()
 
@@ -103,8 +113,28 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
             detail="SKU already exists for this seller"
         )
 
+    # Validate against Amazon requirements to determine status
+    from app.services.validation_service import ValidationService
+
+    validation = ValidationService.validate_product(
+        sku=data.sku,
+        name=data.name,
+        price=float(data.price),
+        images=data.images or [],
+        brand=data.brand or "",
+        product_type=data.product_type or "",
+        condition=data.condition or "New",
+        fulfillment_channel=data.fulfillment_channel or "MFN",
+        upc=data.upc or "",
+        ean=data.ean or "",
+        bullet_points=data.bullet_points or [],
+    )
+
+    # Determine status: valid = draft (ready), invalid = incomplete
+    status = "draft" if validation.valid else "incomplete"
+
     product = Product(
-        seller_id=data.seller_id,
+        seller_id=seller_id,
         sku=data.sku,
         name=data.name,
         name_ar=data.name_ar,
@@ -120,6 +150,7 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
         bullet_points=json.dumps(data.bullet_points or []),
         bullet_points_ar=json.dumps(data.bullet_points_ar or []),
         bullet_points_en=json.dumps(data.bullet_points_en or []),
+        keywords=json.dumps(data.keywords or []),
         images=json.dumps(data.images or []),
         attributes=json.dumps(data.attributes or {}),
         upc=data.upc or "",
@@ -132,22 +163,38 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
         model_number=data.model_number or "",
         country_of_origin=data.country_of_origin or "",
         package_quantity=data.package_quantity or 1,
+        browse_node_id=data.browse_node_id or "",
+        # حقول إضافية من صفحة 2
+        material=data.material or "",
+        number_of_items=data.number_of_items or 1,
+        unit_count=json.dumps(data.unit_count) if data.unit_count else None,
+        target_audience=data.target_audience or "",
         # Sale pricing
+        compare_price=data.compare_price,
+        cost=data.cost,
         sale_price=data.sale_price,
         sale_start_date=data.sale_start_date,
         sale_end_date=data.sale_end_date,
-        browse_node_id=data.browse_node_id or "",
+        # المنتج بيتحفظ draft لو كامل، incomplete لو ناقص
+        status=status,
     )
     db.add(product)
     db.commit()
     db.refresh(product)
 
     # Log activity
-    create_activity_log(db, product.id, "created", "success", {"sku": product.sku, "name": product.name})
+    create_activity_log(db, product.id, "created", "success", {
+        "sku": product.sku,
+        "name": product.name,
+        "status": status,
+        "validation_errors": [e.field for e in validation.errors] if not validation.valid else [],
+    })
 
-    # Return product with listing_copies support info
+    # Return product with validation info
     result = product_to_dict(product)
     result['listing_copies_supported'] = True
+    result['validation'] = validation.to_dict()
+    result['is_amazon_ready'] = validation.valid
     return result
 
 
@@ -196,11 +243,50 @@ async def update_product(product_id: str, data: ProductUpdate, db: Session = Dep
         else:
             setattr(product, field, value)
 
+    # Re-validate after update to determine if status should change
+    from app.services.validation_service import ValidationService
+
+    # Parse JSON fields for validation
+    images = []
+    try:
+        images = json.loads(product.images) if isinstance(product.images, str) else (product.images or [])
+    except Exception:
+        images = []
+
+    bullet_points = []
+    try:
+        bullet_points = json.loads(product.bullet_points) if isinstance(product.bullet_points, str) else (product.bullet_points or [])
+    except Exception:
+        bullet_points = []
+
+    validation = ValidationService.validate_product(
+        sku=product.sku,
+        name=product.name,
+        price=float(product.price) if product.price else 0,
+        images=images,
+        brand=product.brand or "",
+        product_type=product.product_type or "",
+        condition=product.condition or "New",
+        fulfillment_channel=product.fulfillment_channel or "MFN",
+        upc=product.upc or "",
+        ean=product.ean or "",
+        bullet_points=bullet_points,
+    )
+
+    # Update status based on validation
+    if validation.valid and product.status == "incomplete":
+        product.status = "draft"  # Now ready for Amazon
+    elif not validation.valid and product.status != "incomplete":
+        product.status = "incomplete"
+
     db.commit()
     db.refresh(product)
 
     # Log activity
-    create_activity_log(db, product.id, "updated", "success", {"fields_updated": list(update_data.keys())})
+    create_activity_log(db, product.id, "updated", "success", {
+        "fields_updated": list(update_data.keys()),
+        "new_status": product.status,
+    })
 
     return product_to_dict(product)
 
@@ -213,10 +299,10 @@ async def lookup_product(product_id: str, id_type: str = "EAN", db: Session = De
     """
     try:
         from app.services.amazon_lookup import AmazonProductLookup
-        
+
         lookup = AmazonProductLookup("amazon_eg")
         result = await lookup.lookup(product_id, id_type)
-        
+
         if result.get("found"):
             return {
                 "available": False,
@@ -236,6 +322,91 @@ async def lookup_product(product_id: str, id_type: str = "EAN", db: Session = De
             "available": True,
             "reason": f"Lookup skipped: {str(e)}",
         }
+
+
+@router.post("/preview-feed")
+async def preview_amazon_feed(data: ProductCreate):
+    """
+    يولّد معاينة للبيانات اللي هتترسل لـ Amazon (JSON + XML)
+    من غير ما يبعت حاجة فعلًا - للعرض فقط
+    """
+    import json as json_mod
+    from app.services.feed_service import FeedService
+    from app.services.validation_service import ValidationService
+
+    # Build product dict
+    product_data = {
+        "sku": data.sku or f"AUTO-PREVIEW",
+        "name": data.name,
+        "brand": data.brand or "Generic",
+        "description": data.description_en or data.description or "",
+        "bullet_points": data.bullet_points or [],
+        "price": float(data.price) if data.price else 0,
+        "quantity": data.quantity or 0,
+        "currency": data.currency or "EGP",
+        "upc": data.upc or "",
+        "ean": data.ean or "",
+        "condition": data.condition or "New",
+        "fulfillment_channel": data.fulfillment_channel or "MFN",
+        "handling_time": data.handling_time or 1,
+        "product_type": data.product_type or "",
+        "manufacturer": data.manufacturer or "",
+        "model_number": data.model_number or "",
+        "country_of_origin": data.country_of_origin or "",
+        "package_quantity": data.package_quantity or 1,
+        "material": data.material or "",
+        "number_of_items": data.number_of_items or 1,
+        "unit_count": data.unit_count,
+        "target_audience": data.target_audience or "",
+        "images": data.images or [],
+        "weight": float(data.weight) if data.weight else None,
+        "dimensions": data.dimensions or {},
+        "browse_node_id": data.browse_node_id or "",
+        "keywords": data.keywords or [],
+        "compare_price": float(data.compare_price) if data.compare_price else None,
+        "cost": float(data.cost) if data.cost else None,
+        "sale_price": float(data.sale_price) if data.sale_price else None,
+    }
+
+    # Generate XML
+    mock_seller = type('MockSeller', (), {
+        'amazon_seller_id': 'MOCK-SELLER-PREVIEW',
+        'marketplace_id': 'ARBP9OOSHTCHU',
+        'lwa_refresh_token': 'mock-token',
+    })()
+
+    try:
+        xml_bytes = FeedService.generate_product_xml(product_data, mock_seller)
+        xml_str = xml_bytes.decode('utf-8')
+    except Exception as e:
+        xml_str = f"Error generating XML: {str(e)}"
+
+    # Validation
+    validation = ValidationService.validate_product(
+        sku=product_data["sku"],
+        name=product_data["name"],
+        price=product_data["price"],
+        images=product_data["images"],
+        brand=product_data["brand"],
+        product_type=product_data["product_type"],
+        condition=product_data["condition"],
+        fulfillment_channel=product_data["fulfillment_channel"],
+        upc=product_data["upc"],
+        ean=product_data["ean"],
+        bullet_points=product_data["bullet_points"],
+    )
+
+    return {
+        "validation": validation.to_dict(),
+        "json_payload": product_data,
+        "xml_feed": xml_str,
+        "summary": {
+            "total_fields": len([k for k, v in product_data.items() if v]),
+            "errors": len(validation.errors),
+            "warnings": len(validation.warnings),
+            "ready_for_amazon": validation.valid,
+        },
+    }
 
 
 @router.post("/match-skus")

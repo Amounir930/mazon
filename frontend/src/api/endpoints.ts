@@ -109,6 +109,9 @@ export const productsApi = {
 
   lookup: (productId: string, idType: string = 'EAN') =>
     api.post(`/products/lookup?product_id=${productId}&id_type=${idType}`),
+
+  previewFeed: (data: ProductCreate) =>
+    api.post('/products/preview-feed', data),
 }
 
 // ==================== Listings API ====================
@@ -176,4 +179,29 @@ export const bulkApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+}
+
+// ==================== Images API ====================
+
+export const imagesApi = {
+  // رفع صورة كـ file
+  upload: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post<{ url: string; filename: string; size: number; mime_type: string }>('/images/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  // رفع صورة كـ base64
+  uploadBase64: (base64Data: string) =>
+    api.post<{ url: string; filename: string; size: number; mime_type: string }>('/images/upload-base64', { image: base64Data }),
+
+  // حذف صورة
+  delete: (filename: string) =>
+    api.delete(`/images/static/${filename}`),
+
+  // عرض كل الصور
+  list: () =>
+    api.get('/images/list'),
 }

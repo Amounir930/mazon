@@ -15,7 +15,7 @@ class ProductCreate(BaseModel):
     """Schema for creating a new product"""
     model_config = ConfigDict(protected_namespaces=(), extra='allow')  # Allow extra fields
     sku: str = Field(..., min_length=1, max_length=100, description="Stock Keeping Unit")
-    seller_id: str = Field(..., description="Owner seller ID")
+    seller_id: Optional[str] = Field(None, description="Owner seller ID (auto-assigned if empty)")
     name: str = Field(..., min_length=2, max_length=500, description="Product name")
     name_ar: Optional[str] = Field(None, max_length=500)
     name_en: Optional[str] = Field(None, max_length=500)
@@ -62,6 +62,12 @@ class ProductCreate(BaseModel):
     country_of_origin: Optional[str] = Field(None, max_length=10)
     package_quantity: int = Field(default=1, ge=1)
     browse_node_id: Optional[str] = Field(None, max_length=50, description="Amazon Browse Node ID")
+
+    # Additional fields from Page 2
+    material: Optional[str] = Field(None, max_length=200, description="Material / Composition")
+    number_of_items: int = Field(default=1, ge=1, description="Number of items in package")
+    unit_count: Optional[dict[str, Any]] = Field(None, description="Unit count: {value, type}")
+    target_audience: Optional[str] = Field(None, max_length=100, description="Target audience")
     
     # Variation fields
     is_parent: Optional[bool] = Field(default=False)
@@ -179,6 +185,10 @@ class ProductResponse(BaseModel):
     country_of_origin: Optional[str] = None
     package_quantity: int = 1
     browse_node_id: Optional[str] = None
+    material: Optional[str] = None
+    number_of_items: int = 1
+    unit_count: Optional[dict[str, Any]] = None
+    target_audience: Optional[str] = None
     status: str
     created_at: datetime
     updated_at: datetime

@@ -3,8 +3,10 @@ Crazy Lister v3.0 - Amazon SP-API Desktop App
 Main FastAPI application entry point
 """
 import asyncio
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 import sys
 
@@ -46,6 +48,12 @@ app.add_middleware(
 # Include API routes
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
+# Mount static files for images (Data/images)
+# __file__ = backend/app/main.py → parent.parent.parent = amazon/
+images_dir = Path(__file__).parent.parent.parent / "Data" / "images"
+images_dir.mkdir(parents=True, exist_ok=True)
+app.mount(f"{settings.API_V1_PREFIX}/images/static", StaticFiles(directory=str(images_dir)), name="images")
+
 # Register local documentation routes (DISABLED - missing static dir)
 # register_docs_routes(app)
 
@@ -58,6 +66,27 @@ async def startup_event():
     # Create database tables
     logger.info("Initializing database...")
     init_db()
+
+    # Auto-add missing columns (migration)
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    columns = [col["name"] for col in inspector.get_columns("products")]
+    new_cols = [
+        ("material", "VARCHAR(200)", "''"),
+        ("number_of_items", "INTEGER", "1"),
+        ("unit_count", "TEXT", "NULL"),
+        ("target_audience", "VARCHAR(100)", "''"),
+    ]
+    with engine.connect() as conn:
+        for name, dtype, default in new_cols:
+            if name not in columns:
+                try:
+                    conn.execute(text(f"ALTER TABLE products ADD COLUMN {name} {dtype} DEFAULT {default}"))
+                    conn.commit()
+                    logger.info(f"Added column: {name}")
+                except Exception as e:
+                    logger.warning(f"Column {name} migration skipped: {e}")
+
     logger.info("Database initialized successfully")
 
     # Seed Mock Seller Data ONLY on first run (if table is empty)

@@ -45,7 +45,8 @@
       "Bash(echo.)",
       "Read(C:\\Users\\Dell\\Desktop\\ALister-Reverse\\ALister-decompiled\\PYZ.pyz_extracted\\backend/**)",
       "Bash(rmdir *)",
-      "Bash(true)"
+      "Bash(true)",
+      "Bash(npm *)"
     ]
   },
   "$version": 3

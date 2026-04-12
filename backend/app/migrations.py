@@ -182,6 +182,32 @@ def run_migrations(engine) -> None:
         if "products" in existing_tables:
             _add_column_if_missing(conn, "products", "name_ar", "VARCHAR(500)")
 
+        # ==========================================
+        # Migration 11: Update existing products to 'incomplete' if missing Amazon data
+        # ==========================================
+        if "products" in existing_tables:
+            try:
+                # Check if status column exists
+                columns = [col["name"] for col in inspector.get_columns("products")]
+                if "status" in columns:
+                    # Mark products missing required fields as 'incomplete'
+                    # Products are incomplete if: no images, no UPC/EAN, no bullet points, or brand is Generic
+                    result = conn.execute(text("""
+                        UPDATE products
+                        SET status = 'incomplete'
+                        WHERE (
+                            (images IS NULL OR images = '[]' OR images = '')
+                            OR ((upc IS NULL OR upc = '') AND (ean IS NULL OR ean = ''))
+                            OR (bullet_points IS NULL OR bullet_points = '[]' OR bullet_points = '')
+                            OR (brand IS NULL OR brand = '' OR brand = 'Generic')
+                        )
+                        AND status NOT IN ('processing', 'published', 'failed')
+                    """))
+                    if result.rowcount > 0:
+                        logger.info(f"Migration: Marked {result.rowcount} products as 'incomplete'")
+            except Exception as e:
+                logger.warning(f"Migration 11 skipped (status column or data issue): {e}")
+
         conn.commit()
 
     logger.info("Database migration completed successfully")

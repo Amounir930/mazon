@@ -66,6 +66,28 @@ class FeedService:
             ET.SubElement(desc_data, "MfrPartNumber").text = product["model_number"]
         if product.get("country_of_origin"):
             ET.SubElement(desc_data, "CountryOfOrigin").text = product["country_of_origin"]
+        if product.get("material"):
+            ET.SubElement(desc_data, "Material").text = product["material"]
+        if product.get("target_audience"):
+            ET.SubElement(desc_data, "TargetAudience").text = product["target_audience"]
+
+        # Search Terms (keywords)
+        keywords = product.get("keywords", [])
+        if keywords:
+            search_terms = " ".join(keywords[:15])  # Amazon limit: 250 bytes
+            if len(search_terms) > 250:
+                search_terms = search_terms[:247] + "..."
+            ET.SubElement(desc_data, "SearchTerms").text = search_terms
+
+        # Number of items
+        if product.get("number_of_items") and product["number_of_items"] > 1:
+            ET.SubElement(desc_data, "NumberOfItems").text = str(product["number_of_items"])
+
+        # Unit count
+        unit_count = product.get("unit_count")
+        if unit_count and isinstance(unit_count, dict):
+            ET.SubElement(desc_data, "UnitCount").text = str(unit_count.get("value", ""))
+            ET.SubElement(desc_data, "UnitCount").set("Type", unit_count.get("type", "Count"))
 
         # Product Type (required by Amazon)
         if product.get("product_type"):
@@ -147,6 +169,7 @@ class FeedService:
                 "brand": product.brand,
                 "description": product.description,
                 "bullet_points": _parse_json_safe(product.bullet_points, []),
+                "keywords": _parse_json_safe(product.keywords, []),
                 "price": float(product.price) if product.price else 0,
                 "quantity": product.quantity or 0,
                 "currency": product.currency or "EGP",
@@ -160,10 +183,14 @@ class FeedService:
                 "model_number": product.model_number or "",
                 "country_of_origin": product.country_of_origin or "",
                 "package_quantity": product.package_quantity or 1,
+                "material": product.material or "",
+                "number_of_items": product.number_of_items or 1,
+                "unit_count": _parse_json_safe(product.unit_count, None),
+                "target_audience": product.target_audience or "",
                 "images": _parse_json_safe(product.images, []),
                 "weight": float(product.weight) if product.weight else None,
                 "dimensions": _parse_json_safe(product.dimensions, {}),
-                "browse_node_id": product.get("browse_node_id", ""),
+                "browse_node_id": product.browse_node_id or "",
             }
 
             xml_data = FeedService.generate_product_xml(product_data, seller)

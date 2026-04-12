@@ -81,7 +81,7 @@ export interface Product {
   dimensions?: Record<string, unknown>
   images: string[]
   attributes: Record<string, unknown>
-  status: 'draft' | 'queued' | 'processing' | 'published' | 'failed'
+  status: 'draft' | 'incomplete' | 'queued' | 'processing' | 'published' | 'failed'
   condition?: string
   fulfillment_channel?: string
   handling_time?: number
@@ -90,6 +90,8 @@ export interface Product {
   model_number?: string
   country_of_origin?: string
   package_quantity?: number
+  upc?: string
+  ean?: string
   created_at: string
   updated_at: string
 }

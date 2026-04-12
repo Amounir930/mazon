@@ -4,6 +4,7 @@ interface StatusBadgeProps {
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   draft: { label: 'مسودة', className: 'bg-gray-100 text-gray-700' },
+  incomplete: { label: 'ناقص بيانات', className: 'bg-amber-100 text-amber-700 border border-amber-300' },
   queued: { label: 'في الطابور', className: 'bg-yellow-100 text-yellow-700' },
   processing: { label: 'قيد المعالجة', className: 'bg-blue-100 text-blue-700' },
   submitted: { label: 'تم الإرسال', className: 'bg-purple-100 text-purple-700' },
