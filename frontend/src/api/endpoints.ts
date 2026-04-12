@@ -128,8 +128,14 @@ export const tasksApi = {
 // ==================== Sync API ====================
 
 export const syncApi = {
-  syncFromAmazon: () =>
-    api.post('/sync'),
+  syncProducts: (email?: string) =>
+    api.post(`/sync/products${email ? `?email=${email}` : ''}`),
+  
+  syncOrders: (email?: string, days: number = 30) =>
+    api.post(`/sync/orders${email ? `?email=${email}&days=${days}` : `?days=${days}`}`),
+  
+  syncInventory: (email?: string) =>
+    api.post(`/sync/inventory${email ? `?email=${email}` : ''}`),
 }
 
 // ==================== Export API ====================

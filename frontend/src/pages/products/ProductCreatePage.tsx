@@ -217,13 +217,21 @@ export default function ProductCreatePage() {
     )
   }
 
-  // No seller connected - show message inline (not early return to preserve hooks)
-  const sellerNotConnected = !sellerLoading && !sellerInfo?.id
+  // Check if seller is connected - use is_connected field from API
+  // API returns: { id, amazon_seller_id, is_connected, message, ... }
+  const sellerNotConnected = !sellerInfo?.is_connected || !sellerInfo?.amazon_seller_id
 
   return sellerNotConnected ? (
     <div className="flex flex-col items-center justify-center h-96" dir="rtl">
       <h2 className="text-xl font-bold text-white mb-4">لا يوجد بائع متصل</h2>
-      <p className="text-gray-400 mb-4">يرجى الاتصال بـ Amazon أولاً من صفحة الإعدادات</p>
+      <p className="text-gray-400 mb-2">
+        {sellerInfo?.amazon_seller_id
+          ? "البائع موجود لكن حالة الاتصال غير مؤكدة. جرب إعادة تسجيل الدخول."
+          : "يرجى الاتصال بـ Amazon أولاً من صفحة الإعدادات"}
+      </p>
+      <p className="text-xs text-gray-500 mb-4 font-mono">
+        Seller ID: {sellerInfo?.id || "N/A"} | Connected: {sellerInfo?.is_connected ? "Yes" : "No"} | Amazon ID: {sellerInfo?.amazon_seller_id || "N/A"}
+      </p>
       <button
         onClick={() => navigate('/settings')}
         className="px-6 py-3 bg-amazon-orange text-white rounded-lg hover:bg-orange-600 transition"

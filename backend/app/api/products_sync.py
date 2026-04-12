@@ -30,94 +30,55 @@ async def sync_products_cookie(
     db: Session = Depends(get_db),
 ):
     """
-    Sync products using cookie-based authentication.
-    Uses active browser session cookies to fetch products from Amazon Seller Central.
+    Sync products from Amazon using Excel-based approach.
+    
+    1. Gets products from DB
+    2. Generates Excel file
+    3. Returns file info for manual upload (Phase 2: auto-upload)
     
     Request: POST /sync/products?email=user@email.com
     Response: {
         "success": true,
-        "synced": 150,
-        "total": 150,
-        "products": [...]
+        "products_count": 150,
+        "excel_file": "path/to/file.xlsx",
+        "message": "Excel generated successfully"
     }
     """
     try:
-        from app.services.cookie_scraper import CookieScraper
-
-        scraper = CookieScraper()
+        from app.services.excel_service import get_products_from_db, generate_listing_excel
         
-        # Sync products via cookies
-        result = await scraper.sync_products(email)
-        scraper.close()
-
-        if not result.get("success"):
+        # Get products from DB
+        products = get_products_from_db()
+        
+        if not products:
             return {
-                "success": False,
-                "error": result.get("error", "Failed to sync products"),
-                "products": [],
-                "synced": 0,
-                "total": 0,
+                "success": True,
+                "message": "No products in database - nothing to sync",
+                "products_count": 0,
+                "excel_file": None,
             }
-
-        # Store synced products in local database
-        products = result.get("products", [])
-        synced_count = 0
-
-        for item in products:
-            item_sku = item.get("sku", "")
-            if not item_sku:
-                continue
-
-            # Check if product already exists
-            existing = db.query(Product).filter(Product.sku == item_sku).first()
-            if existing:
-                # Update existing product
-                existing.name = item.get("name", existing.name)
-                existing.price = item.get("price", existing.price)
-                existing.quantity = item.get("quantity", existing.quantity)
-                existing.status = item.get("status", existing.status)
-                existing.updated_at = datetime.now(timezone.utc)
-                
-                # Update ASIN if available
-                if item.get("asin"):
-                    if not existing.attributes or existing.attributes == "{}":
-                        existing.attributes = json.dumps({"asin": item["asin"]})
-                    else:
-                        attrs = json.loads(existing.attributes)
-                        attrs["asin"] = item["asin"]
-                        existing.attributes = json.dumps(attrs)
-            else:
-                # Create new product
-                product = Product(
-                    seller_id=None,  # Will be linked later
-                    sku=item_sku,
-                    name=item.get("name", item_sku),
-                    price=item.get("price", 0),
-                    quantity=item.get("quantity", 0),
-                    category=item.get("category", ""),
-                    status=item.get("status", "published"),
-                    attributes=json.dumps({"asin": item.get("asin", "")}) if item.get("asin") else "{}",
-                )
-                db.add(product)
-                synced_count += 1
-
-        db.commit()
-
-        logger.info(f"Cookie sync: {synced_count} products synced for {email}")
-
+        
+        # Generate Excel
+        excel_path = generate_listing_excel(products)
+        
+        logger.info(f"Excel generated: {excel_path} ({len(products)} products)")
+        
         return {
             "success": True,
-            "synced": synced_count,
-            "total": result.get("total", 0),
-            "products": products[:10],  # Return first 10 for preview
+            "products_count": len(products),
+            "excel_file": excel_path,
+            "message": f"Excel generated with {len(products)} products - ready for upload",
         }
-
-    except HTTPException:
-        raise
+        
     except Exception as e:
         db.rollback()
-        logger.error(f"Cookie-based sync failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+        logger.error(f"Excel sync failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "products_count": 0,
+            "excel_file": None,
+        }
 
 
 @router.post("/orders")

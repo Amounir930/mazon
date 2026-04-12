@@ -1,5 +1,5 @@
 """
-PyWebView-based Amazon Login (via standalone subprocess)
+Amazon Login (via PyWebView subprocess)
 بيشغل script منفصل لعزل PyWebView عن FastAPI
 """
 import os
@@ -10,6 +10,7 @@ import tempfile
 from typing import Dict, Any
 from loguru import logger
 
+# Use PyWebView script (working with Amazon Egypt)
 STANDALONE_SCRIPT = os.path.join(os.path.dirname(__file__), "amazon_login_standalone.py")
 
 

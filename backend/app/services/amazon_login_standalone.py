@@ -18,7 +18,7 @@ SELLER_CENTRAL_BASE = {
 
 
 def parse_cookies(cookie_string):
-    """Parse document.cookie into list of dicts"""
+    """Parse document.cookie into list of dicts (fallback for old method)"""
     if not cookie_string:
         return []
     cookies = []
@@ -28,6 +28,96 @@ def parse_cookies(cookie_string):
             name, value = item.split("=", 1)
             cookies.append({"name": name.strip(), "value": value.strip(), "domain": ".amazon.com", "path": "/"})
     return cookies
+
+
+def normalize_pywebview_cookies(cookies_data, cookie_values: dict = None) -> list:
+    """
+    Convert PyWebView get_cookies() format to our expected format.
+    
+    PyWebView format:
+    [{"cookie_name": {"expires": "...", "domain": "...", "httponly": True, ...}}]
+    Note: get_cookies() does NOT return values! We need document.cookie for that.
+    
+    Our format:
+    [{"name": "cookie_name", "value": "...", "domain": "...", "httpOnly": True, ...}]
+    """
+    if not cookies_data:
+        return []
+    
+    normalized = []
+    cookie_values = cookie_values or {}
+    
+    if isinstance(cookies_data, list):
+        # PyWebView returns list of {name: {attrs}}
+        for item in cookies_data:
+            if not isinstance(item, dict):
+                continue
+            
+            # Each item is {cookie_name: {attrs}}
+            for name, attrs in item.items():
+                if not isinstance(attrs, dict):
+                    continue
+                
+                # Get value from document.cookie if available
+                value = cookie_values.get(name, "")
+                
+                cookie = {
+                    "name": name,
+                    "value": value,
+                    "domain": attrs.get("domain", ".amazon.eg"),
+                    "path": attrs.get("path", "/"),
+                    "httpOnly": attrs.get("httponly", attrs.get("httpOnly", False)),
+                    "secure": attrs.get("secure", attrs.get("Secure", False)),
+                    "sameSite": attrs.get("samesite", attrs.get("sameSite", "Lax")),
+                    "expires": attrs.get("expires", ""),
+                }
+                
+                # Only add if we have a value or it's an httpOnly cookie
+                if value or cookie["httpOnly"]:
+                    normalized.append(cookie)
+    
+    elif isinstance(cookies_data, dict):
+        # Alternative format: {name: {attrs}}
+        for name, attrs in cookies_data.items():
+            if not isinstance(attrs, dict):
+                continue
+            
+            value = cookie_values.get(name, "")
+            
+            cookie = {
+                "name": name,
+                "value": value,
+                "domain": attrs.get("domain", ".amazon.eg"),
+                "path": attrs.get("path", "/"),
+                "httpOnly": attrs.get("httponly", attrs.get("httpOnly", False)),
+                "secure": attrs.get("secure", attrs.get("Secure", False)),
+                "sameSite": attrs.get("samesite", attrs.get("sameSite", "Lax")),
+                "expires": attrs.get("expires", ""),
+            }
+            
+            if value or cookie["httpOnly"]:
+                normalized.append(cookie)
+    
+    # Filter out cookies with no value at all
+    normalized = [c for c in normalized if c["value"]]
+    
+    print(f"Normalized {len(normalized)} cookies with values")
+    return normalized
+
+
+def parse_document_cookies(cookie_string) -> dict:
+    """Parse document.cookie string into {name: value} dict for value lookup"""
+    if not cookie_string:
+        return {}
+    
+    values = {}
+    for item in cookie_string.split(";"):
+        item = item.strip()
+        if "=" in item:
+            name, value = item.split("=", 1)
+            values[name.strip()] = value.strip()
+    
+    return values
 
 
 def main():
@@ -63,20 +153,24 @@ def main():
                     if any(x in url for x in ["/home", "/dashboard", "/inventory"]):
                         print(f"Login detected!")
                         try:
-                            # Try to get ALL cookies (including HttpOnly) via native API
-                            # This is better than document.cookie which misses HttpOnly cookies
-                            try:
-                                # Method 1: Try native cookie API if available
-                                all_cookies = window.get_cookies()
-                                if all_cookies:
-                                    login_state["cookies"] = all_cookies
-                                    print(f"Got {len(login_state['cookies'])} cookies (native API)")
-                            except:
-                                # Method 2: Fallback to document.cookie
-                                cookie_str = window.evaluate_js("document.cookie")
-                                if cookie_str:
-                                    login_state["cookies"] = parse_cookies(cookie_str)
-                                    print(f"Got {len(login_state['cookies'])} cookies (JS fallback)")
+                            # Strategy: Get ALL cookies from native API + values from document.cookie
+                            # This gives us both httpOnly cookies AND their values
+                            
+                            # Step 1: Get cookie metadata (names, domains, httpOnly flags)
+                            all_cookies = window.get_cookies()
+                            print(f"get_cookies() returned type: {type(all_cookies)}")
+                            
+                            if not all_cookies or len(all_cookies) == 0:
+                                raise Exception("Empty cookies from native API")
+                            
+                            # Step 2: Get cookie values from document.cookie
+                            cookie_str = window.evaluate_js("document.cookie")
+                            cookie_values = parse_document_cookies(cookie_str)
+                            print(f"document.cookie has {len(cookie_values)} cookie values")
+                            
+                            # Step 3: Merge metadata with values
+                            login_state["cookies"] = normalize_pywebview_cookies(all_cookies, cookie_values)
+                            print(f"Got {len(login_state['cookies'])} normalized cookies")
                             
                             login_state["done"] = True
                             window.destroy()

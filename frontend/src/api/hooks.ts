@@ -221,7 +221,9 @@ export function useSyncFromAmazon() {
 
   return useMutation({
     mutationFn: async () => {
-      const { data } = await syncApi.syncFromAmazon()
+      // Get email from auth store
+      const email = 'amazon_eg' // Default to current session
+      const { data } = await syncApi.syncProducts(email)
       return data
     },
     onSuccess: () => {

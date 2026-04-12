@@ -89,6 +89,18 @@ class CookieScraper:
             logger.error(f"Failed to init Playwright: {e}")
             raise RuntimeError(f"Playwright initialization failed: {e}")
 
+    @staticmethod
+    def _normalize_same_site(value: str) -> str:
+        """Normalize sameSite value to Playwright format (Strict|Lax|None)"""
+        if not value:
+            return "Lax"
+        v = str(value).lower()
+        if v == "strict":
+            return "Strict"
+        elif v == "none":
+            return "None"
+        return "Lax"
+
     async def _setup_context(self, cookies: List[Dict], country_code: str):
         """Create browser context with proper cookie injection"""
         self.context = await self.browser.new_context(
@@ -128,7 +140,7 @@ class CookieScraper:
                     "path": cookie.get("path", "/"),
                     "httpOnly": cookie.get("httpOnly", False),
                     "secure": cookie.get("secure", True),
-                    "sameSite": cookie.get("sameSite", "Lax"),
+                    "sameSite": self._normalize_same_site(cookie.get("sameSite", "Lax")),
                 }])
                 injected_count += 1
             except Exception as e:
