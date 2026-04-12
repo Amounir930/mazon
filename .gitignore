@@ -8,6 +8,7 @@ env/
 build/
 develop-eggs/
 dist/
+*/dist/
 downloads/
 eggs/
 .eggs/
@@ -15,6 +16,14 @@ eggs/
 .installed.cfg
 *.egg
 *.spec
+
+# Build artifacts
+build/
+*/build/
+*.exe
+*.msi
+*.dmg
+*.app
 
 # Virtual Environment
 venv/
@@ -49,6 +58,14 @@ Data/
 releases/
 legacy_client/
 info/
+
+# Backend debug/test scripts (local only)
+backend/check_session.py
+backend/migrate_columns.py
+backend/test_cookie_scraper.py
+backend/test_cookie_scraper_debug.py
+backend/test_cookies.py
+backend/app/services/listings_items_service.py
 
 # Root scripts (local only)
 New-Text-Document.txt
