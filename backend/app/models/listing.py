@@ -15,8 +15,8 @@ class Listing(Base):
     __tablename__ = "listings"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=False, index=True)
-    seller_id = Column(String(36), ForeignKey("sellers.id"), nullable=False, index=True)
+    product_id = Column(String(36), ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    seller_id = Column(String(36), ForeignKey("sellers.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Amazon Integration
     feed_submission_id = Column(String(100))

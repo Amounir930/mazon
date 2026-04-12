@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Package, List, FileText, Settings } from 'lucide-react'
+import { LayoutDashboard, Package, List, FileText, Settings, Search } from 'lucide-react'
 
 const menuItems = [
   { to: '/dashboard', label: 'لوحة التحكم', icon: LayoutDashboard },
   { to: '/products', label: 'المنتجات', icon: Package },
+  { to: '/products/search', label: 'البحث في Amazon', icon: Search },
   { to: '/listings', label: 'طابور الرفع', icon: List },
   { to: '/reports', label: 'التقارير', icon: FileText },
   { to: '/settings', label: 'الاتصال والإعدادات', icon: Settings },

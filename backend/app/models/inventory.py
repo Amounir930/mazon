@@ -15,8 +15,8 @@ class Inventory(Base):
     __tablename__ = "inventory"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    seller_id = Column(String(36), ForeignKey("sellers.id"), nullable=True, index=True)
-    product_id = Column(String(36), ForeignKey("products.id"), nullable=True, index=True)
+    seller_id = Column(String(36), ForeignKey("sellers.id", ondelete="CASCADE"), nullable=True, index=True)
+    product_id = Column(String(36), ForeignKey("products.id", ondelete="CASCADE"), nullable=True, index=True)
 
     # Product Identifiers
     sku = Column(String(100), nullable=False, index=True)

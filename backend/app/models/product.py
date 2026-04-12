@@ -87,8 +87,8 @@ class Product(Base):
 
     # Relationships
     seller = relationship("Seller", back_populates="products")
-    listings = relationship("Listing", back_populates="product")
-    inventory_records = relationship("Inventory", back_populates="product")
+    listings = relationship("Listing", back_populates="product", cascade="all, delete-orphan", passive_deletes=True)
+    inventory_records = relationship("Inventory", back_populates="product", cascade="all, delete-orphan", passive_deletes=True)
 
     def __repr__(self):
         return f"<Product {self.sku}: {self.name}>"

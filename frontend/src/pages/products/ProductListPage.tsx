@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown } from 'lucide-react'
-import { useProducts, useDeleteProduct, useSubmitListing, useSyncFromAmazon, useExportPriceInventory, useExportListingLoader } from '@/api/hooks'
+import { useProducts, useDeleteProduct, useSubmitListing, useSyncFromAmazon, useExportToAmazon, useExportPriceInventory, useExportListingLoader } from '@/api/hooks'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import type { Product } from '@/types/api'
 import toast from 'react-hot-toast'
@@ -14,6 +14,7 @@ export default function ProductListPage() {
   const deleteMutation = useDeleteProduct()
   const listMutation = useSubmitListing()
   const syncMutation = useSyncFromAmazon()
+  const exportMutation = useExportToAmazon()
   const exportPriceMutation = useExportPriceInventory()
   const exportListingMutation = useExportListingLoader()
 
@@ -50,7 +51,62 @@ export default function ProductListPage() {
       toast.success(result.message || 'تمت المزامنة بنجاح')
       refetch()
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'فشلت المزامنة')
+      const detail = error.response?.data?.detail
+      let message = 'فشلت المزامنة'
+
+      if (Array.isArray(detail)) {
+        message = detail.map((e: any) => `${e.loc?.join('.')}: ${e.msg}`).join('\n')
+      } else if (typeof detail === 'string') {
+        message = detail
+      }
+
+      toast.error(message)
+    }
+  }
+
+  // Handle Import from Amazon (Amazon → Local DB)
+  const handleImportFromAmazon = async () => {
+    toast.error('هذه الميزة تحتاج تسجيل دخول كامل عبر Amazon SP-API. حالياً يمكنك إضافة المنتجات يدوياً.')
+    return
+
+    // Code below is disabled until proper authentication is available
+    /*
+    try {
+      const result = await syncMutation.mutateAsync()
+      toast.success(result.message || 'تمت المزامنة بنجاح')
+      refetch()
+    } catch (error: any) {
+      const detail = error.response?.data?.detail
+      let message = 'فشلت المزامنة'
+
+      if (Array.isArray(detail)) {
+        message = detail.map((e: any) => `${e.loc?.join('.')}: ${e.msg}`).join('\n')
+      } else if (typeof detail === 'string') {
+        message = detail
+      }
+
+      toast.error(message)
+    }
+    */
+  }
+
+  // Handle Export to Amazon (Local DB → Amazon Listing)
+  const handleExportToAmazon = async () => {
+    try {
+      const result = await exportMutation.mutateAsync()
+      toast.success(result.message || 'تم رفع المنتجات إلى Amazon بنجاح')
+      refetch()
+    } catch (error: any) {
+      const detail = error.response?.data?.detail
+      let message = 'فشل الرفع إلى Amazon'
+
+      if (Array.isArray(detail)) {
+        message = detail.map((e: any) => `${e.loc?.join('.')}: ${e.msg}`).join('\n')
+      } else if (typeof detail === 'string') {
+        message = detail
+      }
+
+      toast.error(message)
     }
   }
 
@@ -138,19 +194,39 @@ export default function ProductListPage() {
           </div>
 
           <button
-            onClick={handleSync}
+            onClick={handleExportToAmazon}
+            disabled={exportMutation.isPending}
+            className="flex items-center gap-2 bg-amazon-orange hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-lg transition-colors disabled:opacity-50"
+            title="رفع المنتجات من قاعدة البيانات إلى Amazon Listing"
+          >
+            {exportMutation.isPending ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                جاري الرفع...
+              </>
+            ) : (
+              <>
+                <Upload className="w-5 h-5" />
+                تصدير لـ Amazon
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleImportFromAmazon}
             disabled={syncMutation.isPending}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors disabled:opacity-50"
+            title="استيراد المنتجات من Amazon Seller Central"
           >
             {syncMutation.isPending ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                جاري المزامنة...
+                جاري الاستيراد...
               </>
             ) : (
               <>
                 <RefreshCw className="w-5 h-5" />
-                مزامنة من Amazon
+                استيراد من Amazon
               </>
             )}
           </button>

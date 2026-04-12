@@ -25,59 +25,225 @@ router = APIRouter()
 # ============================================================
 
 @router.post("/products")
+async def sync_products_from_amazon(
+    db: Session = Depends(get_db),
+):
+    """
+    مزامنة المنتجات من Amazon Seller Central → Local Database.
+    يستخدم الـ Cookies المحفوظة لتحميل تقرير المنتجات.
+
+    Request: POST /api/v1/sync/products
+    Response: {
+        "success": true,
+        "synced": 50,
+        "updated": 10,
+        "total": 60,
+        "message": "تم استيراد 60 منتج"
+    }
+    """
+    try:
+        from app.services.sync_engine import AmazonProductSyncEngine, get_active_session
+
+        # Get active session cookies
+        cookies, country = get_active_session()
+        if not cookies:
+            raise HTTPException(
+                status_code=401,
+                detail="لا يوجد جلسة نشطة - يرجى تسجيل الدخول أولاً"
+            )
+
+        # Initialize sync engine
+        sync_engine = AmazonProductSyncEngine(country_code=country)
+        sync_engine.setup_cookies(cookies)
+
+        # Execute sync
+        result = sync_engine.sync_products()
+
+        logger.info(f"Product sync result: {result}")
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Product sync failed: {e}")
+        raise HTTPException(status_code=500, detail=f"فشلت المزامنة: {str(e)}")
+
+
+@router.post("/export-to-amazon")
+async def export_products_to_amazon(
+    db: Session = Depends(get_db),
+):
+    """
+    تصدير المنتجات من Local Database → Amazon Listing.
+    ياخد كل المنتجات من الـ DB ويرفعها كـ Listings على Amazon.
+
+    Request: POST /api/v1/sync/export-to-amazon
+    Response: {
+        "success": true,
+        "submitted": 10,
+        "failed": 0,
+        "total": 10,
+        "message": "تم رفع 10 منتج إلى Amazon"
+    }
+    """
+    try:
+        # Get all products from DB
+        products = db.query(Product).all()
+
+        if not products:
+            return {
+                "success": True,
+                "message": "لا توجد منتجات في قاعدة البيانات - أضف منتجات أولاً",
+                "submitted": 0,
+                "failed": 0,
+                "total": 0,
+            }
+
+        # Submit each product as a listing
+        from app.tasks.task_manager import task_manager
+        from app.tasks.listing_tasks import submit_listing_task
+
+        submitted = 0
+        failed = 0
+        results = []
+
+        for product in products:
+            try:
+                task_id = await task_manager.submit(submit_listing_task(product.id))
+                results.append({
+                    "product_id": product.id,
+                    "sku": product.sku,
+                    "task_id": task_id,
+                    "status": "queued"
+                })
+                submitted += 1
+            except Exception as e:
+                failed += 1
+                logger.error(f"Failed to submit listing for {product.sku}: {e}")
+
+        logger.info(f"Export to Amazon: {submitted} submitted, {failed} failed, {len(products)} total")
+
+        return {
+            "success": True,
+            "submitted": submitted,
+            "failed": failed,
+            "total": len(products),
+            "results": results[:10],  # Return first 10 for preview
+            "message": f"تم رفع {submitted} منتج إلى Amazon ({failed} فشل)" if failed == 0 else f"تم رفع {submitted} منتج، فشل {failed}",
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Export to Amazon failed: {e}")
+        raise HTTPException(status_code=500, detail=f"فشل التصدير: {str(e)}")
+
+
+@router.post("/products-old")
 async def sync_products_cookie(
     email: str = Query(..., description="Email for cookie-based sync"),
     db: Session = Depends(get_db),
 ):
     """
-    Sync products from Amazon using Excel-based approach.
-    
-    1. Gets products from DB
-    2. Generates Excel file
-    3. Returns file info for manual upload (Phase 2: auto-upload)
-    
-    Request: POST /sync/products?email=user@email.com
-    Response: {
-        "success": true,
-        "products_count": 150,
-        "excel_file": "path/to/file.xlsx",
-        "message": "Excel generated successfully"
-    }
+    Sync products to Amazon using Direct API (ALister approach) - OLD.
     """
     try:
-        from app.services.excel_service import get_products_from_db, generate_listing_excel
-        
-        # Get products from DB
-        products = get_products_from_db()
+        # Get all products from DB
+        products = db.query(Product).all()
         
         if not products:
             return {
                 "success": True,
                 "message": "No products in database - nothing to sync",
-                "products_count": 0,
-                "excel_file": None,
+                "synced": 0,
+                "results": [],
             }
         
-        # Generate Excel
-        excel_path = generate_listing_excel(products)
+        # Sync via Direct API
+        from app.services.amazon_direct_api import AmazonDirectAPI
         
-        logger.info(f"Excel generated: {excel_path} ({len(products)} products)")
+        api = AmazonDirectAPI(email)
+        results = []
+        synced = 0
+        
+        for product in products:
+            result = await api.create_listing(product.id)
+            results.append({
+                "sku": product.sku,
+                "success": result.get("success", False),
+                "message": result.get("message", result.get("error", "")),
+            })
+            if result.get("success"):
+                synced += 1
+        
+        logger.info(f"Direct API sync: {synced}/{len(products)} listings created")
         
         return {
             "success": True,
-            "products_count": len(products),
-            "excel_file": excel_path,
-            "message": f"Excel generated with {len(products)} products - ready for upload",
+            "synced": synced,
+            "total": len(products),
+            "results": results,
         }
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Excel sync failed: {e}")
+        logger.error(f"Direct API sync failed: {e}")
         return {
             "success": False,
             "error": str(e),
-            "products_count": 0,
-            "excel_file": None,
+            "synced": 0,
+            "total": 0,
+            "results": [],
+        }
+
+
+@router.post("/products/{product_id}")
+async def sync_single_product(product_id: str, db: Session = Depends(get_db)):
+    """
+    Sync a single product to Amazon using Direct API.
+    
+    Request: POST /sync/products/{product_id}
+    Response: {
+        "success": true,
+        "message": "Listing created"
+    }
+    """
+    try:
+        # Get product from DB
+        product = db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            return {
+                "success": False,
+                "error": f"Product {product_id} not found",
+            }
+        
+        # Sync via Direct API
+        from app.services.amazon_direct_api import AmazonDirectAPI
+        
+        api = AmazonDirectAPI("amazon_eg")
+        result = await api.create_listing(product_id)
+        
+        if result.get("success"):
+            logger.info(f"Listing created for product {product.sku}")
+            return {
+                "success": True,
+                "message": f"Listing created for {product.sku}",
+                "asin": result.get("asin"),
+                "listing_id": result.get("listing_id"),
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "Unknown error"),
+            }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Single product sync failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
         }
 
 

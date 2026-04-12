@@ -13,7 +13,7 @@ import re
 
 class ProductCreate(BaseModel):
     """Schema for creating a new product"""
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=(), extra='allow')  # Allow extra fields
     sku: str = Field(..., min_length=1, max_length=100, description="Stock Keeping Unit")
     seller_id: str = Field(..., description="Owner seller ID")
     name: str = Field(..., min_length=2, max_length=500, description="Product name")
@@ -21,17 +21,24 @@ class ProductCreate(BaseModel):
     name_en: Optional[str] = Field(None, max_length=500)
     category: Optional[str] = Field(None, max_length=100)
     brand: Optional[str] = Field(None, max_length=200)
-    price: Decimal = Field(..., gt=0, lt=999999, description="Product price")
-    compare_price: Optional[Decimal] = Field(None, gt=0, lt=999999)
-    cost: Optional[Decimal] = Field(None, gt=0)
+    price: Decimal = Field(..., ge=0, lt=999999, description="Product price")  # Changed gt=0 to ge=0
+    compare_price: Optional[Decimal] = Field(None, ge=0, lt=999999)
+    cost: Optional[Decimal] = Field(None, ge=0)
     currency: str = Field(default="EGP", max_length=10, description="Currency code (ISO 4217)")
     quantity: int = Field(default=0, ge=0, description="Available quantity")
-    weight: Optional[Decimal] = Field(None, gt=0)
+    weight: Optional[Decimal] = Field(None, ge=0)
 
     # Sale pricing
-    sale_price: Optional[Decimal] = Field(None, gt=0, lt=999999, description="Promotional sale price")
+    sale_price: Optional[Decimal] = Field(None, ge=0, lt=999999, description="Promotional sale price")
     sale_start_date: Optional[str] = Field(None, description="Sale start date (ISO format)")
     sale_end_date: Optional[str] = Field(None, description="Sale end date (ISO format)")
+    
+    # Frontend-only fields (not saved to DB)
+    min_price: Optional[Decimal] = Field(None, ge=0)
+    max_price: Optional[Decimal] = Field(None, ge=0)
+    listing_copies: Optional[int] = Field(None, ge=1)
+    variation_theme: Optional[str] = None
+    
     description: Optional[str] = None
     description_ar: Optional[str] = None
     description_en: Optional[str] = None
@@ -55,6 +62,10 @@ class ProductCreate(BaseModel):
     country_of_origin: Optional[str] = Field(None, max_length=10)
     package_quantity: int = Field(default=1, ge=1)
     browse_node_id: Optional[str] = Field(None, max_length=50, description="Amazon Browse Node ID")
+    
+    # Variation fields
+    is_parent: Optional[bool] = Field(default=False)
+    parent_sku: Optional[str] = Field(None, max_length=100)
 
     @field_validator("sku")
     @classmethod

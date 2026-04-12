@@ -1,0 +1,462 @@
+"""
+Amazon Direct API Service
+يرفع المنتجات لـ Amazon مباشرة عبر الـ ABIS AJAX API
+بنفس الطريقة اللي ALister بيستخدمها
+
+Endpoints:
+- /abis/ajax/create-listing  (إنشاء Listing)
+- /abis/product/ajax/CreationValidation (التحقق)
+- /abis/ajax/create-offer (إضافة عرض لمنتج موجود)
+"""
+import json
+import re
+import time
+from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any
+from loguru import logger
+
+import niquests as requests
+
+from app.database import SessionLocal
+from app.models.session import Session as AuthSession
+from app.models.product import Product
+from app.services.session_store import decrypt_data
+
+# Amazon Seller Central URLs
+SELLER_CENTRAL_BASE = {
+    "eg": "https://sellercentral.amazon.eg",
+    "sa": "https://sellercentral.amazon.sa",
+    "ae": "https://sellercentral.amazon.ae",
+}
+
+# Browser headers
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "Origin": "https://sellercentral.amazon.eg",
+    "Referer": "https://sellercentral.amazon.eg/hz/merchant-listings/add-product.html",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+}
+
+
+class AmazonDirectAPI:
+    """
+    يرسل بيانات المنتجات مباشرة لـ Amazon عبر ABIS AJAX API.
+    """
+
+    def __init__(self, email: str = "amazon_eg"):
+        self.email = email
+        self.session = requests.Session()
+        self.session.headers.update(BROWSER_HEADERS)
+        self.country_code = "eg"
+        self.base_url = SELLER_CENTRAL_BASE["eg"]
+        self._authenticated = False
+
+    def _setup_session(self) -> bool:
+        """يجهز الجلسة بالـ cookies المحفوظة"""
+        db = SessionLocal()
+        try:
+            auth_session = db.query(AuthSession).filter(
+                AuthSession.auth_method == "browser",
+                AuthSession.email == self.email,
+                AuthSession.is_active == True,
+                AuthSession.is_valid == True,
+            ).first()
+
+            if not auth_session or not auth_session.cookies_json:
+                logger.warning(f"No active session for {self.email}")
+                return False
+
+            cookies = json.loads(decrypt_data(auth_session.cookies_json))
+            self.country_code = auth_session.country_code or "eg"
+            self.base_url = SELLER_CENTRAL_BASE.get(self.country_code, SELLER_CENTRAL_BASE["eg"])
+
+            # Setup cookies
+            domain_map = {
+                "eg": ".amazon.eg",
+                "sa": ".amazon.sa",
+                "ae": ".amazon.ae",
+            }
+            target_domain = domain_map.get(self.country_code, ".amazon.eg")
+
+            for cookie in cookies:
+                try:
+                    cookie_domain = cookie.get("domain", ".amazon.com")
+                    if cookie_domain == ".amazon.com" and self.country_code != "us":
+                        cookie_domain = target_domain
+
+                    self.session.cookies.set(
+                        cookie["name"],
+                        cookie["value"],
+                        domain=cookie_domain,
+                        path=cookie.get("path", "/"),
+                    )
+                except Exception as e:
+                    logger.debug(f"Cookie setup error for {cookie.get('name')}: {e}")
+
+            self._authenticated = True
+            logger.info(f"Session setup for {self.email} ({self.country_code.upper()})")
+            return True
+
+        except Exception as e:
+            logger.error(f"Session setup failed: {e}")
+            return False
+        finally:
+            db.close()
+
+    def _make_request(self, url: str, data: Dict, method: str = "POST") -> Optional[Dict]:
+        """يعمل request لـ Amazon API"""
+        try:
+            if method == "POST":
+                # Amazon ABIS uses form-encoded data
+                response = self.session.post(
+                    url,
+                    data=data,
+                    timeout=30,
+                    allow_redirects=True,
+                )
+            else:
+                response = self.session.get(url, timeout=30, allow_redirects=True)
+
+            logger.debug(f"Request to {url}: Status {response.status_code}")
+
+            if response.status_code == 200:
+                try:
+                    return response.json()
+                except Exception:
+                    logger.debug(f"Non-JSON response from {url}")
+                    return {"raw_html": response.text[:500]}
+            elif response.status_code == 401 or "/ap/signin" in str(response.url):
+                self._authenticated = False
+                logger.warning("Session expired")
+                return None
+            else:
+                logger.error(f"Request failed: {response.status_code}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Request failed: {e}")
+            return None
+
+    def _build_create_listing_payload(self, product: Product) -> Dict[str, Any]:
+        """يبني JSON payload لإنشاء Listing"""
+        return {
+            "listing": {
+                "listingDetails": {
+                    "listingLanguageCode": "en_US",
+                    "productType": "",
+                    "marketplaceId": "ARBP9OOSHTCHU",  # Egypt
+                    "sku": product.sku,
+                },
+                "attributes": {
+                    "item_name": {
+                        "language_tag": "en_US",
+                        "value": product.name,
+                        "markup": "<text>",
+                    },
+                    "product_description": {
+                        "language_tag": "en_US",
+                        "value": product.description or product.name,
+                        "markup": "<text>",
+                    },
+                    "standard_price": [
+                        {
+                            "currency": "EGP",
+                            "value": float(product.price) if product.price else 0,
+                        }
+                    ],
+                    "quantity": int(product.quantity) if product.quantity else 0,
+                    "fulfillment_channel": product.fulfillment_channel or "MFN",
+                    "condition_type": product.condition or "New",
+                    "brand": product.brand or "Generic",
+                    "manufacturer": product.manufacturer or product.brand or "Generic",
+                },
+            },
+        }
+
+    async def create_listing(self, product_id: str) -> Dict[str, Any]:
+        """
+        ينشئ Listing جديد على Amazon.
+        
+        Args:
+            product_id: معرف المنتج في قاعدة البيانات
+            
+        Returns:
+            {
+                "success": bool,
+                "message": str,
+                "listing_id": str (لو نجح)
+            }
+        """
+        try:
+            if not self._authenticated:
+                if not self._setup_session():
+                    return {
+                        "success": False,
+                        "error": "No active session - please login again",
+                    }
+
+            # Get product from DB
+            db = SessionLocal()
+            try:
+                product = db.query(Product).filter(Product.id == product_id).first()
+                if not product:
+                    return {
+                        "success": False,
+                        "error": f"Product {product_id} not found",
+                    }
+            finally:
+                db.close()
+
+            logger.info(f"Creating listing for product: {product.sku}")
+
+            # Step 1: Validation
+            validation_result = await self._validate_listing(product)
+            if validation_result and validation_result.get("status") == "ERROR":
+                return {
+                    "success": False,
+                    "error": f"Validation failed: {validation_result.get('message', 'Unknown error')}",
+                }
+
+            # Step 2: Create listing
+            result = await self._post_create_listing(product)
+
+            if result and result.get("status") == "SUCCESS":
+                logger.info(f"Listing created successfully for {product.sku}")
+                return {
+                    "success": True,
+                    "message": f"Listing created for {product.sku}",
+                    "listing_id": result.get("listingId", ""),
+                    "asin": result.get("asin", ""),
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": result.get("message", "Unknown error during listing creation"),
+                }
+
+        except Exception as e:
+            logger.error(f"Create listing failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    async def _validate_listing(self, product: Product) -> Optional[Dict]:
+        """يتحقق من بيانات الـ Listing قبل الإرسال"""
+        try:
+            url = f"{self.base_url}/abis/product/ajax/CreationValidation"
+            payload = self._build_create_listing_payload(product)
+
+            data = {
+                "data": json.dumps(payload),
+                "clientContext": self._get_client_context(),
+            }
+
+            result = self._make_request(url, data)
+            return result
+
+        except Exception as e:
+            logger.error(f"Validation failed: {e}")
+            return None
+
+    async def _post_create_listing(self, product: Product) -> Optional[Dict]:
+        """يرسل طلب إنشاء الـ Listing"""
+        try:
+            url = f"{self.base_url}/abis/ajax/create-listing"
+            payload = self._build_create_listing_payload(product)
+
+            data = {
+                "data": json.dumps(payload),
+                "clientContext": self._get_client_context(),
+            }
+
+            result = self._make_request(url, data)
+            return result
+
+        except Exception as e:
+            logger.error(f"Create listing POST failed: {e}")
+            return None
+
+    async def create_offer(self, asin: str, sku: str, price: float, quantity: int) -> Dict[str, Any]:
+        """
+        ينشئ عرض (Offer) على ASIN موجود.
+        
+        Args:
+            asin: Amazon ASIN
+            sku: Product SKU
+            price: Price
+            quantity: Quantity
+            
+        Returns:
+            {
+                "success": bool,
+                "message": str
+            }
+        """
+        try:
+            if not self._authenticated:
+                if not self._setup_session():
+                    return {
+                        "success": False,
+                        "error": "No active session - please login again",
+                    }
+
+            url = f"{self.base_url}/abis/ajax/create-offer"
+            payload = {
+                "asin": asin,
+                "sku": sku,
+                "price": {
+                    "currency": "EGP",
+                    "value": float(price),
+                },
+                "quantity": int(quantity),
+                "condition_type": "New",
+                "fulfillment_channel": "MFN",
+            }
+
+            data = {
+                "data": json.dumps(payload),
+                "clientContext": self._get_client_context(),
+            }
+
+            result = self._make_request(url, data)
+
+            if result and result.get("status") == "SUCCESS":
+                logger.info(f"Offer created for ASIN {asin}")
+                return {
+                    "success": True,
+                    "message": f"Offer created for {asin}",
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": result.get("message", "Failed to create offer"),
+                }
+
+        except Exception as e:
+            logger.error(f"Create offer failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    async def update_inventory(self, sku: str, quantity: int, price: Optional[float] = None) -> Dict[str, Any]:
+        """
+        يحدث المخزون والسعر لمنتج موجود.
+        
+        Args:
+            sku: Product SKU
+            quantity: New quantity
+            price: New price (optional)
+            
+        Returns:
+            {
+                "success": bool,
+                "message": str
+            }
+        """
+        try:
+            if not self._authenticated:
+                if not self._setup_session():
+                    return {
+                        "success": False,
+                        "error": "No active session - please login again",
+                    }
+
+            url = f"{self.base_url}/myinventory/gql"
+            
+            # GraphQL mutation
+            query = """
+                mutation UpdateInventory($input: InventoryUpdateInput!) {
+                    inventoryUpdate(input: $input) {
+                        results {
+                            contributorToken
+                            resultingQuantity
+                            sku
+                            result {
+                                successful
+                                message
+                                internalMessage
+                            }
+                        }
+                    }
+                }
+            """
+
+            variables = {
+                "input": {
+                    "sku": sku,
+                    "quantity": quantity,
+                }
+            }
+
+            if price is not None:
+                query = """
+                    mutation UpdatePrice($input: PriceUpdateInput!) {
+                        priceUpdate(input: $input) {
+                            results {
+                                sku
+                                result {
+                                    successful
+                                    message
+                                }
+                            }
+                        }
+                    }
+                """
+                variables = {
+                    "input": {
+                        "sku": sku,
+                        "price": {
+                            "currency": "EGP",
+                            "value": float(price),
+                        },
+                    }
+                }
+
+            payload = {
+                "query": query,
+                "variables": json.dumps(variables),
+            }
+
+            data = {
+                "data": json.dumps(payload),
+                "clientContext": self._get_client_context(),
+            }
+
+            result = self._make_request(url, data)
+
+            if result:
+                logger.info(f"Inventory updated for {sku}")
+                return {
+                    "success": True,
+                    "message": f"Inventory updated for {sku}",
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "Failed to update inventory",
+                }
+
+        except Exception as e:
+            logger.error(f"Update inventory failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
+
+    def _get_client_context(self) -> str:
+        """يجيب client context للـ requests"""
+        # This is a simplified version - ALister extracts this from webpack
+        return json.dumps({
+            "clientContext": {
+                "marketplaceId": "ARBP9OOSHTCHU",
+                "languageCode": "en_US",
+            }
+        })

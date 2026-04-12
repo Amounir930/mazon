@@ -4,6 +4,7 @@ import Layout from './components/layout/Layout'
 import DashboardPage from './pages/dashboard/DashboardPage'
 import ProductListPage from './pages/products/ProductListPage'
 import ProductCreatePage from './pages/products/ProductCreatePage'
+import CatalogSearchPage from './pages/products/CatalogSearchPage'
 import ListingQueuePage from './pages/listings/ListingQueuePage'
 import ReportsPage from './pages/reports/ReportsPage'
 import UnifiedAuthPage from './pages/settings/UnifiedAuthPage'
@@ -21,6 +22,7 @@ export default function AppRouter() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="products" element={<ProductListPage />} />
           <Route path="products/create" element={<ProductCreatePage />} />
+          <Route path="products/search" element={<CatalogSearchPage />} />
           <Route path="listings" element={<ListingQueuePage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="settings" element={<UnifiedAuthPage />} />

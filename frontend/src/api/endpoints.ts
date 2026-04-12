@@ -83,6 +83,15 @@ export const sellersApi = {
     api.get('/sellers/info'),
 }
 
+// ==================== Catalog Search API ====================
+
+export const catalogApi = {
+  search: (params: { query: string; search_type: string }) =>
+    api.get('/catalog/search', { params }),
+  lookup: (asin: string) =>
+    api.get(`/catalog/lookup/${asin}`),
+}
+
 // ==================== Products API ====================
 
 export const productsApi = {
@@ -97,6 +106,9 @@ export const productsApi = {
 
   update: (id: string, data: Partial<Product>) =>
     api.put<Product>(`/products/${id}`, data),
+
+  lookup: (productId: string, idType: string = 'EAN') =>
+    api.post(`/products/lookup?product_id=${productId}&id_type=${idType}`),
 }
 
 // ==================== Listings API ====================
@@ -128,14 +140,20 @@ export const tasksApi = {
 // ==================== Sync API ====================
 
 export const syncApi = {
-  syncProducts: (email?: string) =>
-    api.post(`/sync/products${email ? `?email=${email}` : ''}`),
-  
-  syncOrders: (email?: string, days: number = 30) =>
-    api.post(`/sync/orders${email ? `?email=${email}&days=${days}` : `?days=${days}`}`),
-  
-  syncInventory: (email?: string) =>
-    api.post(`/sync/inventory${email ? `?email=${email}` : ''}`),
+  syncProducts: () =>
+    api.post('/sync/products'),
+
+  exportToAmazon: () =>
+    api.post('/sync/export-to-amazon'),
+
+  syncSingleProduct: (productId: string) =>
+    api.post(`/sync/products/${productId}`),
+
+  syncOrders: (days: number = 30) =>
+    api.post(`/sync/orders?days=${days}`),
+
+  syncInventory: () =>
+    api.post('/sync/inventory'),
 }
 
 // ==================== Export API ====================

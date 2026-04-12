@@ -3,6 +3,7 @@ Product API Endpoints
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import Optional
 import json
 from decimal import Decimal
@@ -155,9 +156,28 @@ async def delete_product(product_id: str, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    db.delete(product)
-    db.commit()
-    return {"message": "Product deleted successfully"}
+
+    try:
+        # Use raw SQL to bypass SQLAlchemy relationship cascade issues
+        # Step 1: Delete activity logs
+        db.execute(text("DELETE FROM activity_logs WHERE product_id = :pid"), {"pid": product_id})
+        
+        # Step 2: Delete inventory records
+        db.execute(text("DELETE FROM inventory WHERE product_id = :pid"), {"pid": product_id})
+        
+        # Step 3: Delete listings (may have FK to sellers too, so use raw SQL)
+        db.execute(text("DELETE FROM listings WHERE product_id = :pid"), {"pid": product_id})
+        
+        # Step 4: Delete the product
+        db.execute(text("DELETE FROM products WHERE id = :pid"), {"pid": product_id})
+        
+        db.commit()
+        logger.info(f"Product {product_id} deleted successfully")
+        return {"message": "Product deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to delete product {product_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete product: {str(e)}")
 
 
 @router.put("/{product_id}")
@@ -183,6 +203,39 @@ async def update_product(product_id: str, data: ProductUpdate, db: Session = Dep
     create_activity_log(db, product.id, "updated", "success", {"fields_updated": list(update_data.keys())})
 
     return product_to_dict(product)
+
+
+@router.post("/lookup")
+async def lookup_product(product_id: str, id_type: str = "EAN", db: Session = Depends(get_db)):
+    """
+    يبحث في Amazon عن طريق ASIN/UPC/EAN قبل إضافة المنتج.
+    لو موجود → يرفض. لو مش موجود → يسمح.
+    """
+    try:
+        from app.services.amazon_lookup import AmazonProductLookup
+        
+        lookup = AmazonProductLookup("amazon_eg")
+        result = await lookup.lookup(product_id, id_type)
+        
+        if result.get("found"):
+            return {
+                "available": False,
+                "reason": f"Product already exists on Amazon",
+                "asin": result.get("asin"),
+                "title": result.get("title"),
+            }
+        else:
+            return {
+                "available": True,
+                "reason": "Product not found on Amazon - safe to add",
+            }
+    except Exception as e:
+        # لو البحث فشل → نسمح بالحفظ (مش هنعوق المستخدم)
+        logger.warning(f"Lookup failed: {e}")
+        return {
+            "available": True,
+            "reason": f"Lookup skipped: {str(e)}",
+        }
 
 
 @router.post("/match-skus")

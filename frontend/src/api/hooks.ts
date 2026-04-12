@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { productsApi, listingsApi, amazonApi, authApi, tasksApi, syncApi, bulkApi, exportApi } from './endpoints'
+import { productsApi, listingsApi, amazonApi, authApi, tasksApi, syncApi, bulkApi, exportApi, sellersApi, catalogApi } from './endpoints'
 import type { ProductListResponse, Listing, SessionStatusResponse, BrowserLoginResponse } from '@/types/api'
 
 // ==================== Product Keys ====================
@@ -16,6 +16,13 @@ export const listingKeys = {
   all: ['listings'] as const,
   lists: () => [...listingKeys.all, 'list'] as const,
   list: (params?: Record<string, unknown>) => [...listingKeys.lists(), params] as const,
+}
+
+// ==================== Catalog Search Keys ====================
+
+export const catalogKeys = {
+  all: ['catalog'] as const,
+  search: (query: string, searchType: string) => [...catalogKeys.all, 'search', query, searchType] as const,
 }
 
 // ==================== Amazon Keys ====================
@@ -127,9 +134,63 @@ export function useSubmitListing() {
       return data
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: listingKeys.list() })
-      queryClient.invalidateQueries({ queryKey: taskKeys.list })
+      queryClient.invalidateQueries({ queryKey: listingKeys.lists() })
     },
+  })
+}
+
+// ==================== Catalog Search Hooks ====================
+
+export function useCatalogSearch() {
+  return useMutation({
+    mutationFn: async (params: { query: string; searchType: string }) => {
+      console.log('[useCatalogSearch] Searching:', params)
+      const { data } = await catalogApi.search({
+        query: params.query,
+        search_type: params.searchType,
+      })
+      console.log('[useCatalogSearch] Response:', data)
+      return data
+    },
+    onSuccess: (data) => {
+      console.log('[useCatalogSearch] Success:', data)
+    },
+    onError: (error) => {
+      console.error('[useCatalogSearch] Error:', error)
+    },
+  })
+}
+
+export function useCatalogLookup(asin: string) {
+  return useQuery({
+    queryKey: catalogKeys.search(asin, 'ASIN'),
+    queryFn: async () => {
+      const { data } = await catalogApi.lookup(asin)
+      return data
+    },
+    enabled: !!asin,
+    staleTime: 1000 * 60 * 5,
+  })
+}
+
+// ==================== Seller Hooks ====================
+
+export function useSellerInfo() {
+  return useQuery({
+    queryKey: sellerKeys.info,
+    queryFn: async () => {
+      try {
+        console.log('[useSellerInfo] Fetching seller info...')
+        const { data } = await sellersApi.info()
+        console.log('[useSellerInfo] Response:', data)
+        return data
+      } catch (error) {
+        console.error('[useSellerInfo] Error:', error)
+        throw error
+      }
+    },
+    staleTime: 1000 * 60 * 5,
+    retry: 2,
   })
 }
 
@@ -159,17 +220,6 @@ export function useAmazonStatus() {
     },
     staleTime: 1000 * 60 * 1,
     refetchInterval: 30000,
-  })
-}
-
-export function useSellerInfo() {
-  return useQuery({
-    queryKey: sellerKeys.info,
-    queryFn: async () => {
-      const { data } = await sellersApi.info()
-      return data
-    },
-    staleTime: 1000 * 60 * 5,
   })
 }
 
@@ -221,13 +271,25 @@ export function useSyncFromAmazon() {
 
   return useMutation({
     mutationFn: async () => {
-      // Get email from auth store
-      const email = 'amazon_eg' // Default to current session
-      const { data } = await syncApi.syncProducts(email)
+      const { data } = await syncApi.syncProducts()
       return data
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: productKeys.lists() })
+    },
+  })
+}
+
+export function useExportToAmazon() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await syncApi.exportToAmazon()
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: listingKeys.lists() })
     },
   })
 }

@@ -76,4 +76,6 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.execute("PRAGMA cache_size=10000")
     cursor.execute("PRAGMA temp_store=memory")
+    # Enable foreign keys for CASCADE deletes
+    cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
