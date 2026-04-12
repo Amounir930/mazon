@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     LOG_ROTATION: str = "10 MB"
     LOG_RETENTION: str = "30 days"
 
+    # Amazon Mock Mode (set to True to use local mock API instead of real SP-API)
+    USE_AMAZON_MOCK: bool = False
+
 
 @lru_cache()
 def get_settings() -> Settings:

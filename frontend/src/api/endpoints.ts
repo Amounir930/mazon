@@ -146,8 +146,8 @@ export const syncApi = {
   syncProducts: () =>
     api.post('/sync/products'),
 
-  exportToAmazon: () =>
-    api.post('/sync/export-to-amazon'),
+  exportToAmazon: (onlyNew: boolean = true) =>
+    api.post(`/sync/export-to-amazon?only_new=${onlyNew}`),
 
   syncSingleProduct: (productId: string) =>
     api.post(`/sync/products/${productId}`),

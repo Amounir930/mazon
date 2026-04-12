@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowRight, Package, DollarSign, Image, Save, Loader2, AlertTriangle, CheckCircle, Search, Upload, X, FileSpreadsheet, Eye, Download } from 'lucide-react'
-import { useCreateProduct } from '@/api/hooks'
+import { useCreateProduct, useUpdateProduct } from '@/api/hooks'
 import { productsApi, imagesApi } from '@/api/endpoints'
 import { generateTemplateExcel } from '@/services/excel_import_service'
 import toast from 'react-hot-toast'
@@ -179,6 +179,7 @@ export default function ProductCreatePage() {
   const navigate = useNavigate()
   const location = useLocation()
   const createMutation = useCreateProduct()
+  const updateMutation = useUpdateProduct()
 
   // Check if we're in "complete data" mode for an incomplete product
   const completeMode = (location.state as any)?.completeMode || false
@@ -633,8 +634,12 @@ export default function ProductCreatePage() {
     }
 
     try {
-      if (listingCopies === 1) {
-        // نسخة واحدة - إرسال عادي
+      if (isEditMode && editProduct?.id) {
+        // وضع التعديل - تحديث المنتج الموجود
+        await updateMutation.mutateAsync({ id: editProduct.id, data: payloads[0] })
+        toast.success('✅ تم تحديث المنتج بنجاح!')
+      } else if (listingCopies === 1) {
+        // وضع الإنشاء - منتج جديد
         await createMutation.mutateAsync(payloads[0] as any)
         toast.success('✅ تم حفظ المنتج! يمكنك مزامنته لـ Amazon من صفحة المنتجات')
       } else {
@@ -668,10 +673,10 @@ export default function ProductCreatePage() {
       } else if (typeof detail === 'string') {
         toast.error(detail)
       } else {
-        toast.error('فشل في حفظ البيانات')
+        toast.error(isEditMode ? 'فشل في تحديث المنتج' : 'فشل في حفظ البيانات')
       }
     }
-  }, [required, optional, mainImageUrl, extraImageUrls, listingCopies, createMutation, navigate])
+  }, [required, optional, mainImageUrl, extraImageUrls, listingCopies, isEditMode, editProduct, createMutation, updateMutation, navigate])
 
   // ==================== Excel Import ====================
 
@@ -1116,7 +1121,7 @@ export default function ProductCreatePage() {
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 resize-none"
           />
-          <p className="text-xs text-gray-500 mt-1">{optional.keywords.length}/250 حرف</p>
+          <p className="text-xs text-gray-500 mt-1">{(optional.keywords || '').length}/250 حرف</p>
         </Field>
       </div>
     </div>
@@ -1486,9 +1491,9 @@ export default function ProductCreatePage() {
             {/* Tabs */}
             <div className="flex border-b border-gray-200 dark:border-gray-700 px-4">
               {[
-                { key: 'summary' as const, label: '📊 ملخص', icon: '' },
-                { key: 'json' as const, label: '📋 JSON', icon: '' },
-                { key: 'xml' as const, label: '📄 XML Feed', icon: '' },
+                { key: 'summary' as const, label: '📊 ملخص' },
+                { key: 'json' as const, label: '📋 JSON (Amazon API)' },
+                { key: 'info' as const, label: 'ℹ️ معلومات API' },
               ].map(tab => (
                 <button
                   key={tab.key}
@@ -1576,7 +1581,7 @@ export default function ProductCreatePage() {
               {previewTab === 'json' && (
                 <div>
                   <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-semibold text-gray-900 dark:text-white">📋 JSON Payload</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-white">📋 Amazon Listings Items API - JSON Payload</h4>
                     <button
                       onClick={() => navigator.clipboard.writeText(JSON.stringify(amazonFeedData.json_payload, null, 2))}
                       className="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
@@ -1590,21 +1595,93 @@ export default function ProductCreatePage() {
                 </div>
               )}
 
-              {/* XML Tab */}
-              {previewTab === 'xml' && (
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-semibold text-gray-900 dark:text-white">📄 Amazon XML Feed</h4>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(amazonFeedData.xml_feed)}
-                      className="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
-                    >
-                      📋 نسخ
-                    </button>
+              {/* API Info Tab */}
+              {previewTab === 'info' && (
+                <div className="space-y-6">
+                  {/* API Info */}
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                    <h4 className="font-semibold text-blue-700 dark:text-blue-400 mb-3">ℹ️ معلومات Amazon API</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">نوع API:</span>
+                        <span className="font-mono text-blue-600">{amazonFeedData.api_type}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Endpoint:</span>
+                        <span className="font-mono text-blue-600">{amazonFeedData.endpoint}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Marketplace ID:</span>
+                        <span className="font-mono text-blue-600">{amazonFeedData.marketplace_id}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Language Tag:</span>
+                        <span className="font-mono text-blue-600">{amazonFeedData.language_tag}</span>
+                      </div>
+                    </div>
                   </div>
-                  <pre className="p-4 bg-gray-100 dark:bg-gray-900 rounded-lg text-xs overflow-auto max-h-[60vh] font-mono whitespace-pre">
-                    {amazonFeedData.xml_feed}
-                  </pre>
+
+                  {/* Deprecated Warning */}
+                  <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <h4 className="font-semibold text-amber-700 dark:text-amber-400 mb-2">⚠️ تحذير: XML Feeds Deprecated</h4>
+                    <p className="text-sm text-amber-700 dark:text-amber-400">{amazonFeedData.api_deprecated}</p>
+                    <p className="text-sm text-amber-700 dark:text-amber-400 mt-2">
+                      Amazon أوقفت دعم XML Feeds (POST_PRODUCT_DATA) من مارس 2024.
+                      الطريقة الوحيدة الآن هي استخدام Listings Items API بصيغة JSON.
+                    </p>
+                  </div>
+
+                  {/* Required vs Optional */}
+                  <div>
+                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">📌 الحقول الإجبارية vs الاختيارية</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-3 bg-red-50 dark:bg-red-900/10 rounded-lg">
+                        <h5 className="text-sm font-semibold text-red-600 mb-2">❌ إجبارية (Amazon ترفض بدونها)</h5>
+                        <ul className="text-xs space-y-1 text-red-700 dark:text-red-400">
+                          {(amazonFeedData.required_attributes || []).map((attr: string) => (
+                            <li key={attr}>• {attr}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="p-3 bg-green-50 dark:bg-green-900/10 rounded-lg">
+                        <h5 className="text-sm font-semibold text-green-600 mb-2">✅ اختيارية (مستحسن إضافتها)</h5>
+                        <ul className="text-xs space-y-1 text-green-700 dark:text-green-400">
+                          <li>• item_description (الوصف)</li>
+                          <li>• bullet_point (نقاط البيع)</li>
+                          <li>• generic_keyword (كلمات البحث)</li>
+                          <li>• material (الخامة)</li>
+                          <li>• item_weight (الوزن)</li>
+                          <li>• item_dimensions (الأبعاد)</li>
+                          <li>• model_number (رقم الموديل)</li>
+                          <li>• number_of_items (عدد القطع)</li>
+                          <li>• other_product_image_locator_* (صور إضافية)</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* How Amazon Processes It */}
+                  <div>
+                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">🔄 كيف Amazon بتعالج الطلب؟</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-start gap-3 p-2 bg-gray-50 dark:bg-gray-900 rounded">
+                        <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded">1</span>
+                        <p className="text-gray-700 dark:text-gray-300">Frontend يبني JSON payload بكل البيانات</p>
+                      </div>
+                      <div className="flex items-start gap-3 p-2 bg-gray-50 dark:bg-gray-900 rounded">
+                        <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded">2</span>
+                        <p className="text-gray-700 dark:text-gray-300">Backend يبعت PUT request لـ Amazon</p>
+                      </div>
+                      <div className="flex items-start gap-3 p-2 bg-gray-50 dark:bg-gray-900 rounded">
+                        <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded">3</span>
+                        <p className="text-gray-700 dark:text-gray-300">Amazon تتحقق من Issues list</p>
+                      </div>
+                      <div className="flex items-start gap-3 p-2 bg-gray-50 dark:bg-gray-900 rounded">
+                        <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded">4</span>
+                        <p className="text-gray-700 dark:text-gray-300">Amazon ترد بـ ACCEPTED أو أخطاء</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

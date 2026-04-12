@@ -2,8 +2,8 @@
 Listing Tasks (Asyncio-based)
 Handles background listing submissions to Amazon
 
-- In MOCK mode: simulates Amazon API calls
-- In REAL mode: uses actual SP-API
+Uses Direct API (ABIS AJAX) — Cookie-based, ALister approach.
+NO SP-API credentials needed — uses cookies from pywebview login.
 """
 import asyncio
 import json
@@ -14,7 +14,6 @@ from app.models.seller import Seller
 from app.models.listing import Listing
 from app.models.product import Product
 from app.models.activity_log import ActivityLog
-from app.services.amazon_api import AmazonAPIClient
 from app.services.validation_service import ValidationService
 from loguru import logger
 import json
@@ -108,11 +107,20 @@ async def submit_listing_task(product_id: str) -> dict:
         listing.stage = "submitted"
         db.commit()
 
-        # Step 4: Submit to Amazon with retry + backoff
-        client = AmazonAPIClient(
-            seller_id=seller.amazon_seller_id,
-            marketplace_id=seller.marketplace_id,
-            refresh_token=seller.lwa_refresh_token,
+        # Step 4: Submit to Amazon via Direct API (ABIS AJAX — Cookie-based, ALister approach)
+        # This uses the cookies from the pywebview login — NO SP-API credentials needed
+        from app.services.amazon_direct_api import AmazonDirectAPI
+        from app.services.session_store import SessionStore
+
+        # Get email from active session
+        session_store = SessionStore()
+        sessions = session_store.list_sessions()
+        active_session = next((s for s in sessions if s.get("is_active")), None)
+        email = active_session.get("email", "default") if active_session else "default"
+
+        client = AmazonDirectAPI(
+            email=email,
+            country_code=seller.region.lower() if seller and seller.region else "eg",
         )
 
         result = None
@@ -122,31 +130,8 @@ async def submit_listing_task(product_id: str) -> dict:
                 listing.stage = "processing"
                 db.commit()
 
-                result = await client.create_or_update_listing(
-                    sku=product.sku,
-                    product_data={
-                        "name": product.name,
-                        "brand": product.brand or "",
-                        "description": product.description or "",
-                        "bullet_points": _parse_json_field(product.bullet_points),
-                        "price": float(product.price) if product.price else 0,
-                        "quantity": product.quantity or 0,
-                        "upc": product.upc or "",
-                        "ean": product.ean or "",
-                        "condition": product.condition or "New",
-                        "fulfillment_channel": product.fulfillment_channel or "MFN",
-                        "handling_time": product.handling_time or 0,
-                        "product_type": product.product_type or "",
-                        "manufacturer": product.manufacturer or "",
-                        "model_number": product.model_number or "",
-                        "country_of_origin": product.country_of_origin or "",
-                        "package_quantity": product.package_quantity or 1,
-                        "images": _parse_json_field(product.images, []),
-                        "weight": float(product.weight) if product.weight else None,
-                        "dimensions": _parse_json_field(product.dimensions, {}),
-                        "browse_node_id": product.browse_node_id or "",
-                    },
-                )
+                # Direct API uses product_id directly — it fetches product data from DB
+                result = await client.create_listing(product_id)
                 # Success — break out of retry loop
                 break
             except Exception as e:
@@ -170,11 +155,11 @@ async def submit_listing_task(product_id: str) -> dict:
                     await asyncio.sleep(wait_time)
 
         # Step 5: Update listing with result
-        if result.get("success"):
+        if result and result.get("success"):
             listing.status = "success"
             listing.stage = "success"
-            listing.amazon_asin = result.get("data", {}).get("asin", "")
-            listing.amazon_url = f"https://www.amazon.com/dp/{listing.amazon_asin}"
+            listing.amazon_asin = result.get("listing_id", "") or result.get("asin", "")
+            listing.amazon_url = f"https://www.amazon.eg/dp/{listing.amazon_asin}" if listing.amazon_asin else ""
             listing.completed_at = datetime.utcnow()
             db.commit()
             logger.info(f"✅ Listing success: {product.sku} → ASIN {listing.amazon_asin}")
@@ -184,7 +169,7 @@ async def submit_listing_task(product_id: str) -> dict:
         else:
             listing.status = "failed"
             listing.stage = "failed"
-            listing.error_message = str(result.get("error", "Unknown error"))
+            listing.error_message = str(result.get("error", result.get("message", "Unknown error")))
             listing.completed_at = datetime.utcnow()
             db.commit()
             logger.error(f"❌ Listing failed: {product.sku}")

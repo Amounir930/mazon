@@ -22,13 +22,13 @@ def product_to_dict(product: Product) -> dict:
     """Convert Product model to dict (handle JSON strings)"""
     d = {c.name: getattr(product, c.name) for c in product.__table__.columns}
     # Parse JSON strings
-    for field in ['bullet_points', 'bullet_points_ar', 'bullet_points_en', 'keywords', 'images', 'dimensions', 'attributes', 'optimized_data']:
+    for field in ['bullet_points', 'bullet_points_ar', 'bullet_points_en', 'keywords', 'images', 'dimensions', 'attributes', 'optimized_data', 'unit_count']:
         val = d.get(field)
         if val and isinstance(val, str):
             try:
                 d[field] = json.loads(val)
             except Exception:
-                d[field] = [] if field not in ('dimensions', 'attributes', 'optimized_data') else {}
+                d[field] = [] if field not in ('dimensions', 'attributes', 'optimized_data', 'unit_count') else {}
     # Convert Decimal to float for JSON serialization
     for field in ['price', 'compare_price', 'cost', 'weight', 'sale_price']:
         if d.get(field) is not None:
@@ -327,81 +327,91 @@ async def lookup_product(product_id: str, id_type: str = "EAN", db: Session = De
 @router.post("/preview-feed")
 async def preview_amazon_feed(data: ProductCreate):
     """
-    يولّد معاينة للبيانات اللي هتترسل لـ Amazon (JSON + XML)
-    من غير ما يبعت حاجة فعلًا - للعرض فقط
+    يولّد معاينة للبيانات اللي هتترسل لـ Amazon (JSON format - Listings Items API)
+    Amazon deprecated XML feeds من مارس 2024. الطريقة الجديدة JSON.
+    
+    Reference: https://developer-docs.amazon.com/sp-api/docs/create-a-listing
     """
-    import json as json_mod
-    from app.services.feed_service import FeedService
+    from app.services.listings_items_service import ListingsItemsService
     from app.services.validation_service import ValidationService
 
-    # Build product dict
-    product_data = {
-        "sku": data.sku or f"AUTO-PREVIEW",
-        "name": data.name,
-        "brand": data.brand or "Generic",
-        "description": data.description_en or data.description or "",
-        "bullet_points": data.bullet_points or [],
-        "price": float(data.price) if data.price else 0,
-        "quantity": data.quantity or 0,
-        "currency": data.currency or "EGP",
-        "upc": data.upc or "",
-        "ean": data.ean or "",
-        "condition": data.condition or "New",
-        "fulfillment_channel": data.fulfillment_channel or "MFN",
-        "handling_time": data.handling_time or 1,
-        "product_type": data.product_type or "",
-        "manufacturer": data.manufacturer or "",
-        "model_number": data.model_number or "",
-        "country_of_origin": data.country_of_origin or "",
-        "package_quantity": data.package_quantity or 1,
-        "material": data.material or "",
-        "number_of_items": data.number_of_items or 1,
-        "unit_count": data.unit_count,
-        "target_audience": data.target_audience or "",
-        "images": data.images or [],
-        "weight": float(data.weight) if data.weight else None,
-        "dimensions": data.dimensions or {},
-        "browse_node_id": data.browse_node_id or "",
-        "keywords": data.keywords or [],
-        "compare_price": float(data.compare_price) if data.compare_price else None,
-        "cost": float(data.cost) if data.cost else None,
-        "sale_price": float(data.sale_price) if data.sale_price else None,
-    }
+    # Build images list
+    images = data.images or []
+    image_urls = images  # Already URLs after upload
 
-    # Generate XML
-    mock_seller = type('MockSeller', (), {
-        'amazon_seller_id': 'MOCK-SELLER-PREVIEW',
-        'marketplace_id': 'ARBP9OOSHTCHU',
-        'lwa_refresh_token': 'mock-token',
-    })()
+    # Build bullet points from description
+    bullet_points = data.bullet_points or []
+    if not bullet_points and data.description_en:
+        bullet_points = [s.strip() for s in data.description_en.replace('\n', '.').split('.') if len(s.strip()) > 10][:5]
 
-    try:
-        xml_bytes = FeedService.generate_product_xml(product_data, mock_seller)
-        xml_str = xml_bytes.decode('utf-8')
-    except Exception as e:
-        xml_str = f"Error generating XML: {str(e)}"
+    # Build the Amazon Listings Items API payload
+    payload = ListingsItemsService.build_listing_payload(
+        sku=data.sku or f"AUTO-PREVIEW",
+        name=data.name,
+        brand=data.brand or "Generic",
+        price=float(data.price) if data.price else 0,
+        quantity=data.quantity or 0,
+        product_type=data.product_type or "",
+        description=data.description_en or data.description or "",
+        bullet_points=bullet_points,
+        images=image_urls,
+        condition=data.condition or "New",
+        manufacturer=data.manufacturer or "",
+        model_number=data.model_number or "",
+        country_of_origin=data.country_of_origin or "",
+        material=data.material or "",
+        target_audience=data.target_audience or "",
+        keywords=data.keywords or [],
+        weight=float(data.weight) if data.weight else None,
+        weight_unit="kilograms",
+        dimensions=data.dimensions or {},
+        handling_time=data.handling_time or 1,
+        package_quantity=data.package_quantity or 1,
+        number_of_items=data.number_of_items or 1,
+        browse_node_id=data.browse_node_id or "",
+        currency=data.currency or "EGP",
+        compare_price=float(data.compare_price) if data.compare_price else None,
+        sale_price=float(data.sale_price) if data.sale_price else None,
+    )
 
     # Validation
     validation = ValidationService.validate_product(
-        sku=product_data["sku"],
-        name=product_data["name"],
-        price=product_data["price"],
-        images=product_data["images"],
-        brand=product_data["brand"],
-        product_type=product_data["product_type"],
-        condition=product_data["condition"],
-        fulfillment_channel=product_data["fulfillment_channel"],
-        upc=product_data["upc"],
-        ean=product_data["ean"],
-        bullet_points=product_data["bullet_points"],
+        sku=payload.get("attributes", {}).get("item_name", [{}])[0].get("value", ""),
+        name=payload.get("attributes", {}).get("item_name", [{}])[0].get("value", ""),
+        price=float(data.price) if data.price else 0,
+        images=image_urls,
+        brand=data.brand or "Generic",
+        product_type=data.product_type or "",
+        condition=data.condition or "New",
+        fulfillment_channel=data.fulfillment_channel or "MFN",
+        upc=data.upc or "",
+        ean=data.ean or "",
+        bullet_points=bullet_points,
     )
+
+    # Count filled attributes
+    total_attrs = len([k for k, v in payload.get("attributes", {}).items() if v])
+    total_offer = len(payload.get("offer", {}).get("attributes", {}))
 
     return {
         "validation": validation.to_dict(),
-        "json_payload": product_data,
-        "xml_feed": xml_str,
+        "api_type": "Listings Items API (JSON)",
+        "api_deprecated": "XML feeds (POST_PRODUCT_DATA) deprecated by Amazon since March 2024",
+        "endpoint": ListingsItemsService.get_endpoint(),
+        "marketplace_id": ListingsItemsService.MARKETPLACE_ID,
+        "language_tag": ListingsItemsService.LANGUAGE_TAG,
+        "required_attributes": ListingsItemsService.get_required_attributes(),
+        "json_payload": payload,
+        "rate_limit_info": {
+            "max_requests_per_second": 20,
+            "max_requests_per_5min": 100,
+            "retry_strategy": "Exponential Backoff (1s, 2s, 4s, 8s, 16s, 32s)",
+            "max_retries": 5,
+            "jitter": "0-1s random delay added to avoid thundering herd",
+        },
         "summary": {
-            "total_fields": len([k for k, v in product_data.items() if v]),
+            "total_attributes": total_attrs,
+            "total_offer_attributes": total_offer,
             "errors": len(validation.errors),
             "warnings": len(validation.warnings),
             "ready_for_amazon": validation.valid,

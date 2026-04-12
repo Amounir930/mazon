@@ -74,12 +74,15 @@ async def sync_products_from_amazon(
 @router.post("/export-to-amazon")
 async def export_products_to_amazon(
     db: Session = Depends(get_db),
+    only_new: bool = Query(True, description="تصدير المنتجات الجديدة فقط (بدون listings)"),
 ):
     """
     تصدير المنتجات من Local Database → Amazon Listing.
-    ياخد كل المنتجات من الـ DB ويرفعها كـ Listings على Amazon.
+    
+    - only_new=True (default): يرفع بس المنتجات اللي مفيهاش listing لسه
+    - only_new=False: يرفع كل المنتجات (إعادة رفع)
 
-    Request: POST /api/v1/sync/export-to-amazon
+    Request: POST /api/v1/sync/export-to-amazon?only_new=true
     Response: {
         "success": true,
         "submitted": 10,
@@ -89,8 +92,21 @@ async def export_products_to_amazon(
     }
     """
     try:
-        # Get all products from DB
-        products = db.query(Product).all()
+        # Get products based on filter
+        if only_new:
+            # فقط المنتجات اللي مفيهاش listing لسه
+            from sqlalchemy import not_, exists
+            from app.models.listing import Listing
+            
+            products = db.query(Product).filter(
+                not_(exists().where(Listing.product_id == Product.id))
+            ).all()
+            
+            filter_desc = "الجديدة (بدون listings)"
+        else:
+            # كل المنتجات
+            products = db.query(Product).all()
+            filter_desc = "كل المنتجات"
 
         if not products:
             return {
@@ -123,7 +139,7 @@ async def export_products_to_amazon(
                 failed += 1
                 logger.error(f"Failed to submit listing for {product.sku}: {e}")
 
-        logger.info(f"Export to Amazon: {submitted} submitted, {failed} failed, {len(products)} total")
+        logger.info(f"Export to Amazon ({filter_desc}): {submitted} submitted, {failed} failed, {len(products)} total")
 
         return {
             "success": True,
@@ -132,6 +148,7 @@ async def export_products_to_amazon(
             "total": len(products),
             "results": results[:10],  # Return first 10 for preview
             "message": f"تم رفع {submitted} منتج إلى Amazon ({failed} فشل)" if failed == 0 else f"تم رفع {submitted} منتج، فشل {failed}",
+            "filter": filter_desc,
         }
 
     except Exception as e:

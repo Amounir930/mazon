@@ -284,8 +284,8 @@ export function useExportToAmazon() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async () => {
-      const { data } = await syncApi.exportToAmazon()
+    mutationFn: async (onlyNew: boolean = true) => {
+      const { data } = await syncApi.exportToAmazon(onlyNew)
       return data
     },
     onSuccess: () => {

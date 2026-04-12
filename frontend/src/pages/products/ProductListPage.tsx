@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown, FileSpreadsheet, X, Check, Download, AlertCircle } from 'lucide-react'
+import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown, FileSpreadsheet, X, Check, Download, AlertCircle, Image as ImageIcon } from 'lucide-react'
 import { useProducts, useDeleteProduct, useSubmitListing, useSyncFromAmazon, useExportToAmazon, useExportPriceInventory, useExportListingLoader } from '@/api/hooks'
 import { productsApi } from '@/api/endpoints'
 import { StatusBadge } from '@/components/common/StatusBadge'
@@ -236,11 +236,26 @@ export default function ProductListPage() {
   // ==================== Export Handlers ====================
   const handleExportToAmazon = async () => {
     try {
-      const result = await exportMutation.mutateAsync()
-      toast.success(result.message || 'تم رفع المنتجات إلى Amazon بنجاح')
+      // By default: فقط المنتجات الجديدة (بدون listings)
+      const result = await exportMutation.mutateAsync(true)
+      toast.success(result.message || 'تم رفع المنتجات الجديدة إلى Amazon بنجاح')
       refetch()
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'فشل الرفع إلى Amazon')
+    }
+  }
+
+  // إعادة رفع كل المنتجات (للحالات الخاصة)
+  const handleReExportAllToAmazon = async () => {
+    if (!window.confirm('⚠️ هل أنت متأكد؟ هتعمل إعادة رفع لكل المنتجات لـ Amazon (قد يسبب تكر listings)')) {
+      return
+    }
+    try {
+      const result = await exportMutation.mutateAsync(false)
+      toast.success(result.message || 'تم إعادة رفع كل المنتجات إلى Amazon')
+      refetch()
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'فشل إعادة الرفع إلى Amazon')
     }
   }
 
@@ -430,7 +445,7 @@ export default function ProductListPage() {
                       className="w-10 h-10 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center"
                       style={{ display: thumbUrl ? 'none' : 'flex' }}
                     >
-                      <Image className="w-5 h-5 text-gray-600" />
+                      <ImageIcon className="w-5 h-5 text-gray-600" />
                     </div>
                   </td>
                   <td className="px-6 py-4">
