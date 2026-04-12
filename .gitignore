@@ -14,6 +14,7 @@ eggs/
 *.egg-info/
 .installed.cfg
 *.egg
+*.spec
 
 # Virtual Environment
 venv/
@@ -22,9 +23,10 @@ ENV/
 # Node
 node_modules/
 
-# IDEs
+# IDEs & Editors
 .vscode/
 .idea/
+.qwen/
 
 # Environment Variables
 .env
@@ -41,3 +43,20 @@ logs/
 
 # Docker
 .dockerignore
+
+# Data & Releases
+Data/
+releases/
+legacy_client/
+info/
+
+# Root scripts (local only)
+New-Text-Document.txt
+Valid
+_inspect.py
+read_pi.py
+create_icon.py
+build.py
+start-dev.bat
+*.xlsm
+*.xlsx
