@@ -112,6 +112,10 @@ export const productsApi = {
 
   previewFeed: (data: ProductCreate) =>
     api.post('/products/preview-feed', data),
+
+  // SP-API: Submit product to Amazon
+  submitToAmazon: (productId: string) =>
+    api.post(`/sp-api/submit/${productId}`),
 }
 
 // ==================== Listings API ====================

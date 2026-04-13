@@ -13,7 +13,7 @@ import re
 
 class ProductCreate(BaseModel):
     """Schema for creating a new product"""
-    model_config = ConfigDict(protected_namespaces=(), extra='allow')  # Allow extra fields
+    model_config = ConfigDict(protected_namespaces=(), extra='allow')
     sku: str = Field(..., min_length=1, max_length=100, description="Stock Keeping Unit")
     seller_id: Optional[str] = Field(None, description="Owner seller ID (auto-assigned if empty)")
     name: str = Field(..., min_length=2, max_length=500, description="Product name")
@@ -100,9 +100,10 @@ class ProductCreate(BaseModel):
 
 
 class ProductUpdate(BaseModel):
-    """Schema for updating an existing product"""
+    """Schema for updating an existing product - relaxed validation for partial updates"""
+    model_config = ConfigDict(protected_namespaces=(), extra='allow')
     seller_id: Optional[str] = None
-    name: Optional[str] = Field(None, min_length=2, max_length=500)
+    name: Optional[str] = Field(None, min_length=1, max_length=500)
     name_ar: Optional[str] = None
     name_en: Optional[str] = None
     category: Optional[str] = None
@@ -114,15 +115,15 @@ class ProductUpdate(BaseModel):
     bullet_points_ar: Optional[list[str]] = None
     bullet_points_en: Optional[list[str]] = None
     keywords: Optional[list[str]] = None
-    price: Optional[Decimal] = Field(None, gt=0, lt=999999)
-    compare_price: Optional[Decimal] = Field(None, gt=0)
-    cost: Optional[Decimal] = Field(None, gt=0)
+    price: Optional[Decimal] = Field(None, ge=0, lt=999999)  # ge=0 allows zero for partial updates
+    compare_price: Optional[Decimal] = Field(None, ge=0)
+    cost: Optional[Decimal] = Field(None, ge=0)
     currency: Optional[str] = Field(None, max_length=10)
     quantity: Optional[int] = Field(None, ge=0)
-    weight: Optional[Decimal] = Field(None, gt=0)
+    weight: Optional[Decimal] = Field(None, ge=0)  # ge=0 allows zero
 
     # Sale pricing
-    sale_price: Optional[Decimal] = Field(None, gt=0)
+    sale_price: Optional[Decimal] = Field(None, ge=0)  # ge=0 allows clearing sale price
     sale_start_date: Optional[str] = Field(None)
     sale_end_date: Optional[str] = Field(None)
     dimensions: Optional[dict[str, Any]] = None
@@ -140,6 +141,13 @@ class ProductUpdate(BaseModel):
     package_quantity: Optional[int] = Field(None, ge=1)
     browse_node_id: Optional[str] = Field(None, max_length=50)
     status: Optional[str] = None
+    optimized_data: Optional[dict[str, Any]] = None
+    optimized_data: Optional[str] = None
+    # Additional fields from Page 2
+    material: Optional[str] = Field(None, max_length=200)
+    number_of_items: Optional[int] = Field(None, ge=1)
+    unit_count: Optional[dict[str, Any]] = None
+    target_audience: Optional[str] = Field(None, max_length=100)
 
 
 class ProductResponse(BaseModel):

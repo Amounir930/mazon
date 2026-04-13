@@ -138,6 +138,18 @@ export interface ProductListResponse {
   has_prev: boolean
 }
 
+// ==================== SP-API Submission ====================
+
+export interface SPApiSubmitResponse {
+  success: boolean
+  listing_id: string
+  submission_id: string
+  status: string  // ACCEPTED / INVALID
+  asin: string
+  errors: Array<{ message: string; code?: string }>
+  message: string
+}
+
 // ==================== Listing ====================
 
 export interface Listing {

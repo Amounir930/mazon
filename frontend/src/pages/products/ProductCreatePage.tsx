@@ -1,114 +1,39 @@
-import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
+/**
+ * Product Create Page - Phase 2 Rebuild
+ * 
+ * 3 Pages Architecture:
+ * Page 1: الحقول الإجبارية (29 حقل مطلوب من Amazon)
+ * Page 2: الحقول الاختيارية
+ * Page 3: الصور + عدد الإعلانات + أزرار الإرسال
+ */
+
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowRight, Package, DollarSign, Image, Save, Loader2, AlertTriangle, CheckCircle, Search, Upload, X, FileSpreadsheet, Eye, Download } from 'lucide-react'
-import { useCreateProduct, useUpdateProduct } from '@/api/hooks'
+import {
+  Package, DollarSign, Image as ImageIcon, Save, Loader2,
+  AlertTriangle, CheckCircle, Upload, X, FileSpreadsheet, Eye,
+  Truck, ShoppingCart, Tag, Globe
+} from 'lucide-react'
+import { useCreateProduct } from '@/api/hooks'
 import { productsApi, imagesApi } from '@/api/endpoints'
-import { generateTemplateExcel } from '@/services/excel_import_service'
+import {
+  PRODUCT_TYPES, BROWSE_NODES, CONDITIONS, FULFILLMENT_CHANNELS,
+  ID_TYPES, COUNTRIES, UNIT_TYPES, WEIGHT_UNITS, DIMENSION_UNITS,
+  DEFAULT_VALUES, VALIDATION_RULES
+} from '@/constants/amazon'
 import toast from 'react-hot-toast'
-import * as XLSX from 'xlsx'
 
-// ==================== ثابتات القوائم المنسدلة ====================
+// ==================== Shared UI Components ====================
 
-const PRODUCT_TYPES = [
-  { value: 'HOME_ORGANIZERS_AND_STORAGE', label: 'أدوات تنظيم وتخزين المنزل' },
-  { value: 'BABY_PRODUCT', label: 'منتجات أطفال' },
-  { value: 'APPAREL', label: 'ملابس وأزياء' },
-]
-
-const CONDITIONS = [
-  { value: 'New', label: 'جديد' },
-  { value: 'New - Open Box', label: 'جديد - علبة مفتوحة' },
-  { value: 'New - OEM', label: 'جديد - مصنع' },
-  { value: 'Refurbished', label: 'مُجدد' },
-  { value: 'Used - Like New', label: 'مستعمل - كالجديد' },
-  { value: 'Used - Very Good', label: 'مستعمل - جيد جداً' },
-  { value: 'Used - Good', label: 'مستعمل - جيد' },
-  { value: 'Used - Acceptable', label: 'مستعمل - مقبول' },
-]
-
-const FULFILLMENT = [
-  { value: 'MFN', label: 'الشحن على البائع (MFN)' },
-  { value: 'AFN', label: 'الشحن على Amazon - FBA' },
-]
-
-const ID_TYPES = [
-  { value: 'UPC', label: 'UPC (12 رقم)' },
-  { value: 'EAN', label: 'EAN (13 رقم)' },
-  { value: 'ASIN', label: 'ASIN (Amazon)' },
-]
-
-const COUNTRIES = [
-  { value: 'CN', label: '🇨🇳 الصين' },
-  { value: 'EG', label: '🇪🇬 مصر' },
-  { value: 'TR', label: '🇹🇷 تركيا' },
-  { value: 'IN', label: '🇮🇳 الهند' },
-  { value: 'DE', label: '🇩🇪 ألمانيا' },
-  { value: 'US', label: '🇺🇸 أمريكا' },
-  { value: 'GB', label: '🇬🇧 بريطانيا' },
-]
-
-const DIMENSION_UNITS = [
-  { value: 'Centimeters', label: 'سم' },
-  { value: 'Inches', label: 'بوصة' },
-]
-
-const WEIGHT_UNITS = [
-  { value: 'Kilograms', label: 'كجم' },
-  { value: 'Grams', label: 'جرام' },
-  { value: 'Pounds', label: 'رطل' },
-]
-
-// ==================== أنواع البيانات ====================
-
-interface RequiredFields {
-  name: string
-  name_en: string
-  product_type: string
-  id_type: string
-  product_id: string
-  gtin_exempt: boolean
-  price: string
-  quantity: string
-  description: string
-  description_en: string
-}
-
-interface OptionalFields {
-  brand: string
-  condition: string
-  fulfillment_channel: string
-  model_number: string
-  manufacturer: string
-  country_of_origin: string
-  weight: string
-  weight_unit: string
-  length: string
-  width: string
-  height: string
-  dimension_unit: string
-  // حقول إضافية مطلوبة لـ Amazon
-  handling_time: string
-  package_quantity: string
-  browse_node_id: string
-  keywords: string
-  material: string
-  number_of_items: string
-  unit_count: string
-  unit_count_type: string
-  target_audience: string
-  sale_price: string
-  compare_price: string
-  cost: string
-  sale_start_date: string
-  sale_end_date: string
-}
-
-// ==================== مكونات UI منفصلة (BRA الـ component الرئيسي) ====================
-
-// ✅ Input مستقل - مش بيتعرف كل مرة
 const TextInput = ({
   value, onChange, type = 'text', placeholder, disabled,
-}: { value: string; onChange: (v: string) => void; type?: string; placeholder?: string; disabled?: boolean }) => (
+}: {
+  value: string
+  onChange: (v: string) => void
+  type?: string
+  placeholder?: string
+  disabled?: boolean
+}) => (
   <input
     type={type}
     value={value}
@@ -119,10 +44,33 @@ const TextInput = ({
   />
 )
 
-// ✅ Select مستقل
+const NumberInput = ({
+  value, onChange, placeholder, min, step,
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  min?: string
+  step?: string
+}) => (
+  <input
+    type="number"
+    value={value}
+    onChange={e => onChange(e.target.value)}
+    placeholder={placeholder}
+    min={min}
+    step={step}
+    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
+  />
+)
+
 const SelectInput = ({
   value, onChange, options,
-}: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) => (
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+}) => (
   <select
     value={value}
     onChange={e => onChange(e.target.value)}
@@ -134,1278 +82,1175 @@ const SelectInput = ({
   </select>
 )
 
-// ✅ Field wrapper مستقل
 const Field = ({
-  label, children, required: isRequired,
-}: { label: string; children: React.ReactNode; required?: boolean }) => (
+  label, children, required: isRequired, hint,
+}: {
+  label: string
+  children: React.ReactNode
+  required?: boolean
+  hint?: string
+}) => (
   <div className="space-y-1">
     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
       {label}
       {isRequired && <span className="text-red-500 mr-1">*</span>}
     </label>
     {children}
+    {hint && <p className="text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
   </div>
 )
 
-// ✅ StepIndicator مستقل
-const StepIndicator = ({ currentPage, onNavigate }: { currentPage: number; onNavigate: (page: number) => void }) => (
-  <div className="flex items-center justify-center gap-2 mb-6">
-    {[
-      { n: 1, label: 'البيانات الأساسية' },
-      { n: 2, label: 'بيانات إضافية' },
-      { n: 3, label: 'الصور والإعلانات' },
-    ].map(step => (
-      <button
-        key={step.n}
-        onClick={() => onNavigate(step.n)}
-        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-          ${currentPage === step.n
-            ? 'bg-blue-600 text-white shadow-lg'
-            : currentPage > step.n
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-              : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-          }`}
-      >
-        {currentPage > step.n ? <CheckCircle className="w-4 h-4" /> : <span>{step.n}</span>}
-        <span>{step.label}</span>
-      </button>
+const RadioGroup = ({
+  name, options, value, onChange,
+}: {
+  name: string
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (v: string) => void
+}) => (
+  <div className="flex flex-wrap gap-3">
+    {options.map(opt => (
+      <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="radio"
+          name={name}
+          checked={value === opt.value}
+          onChange={() => onChange(opt.value)}
+          className="w-4 h-4"
+        />
+        <span className="text-sm text-gray-700 dark:text-gray-300">{opt.label}</span>
+      </label>
     ))}
   </div>
 )
 
-// ==================== المكون الرئيسي ====================
+// ==================== Step Indicator ====================
+
+const StepIndicator = ({
+  currentPage,
+  onNavigate,
+}: {
+  currentPage: number
+  onNavigate: (page: number) => void
+}) => (
+  <div className="flex items-center justify-center gap-2 mb-6">
+    {[
+      { n: 1, label: 'الحقول الإجبارية', icon: Tag },
+      { n: 2, label: 'الحقول الاختيارية', icon: ShoppingCart },
+      { n: 3, label: 'الصور والإرسال', icon: ImageIcon },
+    ].map(step => {
+      const Icon = step.icon
+      return (
+        <button
+          key={step.n}
+          onClick={() => onNavigate(step.n)}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
+            ${currentPage === step.n
+              ? 'bg-blue-600 text-white shadow-lg'
+              : currentPage > step.n
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+            }`}
+        >
+          {currentPage > step.n ? (
+            <CheckCircle className="w-4 h-4" />
+          ) : (
+            <Icon className="w-4 h-4" />
+          )}
+          <span>{step.label}</span>
+        </button>
+      )
+    })}
+  </div>
+)
+
+// ==================== Main Component ====================
 
 export default function ProductCreatePage() {
   const navigate = useNavigate()
   const location = useLocation()
   const createMutation = useCreateProduct()
-  const updateMutation = useUpdateProduct()
 
-  // Check if we're in "complete data" mode for an incomplete product
-  const completeMode = (location.state as any)?.completeMode || false
   const editProduct = (location.state as any)?.editProduct as any
+  const isEditMode = !!editProduct
 
   const [page, setPage] = useState(1)
+  const [submitting, setSubmitting] = useState(false)
 
-  // بيانات إجبارية
-  const [required, setRequired] = useState<RequiredFields>({
-    name: '',
+  // ==================== PAGE 1: الحقول الإجبارية ====================
+  const [required, setRequired] = useState({
+    // Tab 1: الهوية الأساسية
+    name_ar: '',
     name_en: '',
-    product_type: 'HOME_ORGANIZERS_AND_STORAGE',
-    id_type: 'EAN',
-    product_id: '',
-    gtin_exempt: false,
+    product_type: DEFAULT_VALUES.product_type,
+    id_type: DEFAULT_VALUES.id_type as string,
+    ean: '',
+    brand: DEFAULT_VALUES.brand,
+    model_number: '',
+    manufacturer: DEFAULT_VALUES.brand,
+    country_of_origin: DEFAULT_VALUES.country_of_origin,
+
+    // Tab 2: الوصف والتفاصيل
+    description_ar: '',
+    description_en: '',
+    bullet_points: ['', '', '', '', ''],
+    browse_node_id: DEFAULT_VALUES.browse_node_id,
+    included_components: '',
+    unit_count: String(DEFAULT_VALUES.unit_count),
+    unit_count_type: DEFAULT_VALUES.unit_count_type,
+
+    // Tab 3: التسعير والكمية
     price: '',
     quantity: '0',
-    description: '',
-    description_en: '',
+
+    // Tab 4: الشحن والأبعاد
+    condition: DEFAULT_VALUES.condition,
+    fulfillment_channel: DEFAULT_VALUES.fulfillment_channel,
+    package_length: String(DEFAULT_VALUES.package_length),
+    package_width: String(DEFAULT_VALUES.package_width),
+    package_height: String(DEFAULT_VALUES.package_height),
+    item_weight: String(DEFAULT_VALUES.item_weight),
+    package_weight: String(DEFAULT_VALUES.package_weight),
+    number_of_boxes: String(DEFAULT_VALUES.number_of_boxes),
   })
 
-  // بيانات اختيارية
-  const [optional, setOptional] = useState<OptionalFields>({
-    brand: 'Generic',
-    condition: 'New',
-    fulfillment_channel: 'MFN',
-    model_number: '',
-    manufacturer: '',
-    country_of_origin: 'CN',
-    weight: '',
-    weight_unit: 'Kilograms',
-    length: '',
-    width: '',
-    height: '',
-    dimension_unit: 'Centimeters',
-    handling_time: '1',
-    package_quantity: '1',
-    browse_node_id: '',
-    keywords: '',
+  // ==================== PAGE 2: الحقول الاختيارية ====================
+  const [optional, setOptional] = useState({
+    keywords: [] as string[],
+    keywordInput: '',
     material: '',
-    number_of_items: '1',
-    unit_count: '',
-    unit_count_type: 'Count',
     target_audience: '',
-    sale_price: '',
     compare_price: '',
     cost: '',
+    sale_price: '',
     sale_start_date: '',
     sale_end_date: '',
+    handling_time: String(DEFAULT_VALUES.handling_time),
+    package_quantity: String(DEFAULT_VALUES.package_quantity),
   })
 
-  // صور (1 رئيسية + 8 فرعية) - URLs بعد الرفع
+  // ==================== PAGE 3: الصور والإرسال ====================
   const [mainImageUrl, setMainImageUrl] = useState<string>('')
-  const [extraImageUrls, setExtraImageUrls] = useState<string[]>([])
-
-  // حالة الرفع
-  const [uploadingImages, setUploadingImages] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
-
-  // صورة مؤقتة للعرض (base64) قبل الرفع
   const [mainImagePreview, setMainImagePreview] = useState<string>('')
+  const [extraImageUrls, setExtraImageUrls] = useState<string[]>([])
+  const [extraImagePreviews, setExtraImagePreviews] = useState<string[]>([])
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const [listingCopies, setListingCopies] = useState(1)
 
-  // عدد الإعلانات
-  const [listingCopiesStr, setListingCopiesStr] = useState('1')
-  const listingCopies = parseInt(listingCopiesStr) || 1
-
-  // حالة البحث
-  const [lookingUp, setLookingUp] = useState(false)
-  const [lookupResult, setLookupResult] = useState<{ available: boolean; reason: string; asin?: string; title?: string } | null>(null)
-
-  // حالة المعاينة
-  const [showPreview, setShowPreview] = useState(false)
-  const [previewData, setPreviewData] = useState<any[]>([])
-
-  // Amazon Feed Preview
-  const [showAmazonPreview, setShowAmazonPreview] = useState(false)
-  const [amazonFeedData, setAmazonFeedData] = useState<any>(null)
-  const [previewTab, setPreviewTab] = useState<'summary' | 'json' | 'xml'>('summary')
-  const [previewLoading, setPreviewLoading] = useState(false)
-
-  // حالة استيراد Excel
-  const [showExcelImport, setShowExcelImport] = useState(false)
-  const [excelData, setExcelData] = useState<any[] | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const extraFileInputRef = useRef<HTMLInputElement>(null)
 
-  // ==================== Edit/Complete Mode: Populate fields from existing product ====================
+  // ==================== Edit Mode: Populate fields ====================
   useEffect(() => {
     if (editProduct) {
-      // Populate required fields
+      const bullets = Array.isArray(editProduct.bullet_points)
+        ? editProduct.bullet_points
+        : []
+      const filledBullets = [...bullets, '', '', '', '', ''].slice(0, 5)
+
+      const dims = editProduct.dimensions as any
+
       setRequired({
-        name: editProduct.name_ar || editProduct.name || '',
+        name_ar: editProduct.name_ar || editProduct.name || '',
         name_en: editProduct.name_en || editProduct.name || '',
-        product_type: editProduct.product_type || 'HOME_ORGANIZERS_AND_STORAGE',
-        id_type: editProduct.ean ? 'EAN' : editProduct.upc ? 'UPC' : 'EAN',
-        product_id: editProduct.ean || editProduct.upc || '',
-        gtin_exempt: !editProduct.ean && !editProduct.upc,
+        product_type: editProduct.product_type || DEFAULT_VALUES.product_type,
+        id_type: editProduct.ean ? 'EAN' : editProduct.upc ? 'UPC' : DEFAULT_VALUES.id_type,
+        ean: editProduct.ean || editProduct.upc || '',
+        brand: editProduct.brand || DEFAULT_VALUES.brand,
+        model_number: editProduct.model_number || '',
+        manufacturer: editProduct.manufacturer || DEFAULT_VALUES.brand,
+        country_of_origin: editProduct.country_of_origin || DEFAULT_VALUES.country_of_origin,
+        description_ar: editProduct.description_ar || editProduct.description || '',
+        description_en: editProduct.description_en || editProduct.description || '',
+        bullet_points: filledBullets,
+        browse_node_id: editProduct.browse_node_id || DEFAULT_VALUES.browse_node_id,
+        included_components: editProduct.name || '',
+        unit_count: String(editProduct.number_of_items || DEFAULT_VALUES.unit_count),
+        unit_count_type: DEFAULT_VALUES.unit_count_type,
         price: String(editProduct.price || ''),
         quantity: String(editProduct.quantity || '0'),
-        description: editProduct.description || '',
-        description_en: editProduct.description_en || editProduct.description || '',
+        condition: editProduct.condition || DEFAULT_VALUES.condition,
+        fulfillment_channel: editProduct.fulfillment_channel || DEFAULT_VALUES.fulfillment_channel,
+        package_length: String(dims?.length || DEFAULT_VALUES.package_length),
+        package_width: String(dims?.width || DEFAULT_VALUES.package_width),
+        package_height: String(dims?.height || DEFAULT_VALUES.package_height),
+        item_weight: String(editProduct.weight || DEFAULT_VALUES.item_weight),
+        package_weight: String(DEFAULT_VALUES.package_weight),
+        number_of_boxes: String(DEFAULT_VALUES.number_of_boxes),
       })
 
-      // Populate optional fields
       setOptional({
-        brand: editProduct.brand || 'Generic',
-        condition: editProduct.condition || 'New',
-        fulfillment_channel: editProduct.fulfillment_channel || 'MFN',
-        model_number: editProduct.model_number || '',
-        manufacturer: editProduct.manufacturer || '',
-        country_of_origin: editProduct.country_of_origin || 'CN',
-        weight: String(editProduct.weight || ''),
-        weight_unit: 'Kilograms',
-        length: '',
-        width: '',
-        height: '',
-        dimension_unit: 'Centimeters',
+        keywords: Array.isArray(editProduct.keywords) ? editProduct.keywords : [],
+        keywordInput: '',
+        material: editProduct.material || '',
+        target_audience: editProduct.target_audience || '',
+        compare_price: String(editProduct.compare_price || ''),
+        cost: String(editProduct.cost || ''),
+        sale_price: String(editProduct.sale_price || ''),
+        sale_start_date: editProduct.sale_start_date ? editProduct.sale_start_date.split('T')[0] : '',
+        sale_end_date: editProduct.sale_end_date ? editProduct.sale_end_date.split('T')[0] : '',
+        handling_time: String(editProduct.handling_time || DEFAULT_VALUES.handling_time),
+        package_quantity: String(editProduct.package_quantity || DEFAULT_VALUES.package_quantity),
       })
 
-      // Populate images from existing product
-      if (editProduct.images && editProduct.images.length > 0) {
-        const firstImg = editProduct.images[0]
-        // لو URL كاملة أو relative path
-        if (firstImg.startsWith('http') || firstImg.startsWith('/api/')) {
-          setMainImageUrl(firstImg)
-        } else {
-          // لو relative path بدون /api
-          setMainImageUrl(`/api/v1/images/static/${firstImg}`)
-        }
-        const restImgs = editProduct.images.slice(1, 9).map((img: string) =>
-          img.startsWith('http') || img.startsWith('/api/') ? img : `/api/v1/images/static/${img}`
-        )
-        setExtraImageUrls(restImgs)
+      const images = editProduct.images || []
+      if (images.length > 0) {
+        setMainImageUrl(images[0])
+        setExtraImageUrls(images.slice(1, 9))
       }
     }
   }, [editProduct])
 
-  // Calculate missing fields for edit/complete mode
-  const isEditMode = !!editProduct
-  const missingFields = useMemo(() => {
-    if (!isEditMode) return []
+  // ==================== Validation ====================
+  const validate = (): { valid: boolean; errors: string[] } => {
+    const errors: string[] = []
 
-    const missing: string[] = []
-    if (!mainImageUrl && (!editProduct.images || editProduct.images.length === 0)) missing.push('صورة رئيسية')
-    if (!required.product_id && !required.gtin_exempt) missing.push('باركود (UPC/EAN)')
-    if (!optional.brand || optional.brand === 'Generic') missing.push('براند حقيقي')
-    if (!required.product_type || required.product_type === 'HOME_ORGANIZERS_AND_STORAGE') missing.push('نوع المنتج')
-    if (optional.brand === 'Generic') missing.push('براند (ليس Generic)')
+    // Page 1 - Required fields
+    if (required.name_ar.trim().length < VALIDATION_RULES.name_ar.min)
+      errors.push('اسم المنتج بالعربي لازم 3 أحرف على الأقل')
+    if (required.name_en.trim().length < VALIDATION_RULES.name_en.min)
+      errors.push('اسم المنتج بالإنجليزي لازم 3 أحرف على الأقل')
+    if (required.id_type !== 'EXEMPT') {
+      const idLen = required.id_type === 'UPC' ? 12 : 13
+      if (required.ean.length !== idLen)
+        errors.push(`الباركود لازم يكون ${idLen} رقم`)
+    }
+    if (!required.brand || required.brand.trim().length < 1)
+      errors.push('البراند مطلوب')
+    if (!required.manufacturer || required.manufacturer.trim().length < 1)
+      errors.push('المصنع مطلوب')
+    if (required.model_number.trim().length < 1)
+      errors.push('رقم الموديل مطلوب')
+    if (required.description_ar.trim().length < VALIDATION_RULES.description_ar.min)
+      errors.push('الوصف بالعربي لازم 5 أحرف على الأقل')
+    if (required.description_en.trim().length < VALIDATION_RULES.description_en.min)
+      errors.push('الوصف بالإنجليزي لازم 5 أحرف على الأقل')
+    const validBullets = required.bullet_points.filter(bp => bp.trim().length > 0)
+    if (validBullets.length === 0)
+      errors.push('لازم تكتب نقطة بيعية واحدة على الأقل')
+    if (!required.price || parseFloat(required.price) <= 0)
+      errors.push('السعر لازم يكون أكبر من صفر')
+    if (!mainImageUrl && !isEditMode)
+      errors.push('لازم ترفع صورة رئيسية')
 
-    return missing
-  }, [completeMode, editProduct, mainImageUrl, required, optional])
+    return { valid: errors.length === 0, errors }
+  }
 
-  // ==================== دوال مساعدة ====================
-
-  const updateRequired = useCallback((field: keyof RequiredFields, value: string | boolean) =>
-    setRequired(prev => ({ ...prev, [field]: value })), [])
-
-  const updateOptional = useCallback((field: keyof OptionalFields, value: string) =>
-    setOptional(prev => ({ ...prev, [field]: value })), [])
-
-  // ==================== رفع الصور ====================
-
-  // رفع الصورة الرئيسية
+  // ==================== Image Upload ====================
   const handleMainImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // عرض preview مؤقت
+    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) {
+      toast.error('الملف لازم يكون صورة وأقل من 5MB')
+      return
+    }
+
     const reader = new FileReader()
     reader.onload = () => setMainImagePreview(reader.result as string)
     reader.readAsDataURL(file)
 
-    // رفع للسيرفر
     setUploadingImages(true)
-    setUploadProgress(10)
     try {
-      const { data } = await imagesApi.upload(file)
-      setMainImageUrl(data.url)
-      setUploadProgress(100)
-      toast.success('✅ تم رفع الصورة الرئيسية')
-    } catch (error: any) {
-      toast.error('فشل رفع الصورة: ' + (error.response?.data?.detail || error.message))
+      const res = await imagesApi.upload(file)
+      setMainImageUrl(res.data.url)
+      toast.success('تم رفع الصورة الرئيسية')
+    } catch {
+      toast.error('فشل رفع الصورة')
     } finally {
       setUploadingImages(false)
     }
   }, [])
 
-  // رفع صور فرعية
-  const handleExtraImagesUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExtraImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
-    if (!files) return
-    const remaining = 8 - extraImageUrls.length
-    const toAdd = Array.from(files).slice(0, remaining)
+    if (!files || files.length === 0) return
 
-    setUploadingImages(true)
-    let uploaded = 0
-
-    for (const file of toAdd) {
-      try {
-        setUploadProgress(Math.round((uploaded / toAdd.length) * 100))
-        const { data } = await imagesApi.upload(file)
-        setExtraImageUrls(prev => [...prev, data.url])
-        uploaded++
-      } catch (error: any) {
-        toast.error(`فشل رفع صورة: ${error.response?.data?.detail || error.message}`)
+    // Filter valid files
+    const validFiles = Array.from(files).filter(file => {
+      if (!file.type.startsWith('image/')) {
+        toast.error(`الملف ${file.name} مش صورة`)
+        return false
       }
-    }
-
-    setUploadProgress(100)
-    setUploadingImages(false)
-    if (uploaded > 0) toast.success(`✅ تم رفع ${uploaded} صورة`)
-  }, [extraImageUrls.length])
-
-  const removeMainImage = useCallback(() => { setMainImageUrl(''); setMainImagePreview('') }, [])
-  const removeExtraImage = useCallback((idx: number) => setExtraImageUrls(prev => prev.filter((_, i) => i !== idx)), [])
-
-  // بحث Amazon
-  const handleLookup = useCallback(async () => {
-    if (required.gtin_exempt) {
-      setLookupResult({ available: true, reason: 'معفي من الباركود - تخطي البحث' })
-      return
-    }
-    if (!required.product_id) {
-      toast.error('ادخل رقم الباركود أو ASIN الأول')
-      return
-    }
-
-    setLookingUp(true)
-    setLookupResult(null)
-
-    try {
-      const { data } = await productsApi.lookup(required.product_id, required.id_type)
-      setLookupResult(data)
-      if (!data.available) {
-        toast.error(`المنتج موجود على Amazon!\nASIN: ${data.asin}\n${data.title}`)
-      } else {
-        toast.success('المنتج مش موجود على Amazon - يمكنك إضافته')
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`الملف ${file.name} أكبر من 5MB`)
+        return false
       }
-    } catch (error: any) {
-      setLookupResult({ available: true, reason: `فشل البحث: ${error.message}` })
-    } finally {
-      setLookingUp(false)
-    }
-  }, [required.product_id, required.id_type, required.gtin_exempt])
+      return true
+    })
 
-  // ==================== معاينة البيانات ====================
+    if (validFiles.length === 0) return
 
-  const handlePreview = useCallback(() => {
-    // نفس الـ validation زي الـ handleSubmit
-    if (!required.name.trim() || required.name.length < 5) { toast.error('اسم المنتج لازم 5 أحرف'); return }
-    if (!required.name_en.trim() || required.name_en.length < 5) { toast.error('اسم المنتج بالإنجليزي لازم 5 أحرف'); return }
-    if (!required.description.trim() || required.description.length < 10) { toast.error('الوصف لازم 10 أحرف'); return }
-    if (!required.description_en.trim() || required.description_en.length < 10) { toast.error('الوصف بالإنجليزي لازم 10 أحرف'); return }
-    if (!required.price || parseFloat(required.price) <= 0) { toast.error('السعر لازم أكبر من صفر'); return }
-    if (!mainImageUrl) { toast.error('لازم ترفع صورة رئيسية'); return }
+    // Check if we have space for all files
+    const remainingSlots = 8 - extraImageUrls.length - extraImagePreviews.length
+    const filesToUpload = validFiles.slice(0, remainingSlots)
 
-    const basePayload: Record<string, unknown> = {
-      name: required.name_en.trim(),
-      name_ar: required.name.trim(),
-      name_en: required.name_en.trim(),
-      brand: optional.brand || 'Generic',
-      price: parseFloat(required.price),
-      quantity: Math.floor((parseInt(required.quantity) || 0) / listingCopies),
-      product_type: required.product_type,
-      condition: optional.condition,
-      fulfillment_channel: optional.fulfillment_channel,
-      country_of_origin: optional.country_of_origin,
-      images: [mainImageUrl, ...extraImageUrls],
-      description: required.description_en.trim(),
-      description_ar: required.description.trim(),
-      attributes: {
-        model_number: optional.model_number || undefined,
-        weight: optional.weight ? parseFloat(optional.weight) : undefined,
-      },
+    if (validFiles.length > remainingSlots) {
+      toast.warning(`فيه ${validFiles.length - remainingSlots} صورة مش هتترفع - مفيش أماكن فاضية كافية`)
     }
 
-    const payloads: Record<string, unknown>[] = []
-    for (let i = 1; i <= listingCopies; i++) {
-      const suffix = listingCopies > 1 ? ` - Variant ${i}` : ''
-      payloads.push({
-        ...basePayload,
-        sku: `AUTO-${Date.now()}-${i}`,
-        name: `${required.name_en.trim()}${suffix}`,
-        description: `${required.description_en.trim()}${suffix}`,
-        description_ar: `${required.description.trim()}${suffix}`,
+    // Upload each file
+    let uploadedCount = 0
+    for (const file of filesToUpload) {
+      // Preview
+      const previewUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.readAsDataURL(file)
       })
+
+      setUploadingImages(true)
+      try {
+        const res = await imagesApi.upload(file)
+        setExtraImageUrls(prev => [...prev, res.data.url])
+        setExtraImagePreviews(prev => [...prev, previewUrl])
+        uploadedCount++
+      } catch {
+        toast.error(`فشل رفع الصورة: ${file.name}`)
+      }
     }
 
-    setPreviewData(payloads)
-    setShowPreview(true)
-  }, [required, optional, mainImageUrl, extraImageUrls, listingCopies])
-
-  // ==================== معاينة Amazon Feed ====================
-
-  const handleAmazonPreview = useCallback(async () => {
-    if (!required.name_en.trim() || !required.price) {
-      toast.error('املأ البيانات الأساسية الأول')
-      return
+    setUploadingImages(false)
+    if (uploadedCount > 0) {
+      toast.success(`✅ تم رفع ${uploadedCount} صورة`)
     }
 
-    setPreviewLoading(true)
-    setPreviewTab('summary')
+    // Reset input so same files can be re-selected
+    e.target.value = ''
+  }, [extraImageUrls.length, extraImagePreviews.length])
 
-    const payload = {
-      sku: `AUTO-${Date.now()}`,
-      name: required.name_en.trim(),
-      name_ar: required.name.trim(),
-      name_en: required.name_en.trim(),
-      brand: optional.brand || 'Generic',
+  const removeExtraImage = useCallback((index: number) => {
+    setExtraImageUrls(prev => prev.filter((_, i) => i !== index))
+    setExtraImagePreviews(prev => prev.filter((_, i) => i !== index))
+  }, [])
+
+  // ==================== Build Payload ====================
+  const buildPayload = (variantIndex = 0) => {
+    const allImages = [mainImageUrl, ...extraImageUrls].filter(Boolean)
+    const variantSuffix = variantIndex > 0 ? ` - Variant ${variantIndex + 1}` : ''
+
+    return {
+      sku: isEditMode ? editProduct.sku : `AUTO-${Date.now()}-${variantIndex}`,
+      name: `${required.name_en.trim()}${variantSuffix}`,
+      name_ar: `${required.name_ar.trim()}${variantSuffix}`,
+      name_en: `${required.name_en.trim()}${variantSuffix}`,
+      brand: required.brand || DEFAULT_VALUES.brand,
       price: parseFloat(required.price),
-      quantity: parseInt(required.quantity) || 0,
+      quantity: parseInt(required.quantity),
+      product_type: required.product_type,
+      condition: required.condition,
+      fulfillment_channel: required.fulfillment_channel,
+      ean: required.id_type === 'EAN' ? required.ean : '',
+      upc: required.id_type === 'UPC' ? required.ean : '',
       description: required.description_en.trim(),
-      description_ar: required.description.trim(),
-      description_en: required.description_en.trim(),
-      product_type: required.product_type,
-      condition: optional.condition,
-      fulfillment_channel: optional.fulfillment_channel,
-      country_of_origin: optional.country_of_origin,
-      images: [mainImageUrl, ...extraImageUrls],
-      upc: required.id_type === 'UPC' && !required.gtin_exempt ? required.product_id : undefined,
-      ean: required.id_type === 'EAN' && !required.gtin_exempt ? required.product_id : undefined,
-      bullet_points: required.description_en.split(/[.\n]/).filter((s: string) => s.trim().length > 10).slice(0, 5),
-      keywords: optional.keywords ? optional.keywords.split(/\s+/).slice(0, 15) : [],
-      handling_time: parseInt(optional.handling_time) || 1,
-      package_quantity: parseInt(optional.package_quantity) || 1,
-      browse_node_id: optional.browse_node_id || undefined,
-      material: optional.material || undefined,
-      number_of_items: parseInt(optional.number_of_items) || 1,
-      target_audience: optional.target_audience || undefined,
-      manufacturer: optional.manufacturer || undefined,
-      model_number: optional.model_number || undefined,
-      weight: optional.weight ? parseFloat(optional.weight) : undefined,
-      dimensions: optional.length && optional.width && optional.height
-        ? { length: parseFloat(optional.length), width: parseFloat(optional.width), height: parseFloat(optional.height), unit: optional.dimension_unit }
-        : undefined,
-      compare_price: optional.compare_price ? parseFloat(optional.compare_price) : undefined,
-      cost: optional.cost ? parseFloat(optional.cost) : undefined,
-      sale_price: optional.sale_price ? parseFloat(optional.sale_price) : undefined,
-    }
-
-    try {
-      const { data } = await productsApi.previewFeed(payload as any)
-      setAmazonFeedData(data)
-      setShowAmazonPreview(true)
-    } catch (error: any) {
-      toast.error('فشل توليد المعاينة: ' + (error.response?.data?.detail || error.message))
-    } finally {
-      setPreviewLoading(false)
-    }
-  }, [required, optional, mainImageUrl, extraImageUrls])
-
-  // ==================== حفظ المنتج ====================
-  const handleSubmit = useCallback(async () => {
-    if (!required.name.trim() || required.name.length < 5) {
-      toast.error('اسم المنتج لازم 5 أحرف على الأقل')
-      return
-    }
-    if (!required.name_en.trim() || required.name_en.length < 5) {
-      toast.error('اسم المنتج بالإنجليزي لازم 5 أحرف على الأقل')
-      return
-    }
-    if (!required.description.trim() || required.description.length < 10) {
-      toast.error('الوصف (عربي) لازم 10 أحرف على الأقل')
-      return
-    }
-    if (!required.description_en.trim() || required.description_en.length < 10) {
-      toast.error('الوصف (English) لازم 10 أحرف على الأقل')
-      return
-    }
-    if (!required.price || parseFloat(required.price) <= 0) {
-      toast.error('السعر لازم يكون أكبر من صفر')
-      return
-    }
-    if (!required.gtin_exempt && !required.product_id) {
-      toast.error('لازم تدخل UPC/EAN/ASIN أو تختار "معفي"')
-      return
-    }
-    if (!mainImageUrl) {
-      toast.error('لازم ترفع صورة رئيسية واحدة على الأقل')
-      return
-    }
-
-    // بناء payload أساسي
-    const basePayload: Record<string, unknown> = {
-      // seller_id هيتم تحديده تلقائياً من الـ backend
-      name: required.name_en.trim(),
-      name_ar: required.name.trim(),
-      name_en: required.name_en.trim(),
-      brand: optional.brand || 'Generic',
-      price: parseFloat(required.price),
-      quantity: Math.floor((parseInt(required.quantity) || 0) / listingCopies),
-      product_type: required.product_type,
-      condition: optional.condition,
-      fulfillment_channel: optional.fulfillment_channel,
-      country_of_origin: optional.country_of_origin,
-      images: [mainImageUrl, ...extraImageUrls],
-      // حقول Amazon الإضافية
-      handling_time: parseInt(optional.handling_time) || 1,
-      package_quantity: parseInt(optional.package_quantity) || 1,
-      browse_node_id: optional.browse_node_id || undefined,
-      keywords: optional.keywords ? optional.keywords.split(/\s+/).slice(0, 15) : [],
-      material: optional.material || undefined,
-      number_of_items: parseInt(optional.number_of_items) || 1,
-      unit_count: optional.unit_count ? { value: parseFloat(optional.unit_count), type: optional.unit_count_type } : undefined,
-      target_audience: optional.target_audience || undefined,
-      // Pricing
+      description_ar: required.description_ar.trim(),
+      bullet_points: required.bullet_points.filter(bp => bp.trim().length > 0),
+      manufacturer: required.manufacturer || DEFAULT_VALUES.brand,
+      model_number: required.model_number || required.name_en.trim(),
+      country_of_origin: required.country_of_origin,
+      browse_node_id: required.browse_node_id,
+      material: optional.material,
+      number_of_items: parseInt(optional.unit_count),
+      unit_count: { value: parseFloat(required.unit_count), type: required.unit_count_type },
+      included_components: required.included_components || required.name_en.trim(),
+      target_audience: optional.target_audience,
       compare_price: optional.compare_price ? parseFloat(optional.compare_price) : undefined,
       cost: optional.cost ? parseFloat(optional.cost) : undefined,
       sale_price: optional.sale_price ? parseFloat(optional.sale_price) : undefined,
       sale_start_date: optional.sale_start_date || undefined,
       sale_end_date: optional.sale_end_date || undefined,
-      attributes: {
-        model_number: optional.model_number || undefined,
-        manufacturer: optional.manufacturer || undefined,
-        weight: optional.weight ? parseFloat(optional.weight) : undefined,
-        weight_unit: optional.weight_unit || undefined,
-        dimensions: optional.length && optional.width && optional.height
-          ? {
-              length: parseFloat(optional.length),
-              width: parseFloat(optional.width),
-              height: parseFloat(optional.height),
-              unit: optional.dimension_unit,
-            }
-          : undefined,
+      handling_time: parseInt(optional.handling_time),
+      package_quantity: parseInt(optional.package_quantity),
+      weight: parseFloat(required.item_weight),
+      dimensions: {
+        length: parseFloat(required.package_length),
+        width: parseFloat(required.package_width),
+        height: parseFloat(required.package_height),
+        unit: 'centimeters',
       },
+      keywords: optional.keywords,
+      images: allImages,
+    }
+  }
+
+  // ==================== Submit Handlers ====================
+  const handleSave = async () => {
+    const { valid, errors } = validate()
+    if (!valid) {
+      toast.error(errors.join('\n'))
+      return
     }
 
-    if (!required.gtin_exempt) {
-      if (required.id_type === 'UPC') basePayload.upc = required.product_id
-      else if (required.id_type === 'EAN') basePayload.ean = required.product_id
-      else if (required.id_type === 'ASIN') {
-        basePayload.attributes = { ...basePayload.attributes, asin: required.product_id }
-      }
-    }
-
-    // إنشاء نسخ متعددة باختلافات بسيطة
-    const payloads: Record<string, unknown>[] = []
-
-    for (let i = 1; i <= listingCopies; i++) {
-      const variantSuffix = listingCopies > 1 ? ` - Variant ${i}` : ''
-      const variantSuffixAr = listingCopies > 1 ? ` - نسخة ${i}` : ''
-
-      const payload = {
-        ...basePayload,
-        sku: `AUTO-${Date.now()}-${i}`,
-        name: `${required.name_en.trim()}${variantSuffix}`,
-        description: `${required.description_en.trim()}${variantSuffix}`,
-        description_ar: `${required.description.trim()}${variantSuffixAr}`,
-        bullet_points: required.description_en.split(/[.\n]/).filter((s: string) => s.trim().length > 10).slice(0, 5),
-      }
-
-      payloads.push(payload)
-    }
-
+    setSubmitting(true)
     try {
+      const payloads = []
+      for (let i = 0; i < listingCopies; i++) {
+        payloads.push(buildPayload(i))
+      }
+
+      // EDIT MODE: Update existing product
       if (isEditMode && editProduct?.id) {
-        // وضع التعديل - تحديث المنتج الموجود
-        await updateMutation.mutateAsync({ id: editProduct.id, data: payloads[0] })
+        const updatePayload = { ...payloads[0], id: undefined } // Remove id field
+        await productsApi.update(editProduct.id, updatePayload)
         toast.success('✅ تم تحديث المنتج بنجاح!')
-      } else if (listingCopies === 1) {
-        // وضع الإنشاء - منتج جديد
+        navigate('/products')
+        return
+      }
+
+      // CREATE MODE: Create new product(s)
+      if (listingCopies === 1) {
         await createMutation.mutateAsync(payloads[0] as any)
-        toast.success('✅ تم حفظ المنتج! يمكنك مزامنته لـ Amazon من صفحة المنتجات')
+        toast.success('✅ تم حفظ المنتج!')
       } else {
-        // نسخ متعددة - إرسال واحد واحد
         toast.loading(`جاري إنشاء ${listingCopies} منتج...`)
         let successCount = 0
-        let failCount = 0
-
         for (let i = 0; i < payloads.length; i++) {
           try {
             await createMutation.mutateAsync(payloads[i] as any)
             successCount++
           } catch {
-            failCount++
+            // silently fail for individual items
           }
         }
-
         toast.dismiss()
-        if (failCount === 0) {
-          toast.success(`✅ تم إنشاء ${successCount} منتج! يمكنك مزامنتها لـ Amazon من صفحة المنتجات`)
-        } else {
-          toast.error(`✅ نجح: ${successCount} | ❌ فشل: ${failCount}`)
-        }
+        toast.success(`✅ تم إنشاء ${successCount} منتج!`)
       }
 
       navigate('/products')
     } catch (error: any) {
-      const detail = error.response?.data?.detail
-      if (Array.isArray(detail)) {
-        toast.error(detail.map((e: any) => `${e.loc?.join('.')}: ${e.msg}`).join('\n'))
-      } else if (typeof detail === 'string') {
-        toast.error(detail)
-      } else {
-        toast.error(isEditMode ? 'فشل في تحديث المنتج' : 'فشل في حفظ البيانات')
-      }
+      // FIX: Proper error message extraction
+      const errorMsg = error?.response?.data?.detail
+        || error?.response?.data?.message
+        || (typeof error?.message === 'string' ? error.message : 'حدث خطأ غير معروف')
+      toast.error('فشل الحفظ: ' + errorMsg)
+      console.error('Save error:', error)
+    } finally {
+      setSubmitting(false)
     }
-  }, [required, optional, mainImageUrl, extraImageUrls, listingCopies, isEditMode, editProduct, createMutation, updateMutation, navigate])
+  }
 
-  // ==================== Excel Import ====================
+  const handleSubmitToAmazon = async () => {
+    const { valid, errors } = validate()
+    if (!valid) {
+      toast.error(errors.join('\n'))
+      return
+    }
 
-  const handleExcelFile = useCallback(async (file: File) => {
+    setSubmitting(true)
     try {
-      const buffer = await file.arrayBuffer()
-      const workbook = XLSX.read(buffer, { type: 'array' })
-      const sheetName = workbook.SheetNames[0]
-      const sheet = workbook.Sheets[sheetName]
-      const data: any[] = XLSX.utils.sheet_to_json(sheet)
+      // Step 1: Save to DB first
+      const payload = buildPayload()
+      const response = await createMutation.mutateAsync(payload as any)
+      const productId = response.data.id
 
-      if (data.length === 0) {
-        toast.error('الملف فاضي')
-        return
-      }
+      // Step 2: Submit to Amazon via SP-API
+      await productsApi.submitToAmazon(productId)
 
-      setExcelData(data)
-      toast.success(`تم قراءة ${data.length} منتج من الملف - اختار واحد`)
+      toast.info('⏳ تم الاستلام — جاري المعالجة لدى أمازون')
+      navigate('/listings')
     } catch (error: any) {
-      toast.error(`فشل قراءة الملف: ${error.message}`)
+      const errorMsg = error?.response?.data?.detail
+        || error?.response?.data?.message
+        || (typeof error?.message === 'string' ? error.message : 'حدث خطأ غير معروف')
+      toast.error('فشل الإرسال: ' + errorMsg)
+      console.error('Submit error:', error)
+    } finally {
+      setSubmitting(false)
     }
-  }, [])
+  }
 
-  const handleRowSelect = useCallback((rowIndex: number) => {
-    if (!excelData) return
-    const row = excelData[rowIndex]
-
-    // خريطة شاملة لكل الأعمدة (إجبارية + اختيارية + جديدة)
-    const mappings: Record<string, { target: 'required' | 'optional'; field: string }> = {
-      // ===== إجبارية =====
-      'اسم المنتج': { target: 'required', field: 'name' },
-      'name': { target: 'required', field: 'name' },
-      'product_name': { target: 'required', field: 'name' },
-      'title': { target: 'required', field: 'name' },
-      'الاسم': { target: 'required', field: 'name' },
-
-      'اسم المنتج بالانجليزية': { target: 'required', field: 'name_en' },
-      'name_en': { target: 'required', field: 'name_en' },
-      'english_name': { target: 'required', field: 'name_en' },
-      'اسم المنتج بالإنجليزي': { target: 'required', field: 'name_en' },
-
-      'نوع المنتج': { target: 'required', field: 'product_type' },
-      'product_type': { target: 'required', field: 'product_type' },
-      'type': { target: 'required', field: 'product_type' },
-
-      'نوع المعرف': { target: 'required', field: 'id_type' },
-      'id_type': { target: 'required', field: 'id_type' },
-
-      'الباركود': { target: 'required', field: 'product_id' },
-      'product_id': { target: 'required', field: 'product_id' },
-      'upc': { target: 'required', field: 'product_id' },
-      'ean': { target: 'required', field: 'product_id' },
-      'asin': { target: 'required', field: 'product_id' },
-      'barcode': { target: 'required', field: 'product_id' },
-
-      'السعر': { target: 'required', field: 'price' },
-      'price': { target: 'required', field: 'price' },
-      'amount': { target: 'required', field: 'price' },
-      'cost': { target: 'required', field: 'price' },
-
-      'الكمية': { target: 'required', field: 'quantity' },
-      'quantity': { target: 'required', field: 'quantity' },
-      'stock': { target: 'required', field: 'quantity' },
-      'inventory': { target: 'required', field: 'quantity' },
-      'المخزون': { target: 'required', field: 'quantity' },
-
-      'الوصف': { target: 'required', field: 'description' },
-      'description': { target: 'required', field: 'description' },
-      'details': { target: 'required', field: 'description' },
-      'تفاصيل': { target: 'required', field: 'description' },
-
-      'الوصف بالانجليزية': { target: 'required', field: 'description_en' },
-      'description_en': { target: 'required', field: 'description_en' },
-      'english_description': { target: 'required', field: 'description_en' },
-
-      // ===== اختيارية =====
-      'البراند': { target: 'optional', field: 'brand' },
-      'brand': { target: 'optional', field: 'brand' },
-
-      'حالة المنتج': { target: 'optional', field: 'condition' },
-      'condition': { target: 'optional', field: 'condition' },
-      'status': { target: 'optional', field: 'condition' },
-
-      'طريقة الشحن': { target: 'optional', field: 'fulfillment_channel' },
-      'fulfillment': { target: 'optional', field: 'fulfillment_channel' },
-      'fulfillment_channel': { target: 'optional', field: 'fulfillment_channel' },
-      'shipping': { target: 'optional', field: 'fulfillment_channel' },
-
-      'بلد المنشأ': { target: 'optional', field: 'country_of_origin' },
-      'country': { target: 'optional', field: 'country_of_origin' },
-      'country_of_origin': { target: 'optional', field: 'country_of_origin' },
-      'origin': { target: 'optional', field: 'country_of_origin' },
-
-      'رقم الموديل': { target: 'optional', field: 'model_number' },
-      'model': { target: 'optional', field: 'model_number' },
-      'model_number': { target: 'optional', field: 'model_number' },
-
-      'المصنع': { target: 'optional', field: 'manufacturer' },
-      'manufacturer': { target: 'optional', field: 'manufacturer' },
-
-      'الوزن': { target: 'optional', field: 'weight' },
-      'weight': { target: 'optional', field: 'weight' },
-
-      'وحدة الوزن': { target: 'optional', field: 'weight_unit' },
-      'weight_unit': { target: 'optional', field: 'weight_unit' },
-
-      'الطول': { target: 'optional', field: 'length' },
-      'length': { target: 'optional', field: 'length' },
-
-      'العرض': { target: 'optional', field: 'width' },
-      'width': { target: 'optional', field: 'width' },
-
-      'الارتفاع': { target: 'optional', field: 'height' },
-      'height': { target: 'optional', field: 'height' },
-
-      'وحدة الأبعاد': { target: 'optional', field: 'dimension_unit' },
-      'dimension_unit': { target: 'optional', field: 'dimension_unit' },
-
-      // حقول جديدة
-      'الخامة': { target: 'optional', field: 'material' },
-      'material': { target: 'optional', field: 'material' },
-      'الفئة المستهدفة': { target: 'optional', field: 'target_audience' },
-      'target_audience': { target: 'optional', field: 'target_audience' },
-      'وقت التجهيز': { target: 'optional', field: 'handling_time' },
-      'handling_time': { target: 'optional', field: 'handling_time' },
-      'عدد القطع': { target: 'optional', field: 'package_quantity' },
-      'package_quantity': { target: 'optional', field: 'package_quantity' },
-      'Browse Node': { target: 'optional', field: 'browse_node_id' },
-      'browse_node_id': { target: 'optional', field: 'browse_node_id' },
-      'كلمات البحث': { target: 'optional', field: 'keywords' },
-      'keywords': { target: 'optional', field: 'keywords' },
-      'search_terms': { target: 'optional', field: 'keywords' },
-      'عدد العناصر': { target: 'optional', field: 'number_of_items' },
-      'number_of_items': { target: 'optional', field: 'number_of_items' },
+  const handlePreview = () => {
+    const { valid, errors } = validate()
+    if (!valid) {
+      toast.error(errors.join('\n'))
+      return
     }
 
-    const newRequired = { ...required }
-    const newOptional = { ...optional }
-
-    for (const [excelCol, mapping] of Object.entries(mappings)) {
-      const value = row[excelCol]
-      if (value === undefined || value === null) continue
-      const strValue = String(value).trim()
-      if (!strValue) continue
-      if (mapping.target === 'required') {
-        (newRequired as any)[mapping.field] = strValue
-      } else {
-        (newOptional as any)[mapping.field] = strValue
-      }
+    const p = buildPayload()
+    const summary = {
+      'اسم المنتج (عربي)': p.name_ar,
+      'اسم المنتج (English)': p.name_en,
+      'الباركود': p.ean || p.upc || 'معفي',
+      'السعر': `${p.price} EGP`,
+      'الكمية': p.quantity,
+      'البراند': p.brand,
+      'نوع المنتج': p.product_type,
+      'الحالة': p.condition,
+      'قناة الشحن': p.fulfillment_channel,
+      'الصور': p.images.length,
     }
 
-    // صور
-    const imageCol = row['الصور'] || row['images'] || row['image'] || row['صورة']
-    if (imageCol) {
-      const imageList = String(imageCol).split(',').map((u: string) => u.trim()).filter((u: string) => u)
-      if (imageList.length > 0 && imageList[0]) {
-        // لو URL مباشر - استخدمه
-        if (imageList[0].startsWith('http')) {
-          setMainImageUrl(imageList[0])
-        }
-        // لو base64 - اعرضه فقط (مش هنرفعه تلقائياً)
-      }
-    }
-
-    setRequired(newRequired)
-    setOptional(newOptional)
-    setShowExcelImport(false)
-    toast.success('✅ تم تعبئة البيانات من الملف - راجع قبل الحفظ')
-  }, [excelData, required, optional])
-
-  // ==================== الصفحة 1 ====================
-
-  const renderPage1 = useMemo(() => (
-    <div className="space-y-4">
-      <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-        <Package className="w-5 h-5" />
-        البيانات الأساسية (إجبارية)
-      </h2>
-
-      <Field label="اسم المنتج (عربي)" required>
-        <TextInput value={required.name} onChange={v => updateRequired('name', v)} placeholder="مثال: منظم ملابس داخلي 6 قطع" />
-        {required.name.length > 0 && required.name.length < 5 && (
-          <p className="text-amber-500 text-xs mt-1">الاسم لازم 5 أحرف على الأقل ({required.name.length}/5)</p>
-        )}
-      </Field>
-
-      <Field label="اسم المنتج (English)" required>
-        <TextInput value={required.name_en} onChange={v => updateRequired('name_en', v)} placeholder="e.g. Underwear Organizer 6 Pieces" />
-        {required.name_en.length > 0 && required.name_en.length < 5 && (
-          <p className="text-amber-500 text-xs mt-1">Name must be at least 5 chars ({required.name_en.length}/5)</p>
-        )}
-      </Field>
-
-      <Field label="نوع المنتج" required>
-        <SelectInput value={required.product_type} onChange={v => updateRequired('product_type', v)} options={PRODUCT_TYPES} />
-      </Field>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field label="نوع المعرف" required>
-          <SelectInput value={required.id_type} onChange={v => updateRequired('id_type', v)} options={ID_TYPES} />
-        </Field>
-
-        <Field label={required.id_type === 'ASIN' ? 'ASIN' : required.id_type === 'UPC' ? 'UPC (12 رقم)' : 'EAN (13 رقم)'}>
-          <div className="flex gap-2">
-            <TextInput
-              value={required.product_id}
-              onChange={v => updateRequired('product_id', v)}
-              placeholder={required.id_type === 'UPC' ? '12 رقم' : required.id_type === 'EAN' ? '13 رقم' : 'B0XXXXXXXX'}
-              disabled={required.gtin_exempt}
-            />
-            <button
-              onClick={handleLookup}
-              disabled={lookingUp || required.gtin_exempt}
-              className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1"
-            >
-              {lookingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            </button>
+    toast(t => (
+      <div className="space-y-2 max-h-60 overflow-auto">
+        <h4 className="font-bold text-lg">معاينة البيانات</h4>
+        {Object.entries(summary).map(([k, v]) => (
+          <div key={k} className="flex justify-between text-sm">
+            <span className="text-gray-400">{k}:</span>
+            <span className="font-mono">{String(v)}</span>
           </div>
-        </Field>
+        ))}
       </div>
+    ), { duration: 10000 })
+  }
 
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={required.gtin_exempt}
-          onChange={e => { updateRequired('gtin_exempt', e.target.checked); if (e.target.checked) { updateRequired('product_id', ''); setLookupResult(null) } }}
-          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-        />
-        <span className="text-sm text-gray-700 dark:text-gray-300">معفي من الباركود (GTIN Exempt)</span>
-      </label>
-
-      {lookupResult && (
-        <div className={`p-3 rounded-lg flex items-start gap-2 ${
-          lookupResult.available
-            ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-            : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
-        }`}>
-          {lookupResult.available ? <CheckCircle className="w-5 h-5 shrink-0" /> : <AlertTriangle className="w-5 h-5 shrink-0" />}
-          <div className="text-sm">
-            <p className="font-medium">{lookupResult.reason}</p>
-            {lookupResult.title && <p className="text-xs mt-1 opacity-75">{lookupResult.title}</p>}
-            {lookupResult.asin && <p className="text-xs mt-1 opacity-75">ASIN: {lookupResult.asin}</p>}
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field label="السعر (EGP)" required>
-          <TextInput type="number" value={required.price} onChange={v => updateRequired('price', v)} placeholder="0.00" />
-        </Field>
-
-        <Field label="الكمية" required>
-          <TextInput type="number" value={required.quantity} onChange={v => updateRequired('quantity', v)} placeholder="0" />
-        </Field>
-      </div>
-
-      <Field label="وصف المنتج (عربي)" required>
-        <textarea
-          value={required.description}
-          onChange={e => updateRequired('description', e.target.value)}
-          placeholder="وصف تفصيلي للمنتج بالعربي..."
-          rows={4}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 resize-none"
-        />
-        {required.description.length > 0 && required.description.length < 10 && (
-          <p className="text-amber-500 text-xs mt-1">الوصف لازم 10 أحرف على الأقل ({required.description.length}/10)</p>
-        )}
-      </Field>
-
-      <Field label="وصف المنتج (English)" required>
-        <textarea
-          value={required.description_en}
-          onChange={e => updateRequired('description_en', e.target.value)}
-          placeholder="Detailed product description in English..."
-          rows={4}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 resize-none"
-        />
-        {required.description_en.length > 0 && required.description_en.length < 10 && (
-          <p className="text-amber-500 text-xs mt-1">Description must be at least 10 chars ({required.description_en.length}/10)</p>
-        )}
-        <p className="text-xs text-gray-500 mt-1">📌 الوصف بالإنجليزي هيتم إرساله لـ Amazon - الوصف بالعربي للـ dashboard فقط</p>
-      </Field>
-    </div>
-  ), [required, lookingUp, lookupResult, updateRequired, handleLookup])
-
-  // ==================== الصفحة 2 ====================
-
-  const UNIT_COUNT_TYPES = [
-    { value: 'Count', label: 'قطعة' },
-    { value: ' ounces', label: 'أونصة' },
-    { value: 'Pounds', label: 'رطل' },
-    { value: 'Grams', label: 'جرام' },
-    { value: 'Kilograms', label: 'كجم' },
-    { value: 'Milliliters', label: 'مل' },
-    { value: 'Liters', label: 'لتر' },
-    { value: 'Meters', label: 'متر' },
-    { value: 'Centimeters', label: 'سم' },
-    { value: 'Inches', label: 'بوصة' },
-    { value: 'Square Feet', label: 'قدم مربع' },
-  ]
-
-  const renderPage2 = useMemo(() => (
+  // ==================== Render Page 1: الحقول الإجبارية ====================
+  const renderPage1 = (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-        <DollarSign className="w-5 h-5" />
-        بيانات إضافية (اختيارية)
-      </h2>
-
-      {/* ===== قسم: معلومات المنتج ===== */}
-      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-          <Package className="w-4 h-4" />
-          معلومات المنتج
+      {/* الهوية الأساسية */}
+      <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+        <h3 className="text-lg font-bold text-blue-700 dark:text-blue-400 mb-4 flex items-center gap-2">
+          <Tag className="w-5 h-5" /> الهوية الأساسية
         </h3>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="البراند">
-            <TextInput value={optional.brand} onChange={v => updateOptional('brand', v)} placeholder="Generic" />
+          <Field label="اسم المنتج (عربي)" required>
+            <TextInput
+              value={required.name_ar}
+              onChange={v => setRequired(prev => ({ ...prev, name_ar: v }))}
+              placeholder="مثال: خلاط كهربائي 500 واط"
+            />
           </Field>
-          <Field label="حالة المنتج">
-            <SelectInput value={optional.condition} onChange={v => updateOptional('condition', v)} options={CONDITIONS} />
-          </Field>
-          <Field label="المصنع">
-            <TextInput value={optional.manufacturer} onChange={v => updateOptional('manufacturer', v)} placeholder="اسم المصنع" />
-          </Field>
-          <Field label="رقم الموديل">
-            <TextInput value={optional.model_number} onChange={v => updateOptional('model_number', v)} placeholder="Model-123" />
-          </Field>
-          <Field label="بلد المنشأ">
-            <SelectInput value={optional.country_of_origin} onChange={v => updateOptional('country_of_origin', v)} options={COUNTRIES} />
-          </Field>
-          <Field label="الخامة / المادة">
-            <TextInput value={optional.material} onChange={v => updateOptional('material', v)} placeholder="مثال: Plastic, Cotton" />
-          </Field>
-          <Field label="الفئة المستهدفة">
-            <TextInput value={optional.target_audience} onChange={v => updateOptional('target_audience', v)} placeholder="مثال: Adults, Kids" />
+          <Field label="اسم المنتج (English)" required>
+            <TextInput
+              value={required.name_en}
+              onChange={v => setRequired(prev => ({ ...prev, name_en: v }))}
+              placeholder="Example: Electric Hand Mixer 500W"
+            />
           </Field>
         </div>
-      </div>
 
-      {/* ===== قسم: الشحن والتغليف ===== */}
-      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-          <Image className="w-4 h-4" />
-          الشحن والتغليف
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="طريقة الشحن">
-            <SelectInput value={optional.fulfillment_channel} onChange={v => updateOptional('fulfillment_channel', v)} options={FULFILLMENT} />
-            <p className="text-xs text-gray-500 mt-1">MFN = شحن ذاتي | AFN = FBA (شحن أمازون)</p>
-          </Field>
-          <Field label="وقت التجهيز (أيام)">
-            <TextInput type="number" value={optional.handling_time} onChange={v => updateOptional('handling_time', v)} placeholder="1" />
-            <p className="text-xs text-gray-500 mt-1">عدد الأيام قبل شحن المنتج</p>
-          </Field>
-          <Field label="عدد القطع في العبوة">
-            <TextInput type="number" value={optional.package_quantity} onChange={v => updateOptional('package_quantity', v)} placeholder="1" />
-            <p className="text-xs text-gray-500 mt-1">كم قطعة العميل هيشتري في مرة واحدة</p>
-          </Field>
-          <Field label="Browse Node ID">
-            <TextInput value={optional.browse_node_id} onChange={v => updateOptional('browse_node_id', v)} placeholder="85363278031" />
-            <p className="text-xs text-gray-500 mt-1">معرف التصنيف في أمازون - اختياري بس بيحسن ظهور المنتج</p>
-          </Field>
-        </div>
-      </div>
+        <Field label="نوع المنتج" required>
+          <SelectInput
+            value={required.product_type}
+            onChange={v => setRequired(prev => ({ ...prev, product_type: v }))}
+            options={PRODUCT_TYPES as any}
+          />
+        </Field>
 
-      {/* ===== قسم: الوزن والأبعاد ===== */}
-      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-          📐 الوزن والأبعاد
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Field label="الوزن">
-              <div className="grid grid-cols-2 gap-2">
-                <TextInput type="number" value={optional.weight} onChange={v => updateOptional('weight', v)} placeholder="0.0" />
-                <SelectInput value={optional.weight_unit} onChange={v => updateOptional('weight_unit', v)} options={WEIGHT_UNITS} />
-              </div>
-            </Field>
+        <Field label="الباركود" required>
+          <div className="mb-2">
+            <RadioGroup
+              name="id_type"
+              options={ID_TYPES.filter(t => ['EAN', 'UPC', 'EXEMPT'].includes(t.value)) as any}
+              value={required.id_type}
+              onChange={v => setRequired(prev => ({ ...prev, id_type: v }))}
+            />
           </div>
-          <div>
-            <Field label="العدد / الكمية">
-              <div className="grid grid-cols-2 gap-2">
-                <TextInput type="number" value={optional.number_of_items} onChange={v => updateOptional('number_of_items', v)} placeholder="1" />
-                <TextInput value={optional.unit_count} onChange={v => updateOptional('unit_count', v)} placeholder="مثال: 500" />
-              </div>
-            </Field>
-            <Field label="نوع الوحدة">
-              <SelectInput value={optional.unit_count_type} onChange={v => updateOptional('unit_count_type', v)} options={UNIT_COUNT_TYPES} />
-            </Field>
-          </div>
-        </div>
-        <div>
-          <Field label="الأبعاد (طول × عرض × ارتفاع)">
-            <div className="grid grid-cols-4 gap-2">
-              <TextInput type="number" value={optional.length} onChange={v => updateOptional('length', v)} placeholder="الطول" />
-              <TextInput type="number" value={optional.width} onChange={v => updateOptional('width', v)} placeholder="العرض" />
-              <TextInput type="number" value={optional.height} onChange={v => updateOptional('height', v)} placeholder="الارتفاع" />
-              <SelectInput value={optional.dimension_unit} onChange={v => updateOptional('dimension_unit', v)} options={DIMENSION_UNITS} />
-            </div>
+          {required.id_type !== 'EXEMPT' && (
+            <TextInput
+              value={required.ean}
+              onChange={v => setRequired(prev => ({ ...prev, ean: v.replace(/\D/g, '').slice(0, required.id_type === 'UPC' ? 12 : 13) }))}
+              placeholder={required.id_type === 'UPC' ? '12 رقم' : '13 رقم'}
+              type="text"
+            />
+          )}
+        </Field>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Field label="البراند" required>
+            <TextInput
+              value={required.brand}
+              onChange={v => setRequired(prev => ({ ...prev, brand: v }))}
+              placeholder="Generic"
+            />
+          </Field>
+          <Field label="الموديل" required>
+            <TextInput
+              value={required.model_number}
+              onChange={v => setRequired(prev => ({ ...prev, model_number: v }))}
+              placeholder={required.name_en || 'SKU'}
+            />
+          </Field>
+          <Field label="المصنع" required>
+            <TextInput
+              value={required.manufacturer}
+              onChange={v => setRequired(prev => ({ ...prev, manufacturer: v }))}
+              placeholder="Generic"
+            />
           </Field>
         </div>
+
+        <Field label="بلد المنشأ" required>
+          <SelectInput
+            value={required.country_of_origin}
+            onChange={v => setRequired(prev => ({ ...prev, country_of_origin: v }))}
+            options={COUNTRIES as any}
+          />
+        </Field>
       </div>
 
-      {/* ===== قسم: التسعير ===== */}
-      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-          💰 التسعير
+      {/* الوصف والتفاصيل */}
+      <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+        <h3 className="text-lg font-bold text-green-700 dark:text-green-400 mb-4 flex items-center gap-2">
+          <FileSpreadsheet className="w-5 h-5" /> الوصف والتفاصيل
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="سعر قبل الخصم (Compare Price)">
-            <TextInput type="number" value={optional.compare_price} onChange={v => updateOptional('compare_price', v)} placeholder="مثال: 200" />
-            <p className="text-xs text-gray-500 mt-1">السعر القديم - هيظهر خط عليه (اختياري)</p>
-          </Field>
-          <Field label="سعر التكلفة (للحساب)">
-            <TextInput type="number" value={optional.cost} onChange={v => updateOptional('cost', v)} placeholder="مثال: 80" />
-            <p className="text-xs text-gray-500 mt-1">سعر الشراء - مش هيظهر للعميل (لحساب الهامش)</p>
-          </Field>
-          <Field label="سعر التخفيضات">
-            <TextInput type="number" value={optional.sale_price} onChange={v => updateOptional('sale_price', v)} placeholder="مثال: 120" />
-          </Field>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="بداية التخفيضات">
-            <TextInput type="date" value={optional.sale_start_date} onChange={v => updateOptional('sale_start_date', v)} />
-          </Field>
-          <Field label="نهاية التخفيضات">
-            <TextInput type="date" value={optional.sale_end_date} onChange={v => updateOptional('sale_end_date', v)} />
-          </Field>
-        </div>
-      </div>
 
-      {/* ===== قسم: تحسين البحث ===== */}
-      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-          🔍 تحسين البحث (SEO)
-        </h3>
-        <Field label="كلمات البحث (Search Terms)">
+        <Field label="الوصف (عربي)" required>
           <textarea
-            value={optional.keywords}
-            onChange={e => updateOptional('keywords', e.target.value)}
-            placeholder="كلمات بحث العملاء... (مفصولة بمسافات، حد أقصى 250 حرف)"
+            value={required.description_ar}
+            onChange={e => setRequired(prev => ({ ...prev, description_ar: e.target.value }))}
+            placeholder="وصف تفصيلي للمنتج بالعربية..."
             rows={3}
             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 resize-none"
           />
-          <p className="text-xs text-gray-500 mt-1">{(optional.keywords || '').length}/250 حرف</p>
+        </Field>
+
+        <Field label="الوصف (English)" required>
+          <textarea
+            value={required.description_en}
+            onChange={e => setRequired(prev => ({ ...prev, description_en: e.target.value }))}
+            placeholder="Detailed product description in English..."
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 resize-none"
+          />
+        </Field>
+
+        <Field label="النقاط البيعية (5 نقاط)" required>
+          <div className="space-y-2">
+            {required.bullet_points.map((bp, i) => (
+              <div key={i} className="flex gap-2">
+                <span className="flex-shrink-0 w-6 h-8 flex items-center justify-center bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-sm font-bold rounded">
+                  {i + 1}
+                </span>
+                <input
+                  type="text"
+                  value={bp}
+                  onChange={e => {
+                    const newBp = [...required.bullet_points]
+                    newBp[i] = e.target.value
+                    setRequired(prev => ({ ...prev, bullet_points: newBp }))
+                  }}
+                  placeholder={`نقطة بيعية ${i + 1}...`}
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="الفئة (Browse Node)" required>
+          <SelectInput
+            value={required.browse_node_id}
+            onChange={v => setRequired(prev => ({ ...prev, browse_node_id: v }))}
+            options={BROWSE_NODES as any}
+          />
+        </Field>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="المكونات المرفقة" required>
+            <TextInput
+              value={required.included_components}
+              onChange={v => setRequired(prev => ({ ...prev, included_components: v }))}
+              placeholder={required.name_en || '1x المنتج'}
+            />
+          </Field>
+          <Field label="عدد الوحدات" required>
+            <NumberInput
+              value={required.unit_count}
+              onChange={v => setRequired(prev => ({ ...prev, unit_count: v }))}
+              placeholder="1"
+              min="1"
+            />
+          </Field>
+        </div>
+
+        <Field label="نوع الوحدة" required>
+          <SelectInput
+            value={required.unit_count_type}
+            onChange={v => setRequired(prev => ({ ...prev, unit_count_type: v }))}
+            options={UNIT_TYPES as any}
+          />
         </Field>
       </div>
+
+      {/* التسعير والكمية */}
+      <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+        <h3 className="text-lg font-bold text-amber-700 dark:text-amber-400 mb-4 flex items-center gap-2">
+          <DollarSign className="w-5 h-5" /> التسعير والكمية
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="السعر (EGP)" required>
+            <div className="relative">
+              <NumberInput
+                value={required.price}
+                onChange={v => setRequired(prev => ({ ...prev, price: v }))}
+                placeholder="0.00"
+                min="0.01"
+                step="0.01"
+              />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">ج.م</span>
+            </div>
+          </Field>
+          <Field label="الكمية" required>
+            <NumberInput
+              value={required.quantity}
+              onChange={v => setRequired(prev => ({ ...prev, quantity: v.replace(/\D/g, '') }))}
+              placeholder="0"
+              min="0"
+            />
+          </Field>
+        </div>
+      </div>
+
+      {/* الشحن والأبعاد */}
+      <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+        <h3 className="text-lg font-bold text-purple-700 dark:text-purple-400 mb-4 flex items-center gap-2">
+          <Truck className="w-5 h-5" /> الشحن والأبعاد
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="حالة المنتج" required>
+            <SelectInput
+              value={required.condition}
+              onChange={v => setRequired(prev => ({ ...prev, condition: v }))}
+              options={CONDITIONS as any}
+            />
+          </Field>
+          <Field label="قناة الشحن" required>
+            <RadioGroup
+              name="fulfillment"
+              options={FULFILLMENT_CHANNELS as any}
+              value={required.fulfillment_channel}
+              onChange={v => setRequired(prev => ({ ...prev, fulfillment_channel: v }))}
+            />
+          </Field>
+        </div>
+
+        <div className="mt-4">
+          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">أبعاد الباكج (سم) *</h4>
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="الطول">
+              <NumberInput
+                value={required.package_length}
+                onChange={v => setRequired(prev => ({ ...prev, package_length: v }))}
+                placeholder="25"
+                min="1"
+                step="0.1"
+              />
+            </Field>
+            <Field label="العرض">
+              <NumberInput
+                value={required.package_width}
+                onChange={v => setRequired(prev => ({ ...prev, package_width: v }))}
+                placeholder="10"
+                min="1"
+                step="0.1"
+              />
+            </Field>
+            <Field label="الارتفاع">
+              <NumberInput
+                value={required.package_height}
+                onChange={v => setRequired(prev => ({ ...prev, package_height: v }))}
+                placeholder="15"
+                min="1"
+                step="0.1"
+              />
+            </Field>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">الأوزان (كجم) *</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="وزن المنتج">
+              <NumberInput
+                value={required.item_weight}
+                onChange={v => setRequired(prev => ({ ...prev, item_weight: v }))}
+                placeholder="0.5"
+                min="0.1"
+                step="0.1"
+              />
+            </Field>
+            <Field label="وزن الباكج">
+              <NumberInput
+                value={required.package_weight}
+                onChange={v => setRequired(prev => ({ ...prev, package_weight: v }))}
+                placeholder="0.7"
+                min="0.1"
+                step="0.1"
+              />
+            </Field>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <Field label="عدد الصناديق" required>
+            <NumberInput
+              value={required.number_of_boxes}
+              onChange={v => setRequired(prev => ({ ...prev, number_of_boxes: v }))}
+              placeholder="1"
+              min="1"
+            />
+          </Field>
+        </div>
+      </div>
+
+      <button
+        onClick={() => setPage(2)}
+        className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-bold"
+      >
+        التالي: الحقول الاختيارية ←
+      </button>
     </div>
-  ), [optional, updateOptional])
+  )
 
-  // ==================== الصفحة 3 ====================
+  // ==================== Render Page 2: الحقول الاختيارية ====================
+  const renderPage2 = (
+    <div className="space-y-6">
+      {/* الكلمات المفتاحية */}
+      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+          <Tag className="w-5 h-5" /> الكلمات المفتاحية
+        </h3>
 
-  const renderPage3 = useMemo(() => (
-    <div className="space-y-4">
-      <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-        <Image className="w-5 h-5" />
-        الصور والإعلانات
-      </h2>
+        <Field label="الكلمات المفتاحية" hint="أضف حتى 15 كلمة - اكتب واضغط Enter">
+          <div className="flex gap-2 mb-2">
+            <input
+              type="text"
+              value={optional.keywordInput}
+              onChange={e => setOptional(prev => ({ ...prev, keywordInput: e.target.value }))}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && optional.keywordInput.trim()) {
+                  e.preventDefault()
+                  if (optional.keywords.length < 15) {
+                    setOptional(prev => ({
+                      ...prev,
+                      keywords: [...prev.keywords, prev.keywordInput.trim()],
+                      keywordInput: '',
+                    }))
+                  }
+                }
+              }}
+              placeholder="اكتب كلمة واضغط Enter..."
+              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          {optional.keywords.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {optional.keywords.map((kw, i) => (
+                <span
+                  key={i}
+                  className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full text-sm flex items-center gap-1"
+                >
+                  {kw}
+                  <button
+                    onClick={() => setOptional(prev => ({
+                      ...prev,
+                      keywords: prev.keywords.filter((_, idx) => idx !== i),
+                    }))}
+                    className="hover:text-red-500"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </Field>
+      </div>
 
-      <Field label="الصورة الرئيسية" required>
-        {mainImageUrl ? (
-          <div className="relative inline-block">
-            <img src={mainImageUrl} alt="Main" className="w-48 h-48 object-cover rounded-lg border-2 border-blue-500" />
-            <button onClick={removeMainImage} className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600">
+      {/* تفاصيل إضافية */}
+      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+          <Package className="w-5 h-5" /> تفاصيل إضافية
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="المادة المصنوع منها" hint="مثال: بلاستيك، ستانلس ستيل">
+            <TextInput
+              value={optional.material}
+              onChange={v => setOptional(prev => ({ ...prev, material: v }))}
+              placeholder="المادة..."
+            />
+          </Field>
+          <Field label="الفئة المستهدفة" hint="مثال: Adults, Kids">
+            <TextInput
+              value={optional.target_audience}
+              onChange={v => setOptional(prev => ({ ...prev, target_audience: v }))}
+              placeholder="الفئة المستهدفة..."
+            />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <Field label="أيام التجهيز" hint="عدد أيام التحضير للشحن">
+            <NumberInput
+              value={optional.handling_time}
+              onChange={v => setOptional(prev => ({ ...prev, handling_time: v }))}
+              placeholder="1"
+              min="0"
+            />
+          </Field>
+          <Field label="عدد القطع بالباكج">
+            <NumberInput
+              value={optional.package_quantity}
+              onChange={v => setOptional(prev => ({ ...prev, package_quantity: v }))}
+              placeholder="1"
+              min="1"
+            />
+          </Field>
+        </div>
+      </div>
+
+      {/* التسعير الإضافي */}
+      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+          <DollarSign className="w-5 h-5" /> تسعير إضافي
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="سعر قبل الخصم" hint="السعر الأصلي قبل الخصم">
+            <div className="relative">
+              <NumberInput
+                value={optional.compare_price}
+                onChange={v => setOptional(prev => ({ ...prev, compare_price: v }))}
+                placeholder="0.00"
+                min="0.01"
+                step="0.01"
+              />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">ج.م</span>
+            </div>
+          </Field>
+          <Field label="التكلفة" hint="تكلفة الشراء">
+            <div className="relative">
+              <NumberInput
+                value={optional.cost}
+                onChange={v => setOptional(prev => ({ ...prev, cost: v }))}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+              />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">ج.م</span>
+            </div>
+          </Field>
+        </div>
+
+        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+          <h4 className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-3">تخفيض (اختياري)</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Field label="سعر التخفيض">
+              <NumberInput
+                value={optional.sale_price}
+                onChange={v => setOptional(prev => ({ ...prev, sale_price: v }))}
+                placeholder="0.00"
+                min="0.01"
+                step="0.01"
+              />
+            </Field>
+            <Field label="من تاريخ">
+              <input
+                type="date"
+                value={optional.sale_start_date}
+                onChange={e => setOptional(prev => ({ ...prev, sale_start_date: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+              />
+            </Field>
+            <Field label="إلى تاريخ">
+              <input
+                type="date"
+                value={optional.sale_end_date}
+                onChange={e => setOptional(prev => ({ ...prev, sale_end_date: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+              />
+            </Field>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          onClick={() => setPage(1)}
+          className="px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+        >
+          → السابق
+        </button>
+        <button
+          onClick={() => setPage(3)}
+          className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-bold"
+        >
+          التالي: الصور والإرسال ←
+        </button>
+      </div>
+    </div>
+  )
+
+  // ==================== Render Page 3: الصور والإرسال ====================
+  const renderPage3 = (
+    <div className="space-y-6">
+      {/* الصورة الرئيسية */}
+      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+          <ImageIcon className="w-5 h-5" /> الصورة الرئيسية
+        </h3>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleMainImageUpload}
+          className="hidden"
+        />
+
+        {mainImagePreview || mainImageUrl ? (
+          <div className="relative">
+            <img
+              src={mainImagePreview || mainImageUrl}
+              alt="Main product"
+              className="w-full h-64 object-contain bg-gray-100 dark:bg-gray-900 rounded-lg"
+            />
+            <button
+              onClick={() => {
+                setMainImageUrl('')
+                setMainImagePreview('')
+              }}
+              className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600"
+            >
               <X className="w-4 h-4" />
             </button>
-            <span className="absolute bottom-0 left-0 right-0 bg-green-500 text-white text-xs text-center py-1 rounded-b-lg">✅ مرفوعة</span>
-          </div>
-        ) : mainImagePreview ? (
-          <div className="relative inline-block">
-            <img src={mainImagePreview} alt="Preview" className="w-48 h-48 object-cover rounded-lg border-2 border-amber-500 opacity-75" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
-            </div>
-            <span className="absolute bottom-0 left-0 right-0 bg-amber-500 text-white text-xs text-center py-1 rounded-b-lg">جاري الرفع...</span>
           </div>
         ) : (
-          <label className="flex flex-col items-center justify-center w-48 h-48 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
-            <Upload className="w-8 h-8 text-gray-400 mb-2" />
-            <span className="text-sm text-gray-500">اختر صورة رئيسية</span>
-            <input type="file" accept="image/*" onChange={handleMainImageUpload} className="hidden" disabled={uploadingImages} />
-          </label>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingImages}
+            className="w-full h-48 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex flex-col items-center justify-center gap-3 hover:border-blue-500 transition-colors"
+          >
+            {uploadingImages ? (
+              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+            ) : (
+              <>
+                <Upload className="w-8 h-8 text-gray-400" />
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">اضغط لاختيار صورة</p>
+                  <p className="text-xs text-gray-500">1000×1000 بكسل على الأقل</p>
+                </div>
+              </>
+            )}
+          </button>
         )}
-      </Field>
+      </div>
 
-      <Field label="صور إضافية (حتى 8)">
-        <div className="flex flex-wrap gap-3">
-          {extraImageUrls.length < 8 && (
-            <label className="flex flex-col items-center justify-center w-24 h-24 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
-              <Upload className="w-6 h-6 text-gray-400" />
-              <span className="text-xs text-gray-500 mt-1">+ إضافة</span>
-              <input type="file" accept="image/*" multiple onChange={handleExtraImagesUpload} className="hidden" disabled={uploadingImages} />
-            </label>
-          )}
-          {extraImageUrls.map((url, idx) => (
-            <div key={idx} className="relative group">
-              <img src={url} alt={`Extra ${idx}`} className="w-24 h-24 object-cover rounded-lg border border-gray-300 dark:border-gray-600" />
-              <button onClick={() => removeExtraImage(idx)} className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
+      {/* صور إضافية */}
+      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+          <ImageIcon className="w-5 h-5" /> صور إضافية ({extraImageUrls.length}/8)
+        </h3>
+
+        <input
+          ref={extraFileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handleExtraImageUpload}
+          className="hidden"
+        />
+
+        <div className="grid grid-cols-4 gap-3">
+          {Array.from({ length: 8 }).map((_, i) => {
+            const hasImage = i < extraImagePreviews.length || i < extraImageUrls.length
+            const preview = extraImagePreviews[i]
+            const url = extraImageUrls[i]
+
+            return (
+              <div key={i} className="relative aspect-square">
+                {hasImage ? (
+                  <>
+                    <img
+                      src={preview || url}
+                      alt={`Extra ${i + 1}`}
+                      className="w-full h-full object-cover rounded-lg"
+                    />
+                    <button
+                      onClick={() => removeExtraImage(i)}
+                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => extraFileInputRef.current?.click()}
+                    disabled={uploadingImages}
+                    className="w-full h-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center hover:border-blue-500 transition-colors"
+                  >
+                    <Upload className="w-6 h-6 text-gray-400" />
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
-        <p className="text-xs text-gray-500 mt-2">{extraImageUrls.length}/8 صور إضافية</p>
-      </Field>
+      </div>
 
-      <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-        <Field label="عدد الإعلانات (نسخ من نفس المنتج)">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setListingCopiesStr(String(Math.max(1, listingCopies - 1)))} className="w-10 h-10 rounded-lg border border-gray-300 dark:border-gray-600 flex items-center justify-center text-lg font-bold hover:bg-gray-100 dark:hover:bg-gray-700">-</button>
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={listingCopiesStr}
-              onChange={e => setListingCopiesStr(e.target.value)}
-              className="w-16 text-center text-2xl font-bold bg-transparent border-b-2 border-gray-300 dark:border-gray-600 focus:border-blue-500 outline-none"
-            />
-            <button onClick={() => setListingCopiesStr(String(Math.min(50, listingCopies + 1)))} className="w-10 h-10 rounded-lg border border-gray-300 dark:border-gray-600 flex items-center justify-center text-lg font-bold hover:bg-gray-100 dark:hover:bg-gray-700">+</button>
-          </div>
-          <p className="text-xs text-gray-500 mt-1">كل إعلان هياخد SKU مختلف تلقائياً</p>
+      {/* عدد الإعلانات */}
+      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+          <Package className="w-5 h-5" /> عدد الإعلانات
+        </h3>
+
+        <Field label="عدد النسخ المراد إنشاؤها" hint="1-50 نسخة">
+          <NumberInput
+            value={String(listingCopies)}
+            onChange={v => setListingCopies(Math.min(50, Math.max(1, parseInt(v) || 1)))}
+            placeholder="1"
+            min="1"
+          />
         </Field>
       </div>
+
+      {/* الأزرار */}
+      <div className="flex flex-col gap-3">
+        <button
+          onClick={handlePreview}
+          className="w-full px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 flex items-center justify-center gap-2 font-bold"
+        >
+          <Eye className="w-5 h-5" /> معاينة البيانات
+        </button>
+
+        <button
+          onClick={handleSave}
+          disabled={submitting}
+          className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2 font-bold"
+        >
+          {submitting ? (
+            <><Loader2 className="w-5 h-5 animate-spin" /> جاري الحفظ...</>
+          ) : (
+            <><Save className="w-5 h-5" /> حفظ في المخزون</>
+          )}
+        </button>
+
+        <button
+          onClick={handleSubmitToAmazon}
+          disabled={submitting}
+          className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 font-bold"
+        >
+          {submitting ? (
+            <><Loader2 className="w-5 h-5 animate-spin" /> جاري الإرسال...</>
+          ) : (
+            <><Globe className="w-5 h-5" /> حفظ وإرسال لـ Amazon</>
+          )}
+        </button>
+      </div>
+
+      <button
+        onClick={() => setPage(2)}
+        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+      >
+        → السابق
+      </button>
     </div>
-  ), [mainImageUrl, extraImageUrls, listingCopies, listingCopiesStr, removeMainImage, removeExtraImage, handleMainImageUpload, handleExtraImagesUpload, uploadingImages, mainImagePreview])
+  )
 
-  // ==================== Excel Modal ====================
-
-  const renderExcelModal = () => {
-    if (!showExcelImport || !excelData) return null
-
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-auto">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">اختار منتج من الملف</h3>
-            <button onClick={() => setShowExcelImport(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="p-4 space-y-2">
-            {excelData.map((row, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleRowSelect(idx)}
-                className="w-full text-right p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-              >
-                <div className="font-medium text-gray-900 dark:text-white">{row['اسم المنتج'] || row['name'] || row['title'] || `منتج ${idx + 1}`}</div>
-                <div className="text-sm text-gray-500">{row['السعر'] || row['price'] ? `EGP ${row['السعر'] || row['price']}` : ''}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ==================== Preview Modal ====================
-
-  const renderPreviewModal = () => {
-    if (!showPreview || previewData.length === 0) return null
-
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-3xl w-full max-h-[85vh] overflow-auto">
-          {/* Header */}
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center sticky top-0 bg-white dark:bg-gray-800">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              👁️ معاينة البيانات ({previewData.length} منتج)
-            </h3>
-            <button onClick={() => setShowPreview(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Body */}
-          <div className="p-4 space-y-4">
-            {previewData.map((product, idx) => (
-              <div key={idx} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded">
-                    منتج {idx + 1}
-                  </span>
-                  <span className="text-xs text-gray-500 font-mono">{product.sku}</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-gray-500">الاسم (EN):</span>
-                    <p className="font-medium text-gray-900 dark:text-white">{product.name}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">الاسم (AR):</span>
-                    <p className="font-medium text-gray-900 dark:text-white">{product.name_ar}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">الوصف (EN):</span>
-                    <p className="text-gray-700 dark:text-gray-300 line-clamp-2">{product.description}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">الوصف (AR):</span>
-                    <p className="text-gray-700 dark:text-gray-300 line-clamp-2">{product.description_ar}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">السعر:</span>
-                    <p className="font-bold text-green-600">{product.price} EGP</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">الكمية:</span>
-                    <p className="font-medium">{product.quantity}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">البراند:</span>
-                    <p>{product.brand}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">الحالة:</span>
-                    <p>{product.condition}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">نوع المنتج:</span>
-                    <p className="text-xs">{product.product_type}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">بلد المنشأ:</span>
-                    <p>{product.country_of_origin}</p>
-                  </div>
-                </div>
-
-                {/* JSON Toggle */}
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-xs text-blue-600 hover:text-blue-700">
-                    📋 عرض JSON كامل
-                  </summary>
-                  <pre className="mt-2 p-3 bg-gray-100 dark:bg-gray-900 rounded-lg text-xs overflow-auto max-h-48">
-                    {JSON.stringify(product, null, 2)}
-                  </pre>
-                </details>
-              </div>
-            ))}
-          </div>
-
-          {/* Footer */}
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center sticky bottom-0 bg-white dark:bg-gray-800">
-            <button
-              onClick={() => setShowPreview(false)}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-            >
-              إغلاق
-            </button>
-            <button
-              onClick={() => { setShowPreview(false); handleSubmit() }}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-            >
-              <Save className="w-4 h-4" />
-              حفظ المنتجات
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ==================== العرض الرئيسي ====================
-
+  // ==================== Main Render ====================
   return (
-    <div className="max-w-3xl mx-auto py-6" dir="rtl">
+    <div className="max-w-4xl mx-auto p-4">
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              {isEditMode ? (completeMode ? 'إكمال بيانات المنتج' : 'تعديل المنتج') : 'إضافة منتج جديد'}
-            </h1>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
-              {isEditMode
-                ? (completeMode ? 'أكمل البيانات الناقصة عشان المنتج يتقبل على Amazon' : 'عدّل بيانات المنتج')
-                : 'أدخل بيانات المنتج وسيتم إرساله لـ Amazon تلقائياً'
-              }
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              const buffer = generateTemplateExcel()
-              const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-              const url = URL.createObjectURL(blob)
-              const a = document.createElement('a')
-              a.href = url
-              a.download = 'crazy_lister_template.xlsx'
-              a.click()
-              URL.revokeObjectURL(url)
-              toast.success('تم تحميل القالب')
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium"
-          >
-            <Download className="w-4 h-4" /> تحميل قالب Excel
-          </button>
-        </div>
-
-        {/* Edit Mode: Missing Fields Banner */}
-        {isEditMode && missingFields.length > 0 && (
-          <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-300">البيانات الناقصة:</h3>
-                <ul className="mt-2 text-sm text-amber-700 dark:text-amber-400 space-y-1">
-                  {missingFields.map((field, i) => (
-                    <li key={i} className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
-                      {field}
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-xs text-amber-600 dark:text-amber-500 mt-2">
-                  ⚠️ المنتج هيترفض من Amazon لو البيانات دي ناقصة
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {isEditMode && missingFields.length === 0 && (
-          <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-700 rounded-lg">
-            <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
-              <CheckCircle className="w-5 h-5" />
-              <p className="text-sm font-medium">✅ البيانات كاملة - المنتج جاهز للرفع على Amazon</p>
-            </div>
-          </div>
-        )}
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          {isEditMode ? 'تعديل المنتج' : 'إضافة منتج جديد'}
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400 mt-1">
+          {isEditMode ? 'قم بتعديل البيانات المطلوبة' : 'أكمل البيانات لإضافة منتج جديد'}
+        </p>
       </div>
 
       <StepIndicator currentPage={page} onNavigate={setPage} />
@@ -1415,295 +1260,6 @@ export default function ProductCreatePage() {
         {page === 2 && renderPage2}
         {page === 3 && renderPage3}
       </div>
-
-      <div className="flex justify-between mt-6">
-        <button
-          onClick={() => page > 1 ? setPage(page - 1) : navigate('/products')}
-          className="px-6 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
-        >
-          {page > 1 ? '→ السابق' : 'إلغاء'}
-        </button>
-
-        {page < 3 ? (
-          <button onClick={() => setPage(page + 1)} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-            التالي ←
-          </button>
-        ) : (
-          <div className="flex gap-3">
-            {/* زر معاينة البيانات المحلية */}
-            <button
-              onClick={handlePreview}
-              className="px-6 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 flex items-center gap-2"
-            >
-              <Eye className="w-4 h-4" /> معاينة البيانات
-            </button>
-            {/* زر معاينة Amazon Feed */}
-            <button
-              onClick={handleAmazonPreview}
-              disabled={previewLoading}
-              className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
-            >
-              {previewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-              📦 معاينة Amazon
-            </button>
-            {/* زر الحفظ */}
-            <button
-              onClick={handleSubmit}
-              disabled={createMutation.isPending}
-              className="px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-            >
-              {createMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> جاري الحفظ...</>
-              ) : completeMode ? (
-                <><Save className="w-4 h-4" /> حفظ وإكمال البيانات</>
-              ) : (
-                <><Save className="w-4 h-4" /> حفظ المنتجات</>
-              )}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {renderExcelModal()}
-      {renderPreviewModal()}
-
-      {/* ==================== Amazon Feed Preview Modal ==================== */}
-      {showAmazonPreview && amazonFeedData && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-auto">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center sticky top-0 bg-white dark:bg-gray-800 z-10">
-              <div className="flex items-center gap-3">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">📦 معاينة بيانات Amazon Feed</h3>
-                <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${
-                  amazonFeedData.summary.ready_for_amazon
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-red-100 text-red-700'
-                }`}>
-                  {amazonFeedData.summary.ready_for_amazon ? '✅ جاهز' : '❌ ناقص'}
-                </span>
-              </div>
-              <button onClick={() => setShowAmazonPreview(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex border-b border-gray-200 dark:border-gray-700 px-4">
-              {[
-                { key: 'summary' as const, label: '📊 ملخص' },
-                { key: 'json' as const, label: '📋 JSON (Amazon API)' },
-                { key: 'info' as const, label: 'ℹ️ معلومات API' },
-              ].map(tab => (
-                <button
-                  key={tab.key}
-                  onClick={() => setPreviewTab(tab.key)}
-                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                    previewTab === tab.key
-                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Content */}
-            <div className="p-6">
-              {/* Summary Tab */}
-              {previewTab === 'summary' && (
-                <div className="space-y-6">
-                  {/* Stats */}
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg text-center">
-                      <div className="text-2xl font-bold text-blue-600">{amazonFeedData.summary.total_fields}</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">حقول مملوءة</div>
-                    </div>
-                    <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg text-center">
-                      <div className="text-2xl font-bold text-green-600">✅</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">جاهز لـ Amazon</div>
-                    </div>
-                    <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center">
-                      <div className="text-2xl font-bold text-red-600">{amazonFeedData.summary.errors}</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">أخطاء</div>
-                    </div>
-                    <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg text-center">
-                      <div className="text-2xl font-bold text-amber-600">{amazonFeedData.summary.warnings}</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">تحذيرات</div>
-                    </div>
-                  </div>
-
-                  {/* Validation */}
-                  <div>
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">✅ الحقول المرسلة لـ Amazon</h4>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      {Object.entries(amazonFeedData.json_payload).map(([key, value]) => (
-                        value && (
-                          <div key={key} className="flex justify-between p-2 bg-gray-50 dark:bg-gray-900 rounded">
-                            <span className="text-gray-500">{key}:</span>
-                            <span className="font-mono text-gray-900 dark:text-white truncate ml-2">
-                              {typeof value === 'object' ? JSON.stringify(value).slice(0, 50) : String(value)}
-                            </span>
-                          </div>
-                        )
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Errors */}
-                  {amazonFeedData.validation.errors.length > 0 && (
-                    <div>
-                      <h4 className="font-semibold text-red-600 mb-2">❌ أخطاء (تمنع الإرسال)</h4>
-                      {amazonFeedData.validation.errors.map((err: any, i: number) => (
-                        <div key={i} className="p-2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded mb-1 text-sm">
-                          <strong>{err.field}:</strong> {err.message}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Warnings */}
-                  {amazonFeedData.validation.warnings.length > 0 && (
-                    <div>
-                      <h4 className="font-semibold text-amber-600 mb-2">⚠️ تحذيرات (مش بتوقف)</h4>
-                      {amazonFeedData.validation.warnings.map((warn: any, i: number) => (
-                        <div key={i} className="p-2 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded mb-1 text-sm">
-                          <strong>{warn.field}:</strong> {warn.message}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* JSON Tab */}
-              {previewTab === 'json' && (
-                <div>
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-semibold text-gray-900 dark:text-white">📋 Amazon Listings Items API - JSON Payload</h4>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(JSON.stringify(amazonFeedData.json_payload, null, 2))}
-                      className="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 rounded hover:bg-gray-200 dark:hover:bg-gray-600"
-                    >
-                      📋 نسخ
-                    </button>
-                  </div>
-                  <pre className="p-4 bg-gray-100 dark:bg-gray-900 rounded-lg text-xs overflow-auto max-h-[60vh] font-mono">
-                    {JSON.stringify(amazonFeedData.json_payload, null, 2)}
-                  </pre>
-                </div>
-              )}
-
-              {/* API Info Tab */}
-              {previewTab === 'info' && (
-                <div className="space-y-6">
-                  {/* API Info */}
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                    <h4 className="font-semibold text-blue-700 dark:text-blue-400 mb-3">ℹ️ معلومات Amazon API</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">نوع API:</span>
-                        <span className="font-mono text-blue-600">{amazonFeedData.api_type}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Endpoint:</span>
-                        <span className="font-mono text-blue-600">{amazonFeedData.endpoint}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Marketplace ID:</span>
-                        <span className="font-mono text-blue-600">{amazonFeedData.marketplace_id}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Language Tag:</span>
-                        <span className="font-mono text-blue-600">{amazonFeedData.language_tag}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Deprecated Warning */}
-                  <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
-                    <h4 className="font-semibold text-amber-700 dark:text-amber-400 mb-2">⚠️ تحذير: XML Feeds Deprecated</h4>
-                    <p className="text-sm text-amber-700 dark:text-amber-400">{amazonFeedData.api_deprecated}</p>
-                    <p className="text-sm text-amber-700 dark:text-amber-400 mt-2">
-                      Amazon أوقفت دعم XML Feeds (POST_PRODUCT_DATA) من مارس 2024.
-                      الطريقة الوحيدة الآن هي استخدام Listings Items API بصيغة JSON.
-                    </p>
-                  </div>
-
-                  {/* Required vs Optional */}
-                  <div>
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">📌 الحقول الإجبارية vs الاختيارية</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 bg-red-50 dark:bg-red-900/10 rounded-lg">
-                        <h5 className="text-sm font-semibold text-red-600 mb-2">❌ إجبارية (Amazon ترفض بدونها)</h5>
-                        <ul className="text-xs space-y-1 text-red-700 dark:text-red-400">
-                          {(amazonFeedData.required_attributes || []).map((attr: string) => (
-                            <li key={attr}>• {attr}</li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div className="p-3 bg-green-50 dark:bg-green-900/10 rounded-lg">
-                        <h5 className="text-sm font-semibold text-green-600 mb-2">✅ اختيارية (مستحسن إضافتها)</h5>
-                        <ul className="text-xs space-y-1 text-green-700 dark:text-green-400">
-                          <li>• item_description (الوصف)</li>
-                          <li>• bullet_point (نقاط البيع)</li>
-                          <li>• generic_keyword (كلمات البحث)</li>
-                          <li>• material (الخامة)</li>
-                          <li>• item_weight (الوزن)</li>
-                          <li>• item_dimensions (الأبعاد)</li>
-                          <li>• model_number (رقم الموديل)</li>
-                          <li>• number_of_items (عدد القطع)</li>
-                          <li>• other_product_image_locator_* (صور إضافية)</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* How Amazon Processes It */}
-                  <div>
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-3">🔄 كيف Amazon بتعالج الطلب؟</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-start gap-3 p-2 bg-gray-50 dark:bg-gray-900 rounded">
-                        <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded">1</span>
-                        <p className="text-gray-700 dark:text-gray-300">Frontend يبني JSON payload بكل البيانات</p>
-                      </div>
-                      <div className="flex items-start gap-3 p-2 bg-gray-50 dark:bg-gray-900 rounded">
-                        <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded">2</span>
-                        <p className="text-gray-700 dark:text-gray-300">Backend يبعت PUT request لـ Amazon</p>
-                      </div>
-                      <div className="flex items-start gap-3 p-2 bg-gray-50 dark:bg-gray-900 rounded">
-                        <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded">3</span>
-                        <p className="text-gray-700 dark:text-gray-300">Amazon تتحقق من Issues list</p>
-                      </div>
-                      <div className="flex items-start gap-3 p-2 bg-gray-50 dark:bg-gray-900 rounded">
-                        <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold px-2 py-1 rounded">4</span>
-                        <p className="text-gray-700 dark:text-gray-300">Amazon ترد بـ ACCEPTED أو أخطاء</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center sticky bottom-0 bg-white dark:bg-gray-800">
-              <button
-                onClick={() => setShowAmazonPreview(false)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-              >
-                إغلاق
-              </button>
-              <button
-                onClick={() => { setShowAmazonPreview(false); handleSubmit() }}
-                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-              >
-                <Save className="w-4 h-4" /> حفظ وإرسال لـ Amazon
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

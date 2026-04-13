@@ -18,6 +18,7 @@ was causing NotImplementedError.
 """
 import json
 import asyncio
+import sys
 import re
 from typing import Dict, Any, Optional, List
 from loguru import logger
@@ -57,18 +58,299 @@ class ListingSubmitter:
         """
         Submit a listing to Amazon using ALister Protocol v2.
 
-        Args:
-            product_data: Dict with sku, name, price, quantity, brand, ean, etc.
-
-        Returns:
-            {
-                "success": bool,
-                "status": str,
-                "asin": str,
-                "listing_id": str,
-                "error": str or None,
-            }
+        On Windows, runs sync Playwright in a thread to avoid ProactorEventLoop issues.
+        On Linux/Mac, uses async Playwright directly.
         """
+        sku = product_data.get("sku", "UNKNOWN")
+        logger.info(f"[ALister] Starting listing submission for SKU: {sku}")
+
+        # FIX: Windows ProactorEventLoop doesn't support subprocess_exec
+        # Run sync Playwright in a thread on Windows
+        if sys.platform == "win32":
+            logger.info("[ALister] Windows detected — using sync Playwright in thread")
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                None,  # default ThreadPool
+                self._submit_listing_sync,
+                product_data,
+            )
+        else:
+            return await self._submit_listing_async(product_data)
+
+    def _submit_listing_sync(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Sync version of submit_listing for Windows thread execution"""
+        import sys as _sys
+        try:
+            from playwright.sync_api import sync_playwright
+
+            sku = product_data.get("sku", "UNKNOWN")
+            logger.info(f"[ALister-Sync] Starting listing submission for SKU: {sku}")
+
+            playwright = sync_playwright().start()
+            try:
+                browser = playwright.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                    ],
+                )
+
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    viewport={"width": 1920, "height": 1080},
+                    locale="en-US",
+                    timezone_id="Africa/Cairo",
+                )
+
+                # Load cookies
+                logger.info("[ALister-Sync] Loading cookies from DB...")
+                cookies = self._load_cookies_sync()
+                if not cookies:
+                    logger.error("[ALister-Sync] No active session")
+                    return {
+                        "success": False,
+                        "error": "No active session — please login first",
+                        "session_expired": True,
+                    }
+
+                context.add_cookies(cookies)
+                logger.info(f"[ALister-Sync] Loaded {len(cookies)} cookies")
+
+                page = context.new_page()
+
+                page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    window.chrome = {runtime: {}};
+                    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en', 'ar']});
+                """)
+
+                # Navigate
+                create_url = f"{self.base_url}/abis/listing/create/product_identity?productType=HOME_ORGANIZERS_AND_STORAGE"
+                logger.info(f"[ALister-Sync] Navigating to {create_url}")
+
+                page.goto(create_url, wait_until="domcontentloaded", timeout=30000)
+
+                if "/ap/signin" in page.url or "/gp/signin" in page.url:
+                    logger.error("[ALister-Sync] Redirected to login — session expired")
+                    browser.close()
+                    playwright.stop()
+                    return {
+                        "success": False,
+                        "error": "Session expired — redirected to login",
+                        "session_expired": True,
+                    }
+
+                logger.info(f"[ALister-Sync] Page loaded: {page.url}")
+
+                try:
+                    page.wait_for_load_state("networkidle", timeout=15000)
+                    logger.info("[ALister-Sync] Network idle reached")
+                except Exception as e:
+                    logger.warning(f"[ALister-Sync] Network idle timeout (non-fatal): {e}")
+
+                import time
+                time.sleep(3)
+
+                # Extract CSRF
+                csrf_token = self._extract_csrf_sync(page)
+                if not csrf_token:
+                    logger.error("[ALister-Sync] Failed to extract CSRF token")
+                    browser.close()
+                    playwright.stop()
+                    return {
+                        "success": False,
+                        "error": "Failed to extract CSRF token from page",
+                    }
+
+                logger.info(f"[ALister-Sync] CSRF token: {csrf_token[:20]}... ({len(csrf_token)} chars)")
+
+                # Build payload
+                payload = self._build_payload(product_data)
+                payload_json = json.dumps(payload, ensure_ascii=False)
+                logger.info(f"[ALister-Sync] Payload size: {len(payload_json)} chars")
+
+                # POST
+                result = self._native_post_sync(page, payload_json, csrf_token)
+
+                browser.close()
+                playwright.stop()
+                return result
+
+            except Exception as e:
+                logger.error(f"[ALister-Sync] Submission failed: {e}", exc_info=True)
+                try:
+                    browser.close()
+                    playwright.stop()
+                except Exception:
+                    pass
+                return {
+                    "success": False,
+                    "error": str(e),
+                }
+
+        except ImportError:
+            logger.error("[ALister-Sync] playwright not installed. Run: playwright install chromium")
+            return {
+                "success": False,
+                "error": "Playwright not installed. Run: playwright install chromium",
+            }
+
+    def _load_cookies_sync(self) -> List[Dict[str, Any]]:
+        """Load cookies sync version"""
+        db = SessionLocal()
+        try:
+            session = db.query(AuthSession).filter(
+                AuthSession.auth_method == "browser",
+                AuthSession.is_active == True,
+                AuthSession.is_valid == True,
+            ).first()
+
+            if not session or not session.cookies_json:
+                return []
+
+            raw_cookies = json.loads(decrypt_data(session.cookies_json))
+
+            pw_cookies = []
+            for c in raw_cookies:
+                pw_c = {
+                    "name": c.get("name", ""),
+                    "value": c.get("value", ""),
+                    "domain": c.get("domain", ".amazon.eg"),
+                    "path": c.get("path", "/"),
+                    "httpOnly": c.get("httpOnly", False),
+                    "secure": c.get("secure", False),
+                }
+                if c.get("expires"):
+                    pw_c["expires"] = c["expires"]
+
+                raw_ss = c.get("sameSite", "")
+                if raw_ss:
+                    ss_lower = str(raw_ss).lower()
+                    if ss_lower == "strict":
+                        pw_c["sameSite"] = "Strict"
+                    elif ss_lower == "none":
+                        pw_c["sameSite"] = "None"
+                    else:
+                        pw_c["sameSite"] = "Lax"
+
+                pw_cookies.append(pw_c)
+
+            return pw_cookies
+        except Exception as e:
+            logger.error(f"[ALister-Sync] Failed to load cookies: {e}")
+            return []
+        finally:
+            db.close()
+
+    def _extract_csrf_sync(self, page) -> Optional[str]:
+        """Extract CSRF sync version"""
+        try:
+            token = page.evaluate("""
+                () => {
+                    const windowToken = window['anti-csrftoken-a2z'] || window.a2zToken;
+                    if (windowToken && windowToken.length > 20) return windowToken;
+                    const metaToken = document.querySelector('[name="anti-csrftoken-a2z"]')?.content;
+                    if (metaToken && metaToken.length > 20) return metaToken;
+                    const inputToken = document.querySelector('input[name="anti-csrftoken-a2z"]')?.value;
+                    if (inputToken && inputToken.length > 20) return inputToken;
+                    return "";
+                }
+            """)
+
+            if token and len(token) > 20:
+                return token
+
+            content = page.content()
+            for pattern in [r'"anti-csrftoken-a2z"\s*:\s*"([^"]+)"', r'anti-csrftoken-a2z["\']\s*:\s*["\']([^"\']+)["\']']:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    t = match.group(1)
+                    if len(t) > 20 and not t.startswith('mons_'):
+                        return t
+
+            return None
+        except Exception as e:
+            logger.error(f"[ALister-Sync] CSRF extraction failed: {e}")
+            return None
+
+    def _native_post_sync(self, page, payload_json: str, csrf: str) -> Dict[str, Any]:
+        """Native POST sync version"""
+        result = page.evaluate("""
+            async (params) => {
+                const { payload, csrf } = params;
+                const formData = new URLSearchParams();
+                formData.append('data', payload);
+                formData.append('anti-csrftoken-a2z', csrf);
+
+                try {
+                    const res = await fetch('/abis/ajax/create-listing', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                            'Accept': 'application/json, text/javascript, */*; q=0.01',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'anti-csrftoken-a2z': csrf,
+                            'x-csrf-token': csrf,
+                        },
+                        body: formData.toString(),
+                    });
+
+                    const text = await res.text();
+                    let json;
+                    try {
+                        json = JSON.parse(text);
+                    } catch (e) {
+                        return {
+                            success: false,
+                            status: 'PARSE_ERROR',
+                            error: 'Response not JSON: ' + text.substring(0, 300),
+                            raw: text.substring(0, 500),
+                        };
+                    }
+
+                    return {
+                        success: json.status === 'SUCCESS',
+                        status: json.status || 'ERROR',
+                        asin: json.asin || '',
+                        listing_id: json.listingId || '',
+                        message: json.message || json.error || '',
+                        raw: json,
+                    };
+                } catch (e) {
+                    return {
+                        success: false,
+                        status: 'FETCH_ERROR',
+                        error: e.message,
+                    };
+                }
+            }
+        """, {"payload": payload_json, "csrf": csrf})
+
+        logger.info(f"[ALister-Sync] POST result: {json.dumps(result, indent=2, ensure_ascii=False)[:1000]}")
+
+        if result.get("success"):
+            logger.info(f"[ALister-Sync] SUCCESS! ASIN={result.get('asin')}, Listing ID={result.get('listing_id')}")
+            return {
+                "success": True,
+                "status": "SUCCESS",
+                "asin": result.get("asin", ""),
+                "listing_id": result.get("listing_id", ""),
+            }
+        else:
+            error = result.get("error", result.get("message", "Unknown"))
+            logger.error(f"[ALister-Sync] FAILED: {error}")
+            return {
+                "success": False,
+                "status": result.get("status", "ERROR"),
+                "error": error,
+                "response": result.get("raw"),
+            }
+
+    async def _submit_listing_async(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Async version of submit_listing for Linux/Mac"""
         sku = product_data.get("sku", "UNKNOWN")
         logger.info(f"[ALister] Starting listing submission for SKU: {sku}")
 

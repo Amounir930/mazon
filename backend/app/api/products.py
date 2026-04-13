@@ -36,6 +36,17 @@ def product_to_dict(product: Product) -> dict:
     # Default currency
     if d.get('currency') is None:
         d['currency'] = 'EGP'
+    # FIX: Apply default values for integer fields that are NULL in old DB records
+    int_defaults = {
+        'quantity': 0,
+        'handling_time': 0,
+        'number_of_items': 1,
+        'package_quantity': 1,
+        'retry_count': 0,
+    }
+    for field, default_val in int_defaults.items():
+        if d.get(field) is None:
+            d[field] = default_val
     # Convert datetime to string
     for field in ['created_at', 'updated_at']:
         val = d.get(field)
@@ -235,8 +246,12 @@ async def update_product(product_id: str, data: ProductUpdate, db: Session = Dep
 
     update_data = data.model_dump(exclude_unset=True)
 
-    # Handle JSON fields
-    json_fields = ['bullet_points', 'bullet_points_ar', 'bullet_points_en', 'keywords', 'images', 'dimensions', 'attributes', 'optimized_data']
+    # Handle JSON fields (dict/list → JSON string for SQLite)
+    json_fields = [
+        'bullet_points', 'bullet_points_ar', 'bullet_points_en',
+        'keywords', 'images', 'dimensions', 'attributes',
+        'optimized_data', 'unit_count'  # ← FIX: unit_count is a dict
+    ]
     for field, value in update_data.items():
         if field in json_fields and value is not None:
             setattr(product, field, json.dumps(value))
