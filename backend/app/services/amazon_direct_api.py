@@ -209,11 +209,13 @@ class AmazonDirectAPI:
 
     def _build_create_listing_payload(self, product: Product) -> Dict[str, Any]:
         """يبني JSON payload لإنشاء Listing"""
+        # 🔴 CRITICAL: ABIS API productType = "PRODUCT"
+        # The HOME_ORGANIZERS_AND_STORAGE is for Excel templates only
         return {
             "listing": {
                 "listingDetails": {
                     "listingLanguageCode": "en_US",
-                    "productType": "",
+                    "productType": "PRODUCT",  # 🔴 ABIS API expects "PRODUCT"
                     "marketplaceId": "ARBP9OOSHTCHU",  # Egypt
                     "sku": product.sku,
                 },
@@ -519,10 +521,8 @@ class AmazonDirectAPI:
 
     def _get_client_context(self) -> str:
         """يجيب client context للـ requests"""
-        # This is a simplified version - ALister extracts this from webpack
+        # Returns the raw JSON string — NOT double-wrapped
         return json.dumps({
-            "clientContext": {
-                "marketplaceId": "ARBP9OOSHTCHU",
-                "languageCode": "en_US",
-            }
+            "marketplaceId": "ARBP9OOSHTCHU",
+            "languageCode": "en_US",
         })

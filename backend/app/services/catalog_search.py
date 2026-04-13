@@ -219,29 +219,3 @@ class AmazonCatalogSearchClient:
             if product.get('asin') == asin:
                 return product
         return results[0] if results else None
-
-
-def get_active_session():
-    """يجيب الـ Session النشطة من الـ Database"""
-    db = SessionLocal()
-    try:
-        session = db.query(AuthSession).filter(
-            AuthSession.auth_method == "browser",
-            AuthSession.is_active == True,
-            AuthSession.is_valid == True,
-        ).first()
-
-        if not session or not session.cookies_json:
-            return None, None
-
-        cookies = json.loads(decrypt_data(session.cookies_json))
-        country = session.country_code or "eg"
-
-        logger.info(f"Retrieved session for catalog search (country: {country}, cookies: {len(cookies)})")
-        return cookies, country
-
-    except Exception as e:
-        logger.error(f"Session retrieval failed: {e}")
-        return None, None
-    finally:
-        db.close()

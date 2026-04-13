@@ -52,9 +52,8 @@ async def sync_products_from_amazon(
                 detail="لا يوجد جلسة نشطة - يرجى تسجيل الدخول أولاً"
             )
 
-        # Initialize sync engine
-        sync_engine = AmazonProductSyncEngine(country_code=country)
-        sync_engine.setup_cookies(cookies)
+        # Initialize sync engine with cookies (curl_cffi + CookieJar)
+        sync_engine = AmazonProductSyncEngine(cookies=cookies, country_code=country)
 
         # Execute sync
         result = sync_engine.sync_products()
@@ -445,6 +444,93 @@ async def sync_inventory_cookie(
 # ============================================================
 # Legacy Cookie-based Sync Endpoints (GET - keep for backward compatibility)
 # ============================================================
+
+@router.post("/pull")
+async def pull_products_from_amazon(
+    db: Session = Depends(get_db),
+):
+    """
+    سحب المنتجات من Amazon Seller Central → يوريك إيه اللي موجود.
+    مش بيحفظ في الـ DB — بس بيطبع البيانات عشان نعرف الحقول المطلوبة.
+
+    Request: POST /api/v1/sync/pull
+    """
+    try:
+        from app.services.sync_engine import AmazonProductSyncEngine, get_active_session
+        from app.services.cookie_scraper import CookieScraper
+        import asyncio
+
+        # Get active session cookies
+        cookies, country = get_active_session()
+        if not cookies:
+            raise HTTPException(
+                status_code=401,
+                detail="لا يوجد جلسة نشطة - يرجى تسجيل الدخول أولاً"
+            )
+
+        logger.info(f"Pulling products from Amazon: {len(cookies)} cookies, country={country}")
+
+        # Method 1: Try CookieScraper (Playwright DOM extraction)
+        scraper = CookieScraper(debug=True)
+        try:
+            # Get email from session
+            active_session = db.query(AuthSession).filter(
+                AuthSession.auth_method == "browser",
+                AuthSession.is_active == True,
+            ).first()
+            email = active_session.email if active_session else "amazon_eg"
+
+            result = await scraper.sync_products(email)
+            scraper.close()
+
+            if result.get("success") and result.get("products"):
+                products = result["products"]
+                logger.info(f"✅ CookieScraper pulled {len(products)} products")
+                # Print first 3 products for analysis
+                for i, p in enumerate(products[:3]):
+                    logger.info(f"  Product {i+1}: {json.dumps(p, ensure_ascii=False)[:300]}")
+                return {
+                    "success": True,
+                    "method": "CookieScraper (Playwright)",
+                    "total": len(products),
+                    "preview": products[:5],  # First 5 for analysis
+                    "fields": list(products[0].keys()) if products else [],
+                }
+            else:
+                logger.warning(f"CookieScraper returned: {result}")
+        except Exception as e:
+            logger.error(f"CookieScraper failed: {e}")
+            scraper.close()
+
+        # Method 2: Try sync_engine (CSV download)
+        try:
+            sync_engine = AmazonProductSyncEngine(cookies=cookies, country_code=country)
+            result = sync_engine.sync_products()
+            if result.get("success"):
+                logger.info(f"✅ SyncEngine pulled {result.get('total', 0)} products")
+                return {
+                    "success": True,
+                    "method": "SyncEngine (CSV)",
+                    "total": result.get("total", 0),
+                    "message": result.get("message", ""),
+                }
+            else:
+                logger.warning(f"SyncEngine returned: {result}")
+        except Exception as e:
+            logger.error(f"SyncEngine failed: {e}")
+
+        return {
+            "success": False,
+            "error": "All pull methods failed",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Product pull failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to pull: {str(e)}")
+
 
 @router.get("/products/legacy")
 async def sync_products_cookie_legacy(

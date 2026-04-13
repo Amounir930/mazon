@@ -3,16 +3,17 @@ Amazon Product Sync Engine
 يستورد المنتجات من Amazon Seller Central → Local Database
 
 الطريقة: تحميل تقرير "Active Listings" من Seller Central
+محدّث: يستخدم curl_cffi (TLS impersonation) + CookieJar بدلاً من niquests
 """
 import json
 import csv
 import io
 import time
+import re
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from loguru import logger
 
-import niquests
 from bs4 import BeautifulSoup
 
 from app.database import SessionLocal
@@ -20,12 +21,13 @@ from app.models.session import Session as AuthSession
 from app.models.product import Product
 from app.models.seller import Seller
 from app.services.session_store import decrypt_data
+from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError
 
 
 class AmazonProductSyncEngine:
     """
     محرك مزامنة المنتجات من Amazon Seller Central.
-    يستخدم الـ Cookies المحفوظة لتحميل تقرير المنتجات.
+    يستخدم curl_cffi (TLS impersonation) + CookieJar بدلاً من niquests.
     """
 
     BASE_URLS = {
@@ -36,26 +38,16 @@ class AmazonProductSyncEngine:
         "us": "https://sellercentral.amazon.com",
     }
 
-    def __init__(self, country_code: str = "eg"):
+    def __init__(self, cookies: List[Dict[str, Any]], country_code: str = "eg"):
         self.country_code = country_code
         self.base_url = self.BASE_URLS.get(country_code, self.BASE_URLS["eg"])
-        self.session = niquests.Session()
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
-        })
+        # curl_cffi client with CookieJar + TLS impersonation (chrome131)
+        self.client = AmazonHTTPClient(cookies, country_code)
+        logger.info(f"Sync engine initialized: {self.client.cookie_jar.count()} cookies, country={country_code.upper()}, TLS=chrome131")
 
     def setup_cookies(self, cookies: List[Dict[str, Any]]):
-        """يضيف الـ Cookies للـ Session"""
-        for cookie in cookies:
-            self.session.cookies.set(
-                cookie["name"],
-                cookie["value"],
-                domain=cookie.get("domain", f".amazon.{self.country_code}"),
-                path=cookie.get("path", "/"),
-            )
-        logger.info(f"Setup {len(cookies)} cookies for product sync")
+        """No-op — cookies already set in AmazonHTTPClient constructor"""
+        pass
 
     def sync_products(self) -> Dict[str, Any]:
         """
@@ -114,7 +106,7 @@ class AmazonProductSyncEngine:
 
             for url in report_urls:
                 logger.info(f"Trying inventory report: {url}")
-                response = self.session.get(url, timeout=30, allow_redirects=True)
+                response = self.client.session.get(url, timeout=30, allow_redirects=True)
 
                 if response.status_code == 200:
                     # Check if we got a CSV/TSV file
@@ -134,7 +126,7 @@ class AmazonProductSyncEngine:
                             download_url = f"{self.base_url}{download_url}"
 
                         logger.info(f"Found download link: {download_url}")
-                        dl_response = self.session.get(download_url, timeout=30)
+                        dl_response = self.client.session.get(download_url, timeout=30)
 
                         if dl_response.status_code == 200:
                             products = self._parse_csv_response(dl_response.text)
@@ -156,7 +148,7 @@ class AmazonProductSyncEngine:
             url = f"{self.base_url}/inventory"
             logger.info(f"Trying inventory page: {url}")
 
-            response = self.session.get(url, timeout=30)
+            response = self.client.session.get(url, timeout=30)
 
             if response.status_code != 200:
                 return None
@@ -225,7 +217,7 @@ class AmazonProductSyncEngine:
             url = f"{self.base_url}/reports"
             logger.info(f"Trying reports page: {url}")
 
-            response = self.session.get(url, timeout=30)
+            response = self.client.session.get(url, timeout=30)
 
             if response.status_code != 200:
                 return None
@@ -242,7 +234,7 @@ class AmazonProductSyncEngine:
                         download_url = f"{self.base_url}{download_url}"
 
                     logger.info(f"Found report download link: {download_url}")
-                    dl_response = self.session.get(download_url, timeout=30)
+                    dl_response = self.client.session.get(download_url, timeout=30)
 
                     if dl_response.status_code == 200:
                         products = self._parse_csv_response(dl_response.text)

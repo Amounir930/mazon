@@ -1,0 +1,3 @@
+## Qwen Added Memories
+- Project: Amazon Seller tool (CrazyLister/CrazyLister) - 100% cookie-based (no SP-API). Backend: Python FastAPI + curl_cffi (TLS chrome131). Frontend: React. Key files: abis_client.py (Clone & Inject pattern), amazon_http_client.py, sync_engine.py, cookie_scraper.py. Valid product types for EG: HOME_ORGANIZERS_AND_STORAGE, BABY_PRODUCT, APPAREL. ABIS API needs GET template first then POST modified template. All niquests replaced with curl_cffi.
+- ABIS Client uses Clone & Inject pattern: 1) GET /abis/ajax/create-listing?productType=X to fetch live template. 2) Inject product data into template's attributePropertiesImsV3. 3) POST modified template as form-encoded data. CSRF token required in headers AND form data.

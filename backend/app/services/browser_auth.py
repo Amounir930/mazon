@@ -331,24 +331,18 @@ class BrowserAuth:
         return self.email
 
     async def verify_session(self, cookies: List[Dict[str, Any]]) -> bool:
-        """Verify cookies are still valid"""
-        import niquests
+        """Verify cookies are still valid using curl_cffi (TLS impersonation)"""
+        from app.services.amazon_http_client import AmazonHTTPClient
 
-        session = niquests.AsyncSession()
-        for cookie in cookies:
-            session.cookies.set(
-                cookie.get("name", ""),
-                cookie.get("value", ""),
-                domain=cookie.get("domain"),
-                path=cookie.get("path", "/"),
-            )
+        if not cookies:
+            return False
 
         try:
-            url = f"{self.base_url}/home"
-            resp = await session.get(url, timeout=30, allow_redirects=True)
-            return "/ap/signin" not in str(resp.url)
+            client = AmazonHTTPClient(cookies, self.country_code)
+            try:
+                return client.is_session_valid()
+            finally:
+                client.close()
         except Exception as e:
             logger.warning(f"Session verification failed: {e}")
             return False
-        finally:
-            await session.close()

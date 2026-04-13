@@ -220,99 +220,40 @@ class CookieAuth:
 
     @staticmethod
     async def sync_products(
-        cookies: List[Dict[str, Any]],
+        email: str,
         country_code: str = "eg",
     ) -> Dict[str, Any]:
         """
-        Sync products from Amazon Seller Central using cookies.
-        Now uses curl_cffi + CookieJar for undetectable requests.
-
-        Args:
-            cookies: List of cookie dictionaries
-            country_code: Marketplace country code
-
-        Returns:
-            Dictionary with products list and metadata
+        Sync products from Amazon Seller Central.
+        Delegates to CookieScraper (Playwright DOM extraction).
         """
+        from app.services.cookie_scraper import CookieScraper
+
+        scraper = CookieScraper()
         try:
-            client = AmazonHTTPClient(cookies, country_code)
-            try:
-                # Fetch inventory page
-                response = client.get("/inventory")
-
-                # Parse products from HTML response
-                # This is a placeholder - actual parsing depends on Amazon's HTML structure
-                products = []  # TODO: Parse products from HTML
-
-                return {
-                    "success": True,
-                    "products": products,
-                    "total": len(products),
-                }
-            finally:
-                client.close()
-
-        except SessionExpiredError:
-            return {
-                "success": False,
-                "error": "Session expired - please login again",
-                "products": [],
-            }
-        except Exception as e:
-            logger.error(f"Failed to sync products: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "products": [],
-            }
+            result = await scraper.sync_products(email)
+            return result
+        finally:
+            await scraper.close()
 
     @staticmethod
     async def sync_orders(
-        cookies: List[Dict[str, Any]],
+        email: str,
+        days: int = 30,
         country_code: str = "eg",
     ) -> Dict[str, Any]:
         """
-        Sync orders from Amazon Seller Central using cookies.
-        Now uses curl_cffi + CookieJar for undetectable requests.
-
-        Args:
-            cookies: List of cookie dictionaries
-            country_code: Marketplace country code
-
-        Returns:
-            Dictionary with orders list and metadata
+        Sync orders from Amazon Seller Central.
+        Delegates to CookieScraper (Playwright DOM extraction).
         """
+        from app.services.cookie_scraper import CookieScraper
+
+        scraper = CookieScraper()
         try:
-            client = AmazonHTTPClient(cookies, country_code)
-            try:
-                # Fetch orders page
-                response = client.get("/orders")
-
-                # Parse orders from HTML response
-                # This is a placeholder - actual parsing depends on Amazon's HTML structure
-                orders = []  # TODO: Parse orders from HTML
-
-                return {
-                    "success": True,
-                    "orders": orders,
-                    "total": len(orders),
-                }
-            finally:
-                client.close()
-
-        except SessionExpiredError:
-            return {
-                "success": False,
-                "error": "Session expired - please login again",
-                "orders": [],
-            }
-        except Exception as e:
-            logger.error(f"Failed to sync orders: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "orders": [],
-            }
+            result = await scraper.sync_orders(email, days=days)
+            return result
+        finally:
+            await scraper.close()
 
     @staticmethod
     def disconnect(email: str) -> bool:
