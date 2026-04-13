@@ -1,29 +1,31 @@
 """
-Amazon Listing Submitter (Playwright-based)
+Amazon Listing Submitter — ALister Protocol v2 (Simplified Native POST)
 
 Uses Playwright to:
-1. Open the listing creation page in Amazon Seller Central
-2. Fill in all required form fields
-3. Submit the listing via Amazon's own UI
-4. Capture the response (success/error)
+1. Open the listing creation page (product_identity) in Amazon Seller Central
+2. Wait for page to fully load (establishes session)
+3. Build payload from known Amazon template structure
+4. POST the payload from INSIDE the browser via page.evaluate()
 
-This is the ONLY reliable way to create listings — bypasses the 403 protection
-on the ABIS AJAX API by using Amazon's own frontend JavaScript.
+WHY THIS WORKS:
+- Request comes from real browser (no WAF detection)
+- Uses live session cookies + CSRF from the page
+- No DOM selectors needed (no brittle code)
+- No unreliable interception needed
 
-Pattern: Clone & Inject via browser automation (same as ALister)
+This replaces the old approach that used page.route() interception which
+was causing NotImplementedError.
 """
 import json
-import random
-import time
+import asyncio
+import re
 from typing import Dict, Any, Optional, List
-from pathlib import Path
 from loguru import logger
 
 from app.database import SessionLocal
 from app.models.session import Session as AuthSession
 from app.services.session_store import decrypt_data
 
-# Amazon Seller Central URLs
 SELLER_CENTRAL_BASE = {
     "eg": "https://sellercentral.amazon.eg",
     "sa": "https://sellercentral.amazon.sa",
@@ -33,8 +35,13 @@ SELLER_CENTRAL_BASE = {
 
 class ListingSubmitter:
     """
-    Submit listings to Amazon via Playwright browser automation.
-    Uses the same flow as a human filling the form — which Amazon accepts.
+    Submit listings to Amazon via Native POST from inside Playwright browser.
+
+    Flow:
+    1. Open product_identity page with Playwright
+    2. Wait for page load + extract CSRF
+    3. Build payload from known Amazon template structure
+    4. POST via page.evaluate() — fetch() from INSIDE browser (bypasses WAF)
     """
 
     def __init__(self, country_code: str = "eg", debug: bool = False):
@@ -44,11 +51,11 @@ class ListingSubmitter:
         self.browser = None
         self.context = None
         self.page = None
-        self.api_responses = []
+        self._csrf_token: Optional[str] = None
 
     async def submit_listing(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Submit a listing to Amazon using Playwright.
+        Submit a listing to Amazon using ALister Protocol v2.
 
         Args:
             product_data: Dict with sku, name, price, quantity, brand, ean, etc.
@@ -63,15 +70,15 @@ class ListingSubmitter:
             }
         """
         sku = product_data.get("sku", "UNKNOWN")
-        logger.info(f"📦 Starting Playwright listing submission for SKU: {sku}")
+        logger.info(f"[ALister] Starting listing submission for SKU: {sku}")
 
         try:
             from playwright.async_api import async_playwright
 
-            # Launch browser
-            logger.info("Launching Playwright browser...")
+            # Step 1: Launch browser
+            logger.info("[ALister] Step 1: Launching Playwright...")
             playwright = await async_playwright().start()
-            browser = await playwright.chromium.launch(
+            self.browser = await playwright.chromium.launch(
                 headless=True,
                 args=[
                     "--disable-blink-features=AutomationControlled",
@@ -80,152 +87,335 @@ class ListingSubmitter:
                 ],
             )
 
-            # Create context with realistic settings
-            context = await browser.new_context(
+            self.context = await self.browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
                 viewport={"width": 1920, "height": 1080},
                 locale="en-US",
                 timezone_id="Africa/Cairo",
             )
 
-            # Load cookies from DB
+            # Step 2: Load cookies
+            logger.info("[ALister] Step 2: Loading cookies from DB...")
             cookies = await self._load_cookies()
             if not cookies:
+                logger.error("[ALister] No active session")
                 return {
                     "success": False,
                     "error": "No active session — please login first",
                     "session_expired": True,
                 }
 
-            await context.add_cookies(cookies)
-            logger.info(f"Loaded {len(cookies)} cookies")
+            await self.context.add_cookies(cookies)
+            logger.info(f"[ALister] Loaded {len(cookies)} cookies")
 
-            # Intercept API responses
-            self.api_responses = []
+            # Step 3: Create page + anti-detection
+            logger.info("[ALister] Step 3: Creating page...")
+            self.page = await self.context.new_page()
 
-            async def handle_response(response):
-                url = response.url
-                if "/abis/ajax/create-listing" in url:
-                    try:
-                        body = await response.text()
-                        status = response.status
-                        logger.info(f"📡 Intercepted API: {status} {url}")
-                        self.api_responses.append({
-                            "url": url,
-                            "status": status,
-                            "body": body,
-                        })
-                    except:
-                        pass
+            await self.page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                window.chrome = {runtime: {}};
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en', 'ar']});
+            """)
 
-            page = await context.new_page()
-            page.on("response", handle_response)
-
-            # Step 1: Navigate to listing creation page
+            # Step 4: Navigate to product_identity page
             create_url = f"{self.base_url}/abis/listing/create/product_identity?productType=HOME_ORGANIZERS_AND_STORAGE"
-            logger.info(f"Navigating to: {create_url}")
-            
-            response = await page.goto(create_url, wait_until="domcontentloaded", timeout=30000)
-            
+            logger.info(f"[ALister] Step 4: Navigating to {create_url}")
+
+            response = await self.page.goto(create_url, wait_until="domcontentloaded", timeout=30000)
+
             # Check if redirected to login
-            if "/ap/signin" in page.url or "/gp/signin" in page.url:
-                logger.error("Redirected to login — session expired")
-                await browser.close()
+            if "/ap/signin" in self.page.url or "/gp/signin" in self.page.url:
+                logger.error("[ALister] Redirected to login — session expired")
+                await self._cleanup()
                 return {
                     "success": False,
                     "error": "Session expired — redirected to login",
                     "session_expired": True,
                 }
 
-            logger.info(f"Page loaded: {page.url}")
-            await page.wait_for_load_state("networkidle", timeout=15000)
+            logger.info(f"[ALister] Page loaded: {self.page.url}")
 
-            # Random delay to appear human
-            delay = random.uniform(2, 4)
-            logger.info(f"Waiting {delay:.1f}s (human simulation)...")
-            await page.wait_for_timeout(delay * 1000)
+            # Wait for network to settle
+            try:
+                await self.page.wait_for_load_state("networkidle", timeout=15000)
+                logger.info("[ALister] Network idle reached")
+            except Exception as e:
+                logger.warning(f"[ALister] Network idle timeout (non-fatal): {e}")
 
-            # Step 2: Fill in the form using JavaScript injection
-            logger.info("Filling form fields...")
-            
-            fill_result = await page.evaluate(self._get_fill_script(product_data))
-            logger.info(f"Fill result: {fill_result}")
+            # Wait a bit for Amazon's JS to initialize
+            await asyncio.sleep(3)
 
-            if not fill_result.get("success"):
-                logger.error(f"Form filling failed: {fill_result.get('error')}")
-                # Take screenshot for debugging
-                if self.debug:
-                    await page.screenshot(path=f"listing_error_{sku}.png")
-                await browser.close()
+            # Step 5: Extract CSRF token
+            logger.info("[ALister] Step 5: Extracting CSRF token...")
+            self._csrf_token = await self._extract_csrf_from_page()
+            if not self._csrf_token:
+                logger.error("[ALister] Failed to extract CSRF token")
+                await self._cleanup()
                 return {
                     "success": False,
-                    "error": f"Failed to fill form: {fill_result.get('error')}",
+                    "error": "Failed to extract CSRF token from page",
                 }
 
-            # Random delay before submission
-            delay = random.uniform(1, 3)
-            logger.info(f"Waiting {delay:.1f}s before submit...")
-            await page.wait_for_timeout(delay * 1000)
+            logger.info(f"[ALister] CSRF token: {self._csrf_token[:20]}... ({len(self._csrf_token)} chars)")
 
-            # Step 3: Click submit/save button
-            logger.info("Submitting listing...")
-            
-            submit_result = await page.evaluate(self._get_submit_script())
-            logger.info(f"Submit result: {submit_result}")
+            # Step 6: Build payload
+            logger.info("[ALister] Step 6: Building payload...")
+            payload = self._build_payload(product_data)
+            payload_json = json.dumps(payload, ensure_ascii=False)
+            logger.info(f"[ALister] Payload size: {len(payload_json)} chars")
 
-            # Wait for API response
-            logger.info("Waiting for API response...")
-            await page.wait_for_timeout(10000)
+            # Step 7: POST from INSIDE browser
+            logger.info("[ALister] Step 7: Executing native POST from inside browser...")
+            result = await self._native_post(payload_json)
 
-            # Check intercepted responses
-            result = self._process_api_responses()
-            
-            if result:
-                logger.info(f"API result: {result}")
-                await browser.close()
-                return result
-
-            # Fallback: check page for success/error indicators
-            page_text = await page.inner_text("body")
-            
-            if "successfully" in page_text.lower() or "created" in page_text.lower():
-                logger.info("✅ Listing created successfully (page indicator)")
-                await browser.close()
-                return {
-                    "success": True,
-                    "status": "SUCCESS",
-                    "asin": "",
-                    "listing_id": sku,
-                }
-            
-            if "error" in page_text.lower() or "failed" in page_text.lower():
-                # Extract error message
-                error_start = max(0, page_text.lower().find("error") - 50)
-                error_msg = page_text[error_start:error_start + 300]
-                logger.warning(f"Error detected on page: {error_msg}")
-                await browser.close()
-                return {
-                    "success": False,
-                    "error": f"Amazon returned error: {error_msg}",
-                }
-
-            # Screenshot for debugging
-            if self.debug:
-                await page.screenshot(path=f"listing_result_{sku}.png")
-
-            await browser.close()
-            return {
-                "success": False,
-                "error": "Could not determine result — check screenshot",
-                "page_url": str(page.url),
-            }
+            await self._cleanup()
+            return result
 
         except Exception as e:
-            logger.error(f"Listing submission failed: {e}", exc_info=True)
+            logger.error(f"[ALister] Listing submission failed: {e}", exc_info=True)
+            await self._cleanup()
             return {
                 "success": False,
                 "error": str(e),
             }
+
+    def _build_payload(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Build the listing payload matching Amazon's expected structure.
+
+        This is based on the known template structure from Amazon's own template.
+        """
+        name = product_data.get("name", "Unknown Product")
+        description = product_data.get("description", name)
+        brand = (product_data.get("brand") or "Generic").strip() or "Generic"
+        ean = product_data.get("ean", "")
+        sku = product_data.get("sku", "")
+        price = float(product_data.get("price", 0))
+        quantity = int(product_data.get("quantity", 0))
+        condition = product_data.get("condition", "New")
+        fulfillment = product_data.get("fulfillment_channel", "MFN")
+        country_origin = product_data.get("country_of_origin", "CN")
+        model_name = product_data.get("model_number", sku)
+        manufacturer = (product_data.get("manufacturer") or brand).strip() or brand
+        bullet_points = product_data.get("bullet_points", [])
+        product_type = product_data.get("product_type", "HOME_ORGANIZERS_AND_STORAGE")
+
+        condition_map = {"New": "new_new", "Used": "used_used", "Refurbished": "refurbished_refurbished"}
+        condition_value = condition_map.get(condition, "new_new")
+        fulfillment_value = "MFN" if fulfillment == "MFN" else "AFN"
+
+        # Build attributePropertiesImsV3 (nested structure)
+        attr_ims = {
+            "item_name": [{"language_tag": "en_US", "value": name}],
+            "product_type": [{"value": product_type}],
+            "recommended_browse_nodes": [{"value": "21863799031"}],
+            "brand": [{"language_tag": "en_US", "value": brand}],
+            "product_description": [{"language_tag": "en_US", "value": description}],
+            "model_name": [{"language_tag": "en_US", "value": model_name}],
+            "manufacturer": [{"language_tag": "en_US", "value": manufacturer}],
+            "country_of_origin": [{"value": country_origin.upper() if len(country_origin) == 2 else "CN"}],
+            "condition_type": [{"value": condition_value}],
+            "offerFulfillment": fulfillment_value,
+            "automated_pricing_rule_type": [{"value": "disabled"}],
+            "supplier_declared_dg_hz_regulation": [{"value": "not_applicable"}],
+            "unit_count": [{"type": {"language_tag": "en_US", "value": "العد"}, "value": 1.0}],
+            "included_components": [{"language_tag": "en_US", "value": name}],
+            "purchasable_offer": [{
+                "our_price": [{"schedule": [{"value_with_tax": price}]}],
+                "maximum_retail_price": [{"schedule": [{"value_with_tax": price}]}],
+                "currency": "EGP",
+            }],
+            "fulfillment_availability": [{"quantity": quantity}],
+        }
+
+        if ean:
+            attr_ims["externally_assigned_product_identifier"] = [{
+                "type": "upc/ean/gtin",
+                "value": str(ean),
+            }]
+
+        if bullet_points and isinstance(bullet_points, list) and len(bullet_points) > 0:
+            attr_ims["bullet_point"] = [{"language_tag": "en_US", "value": str(bullet_points[0])}]
+        else:
+            attr_ims["bullet_point"] = [{"language_tag": "en_US", "value": name}]
+
+        # Build attributeProperties (FLAT keys)
+        attr_flat = {
+            "item_name#1.language_tag": "en_US",
+            "item_name#1.value": name,
+            "product_type#1.value": product_type,
+            "recommended_browse_nodes#1.value": "21863799031",
+            "brand#1.language_tag": "en_US",
+            "brand#1.value": brand,
+            "product_description#1.language_tag": "en_US",
+            "product_description#1.value": description,
+            "model_name#1.language_tag": "en_US",
+            "model_name#1.value": model_name,
+            "manufacturer#1.language_tag": "en_US",
+            "manufacturer#1.value": manufacturer,
+            "country_of_origin#1.value": country_origin.upper() if len(country_origin) == 2 else "CN",
+            "condition_type#1.value": condition_value,
+            "offerFulfillment": fulfillment_value,
+            "automated_pricing_rule_type#1.value": "disabled",
+            "supplier_declared_dg_hz_regulation#1.value": "not_applicable",
+            "unit_count#1.type.language_tag": "en_US",
+            "unit_count#1.type.value": "العد",
+            "unit_count#1.value": 1.0,
+            "included_components#1.language_tag": "en_US",
+            "included_components#1.value": name,
+            "purchasable_offer#1.our_price#1.schedule#1.value_with_tax": price,
+            "purchasable_offer#1.maximum_retail_price#1.schedule#1.value_with_tax": price,
+            "fulfillment_availability#1.quantity": quantity,
+        }
+
+        if ean:
+            attr_flat["externally_assigned_product_identifier#1.type"] = "upc/ean/gtin"
+            attr_flat["externally_assigned_product_identifier#1.value"] = str(ean)
+
+        if bullet_points and isinstance(bullet_points, list) and len(bullet_points) > 0:
+            attr_flat["bullet_point#1.language_tag"] = "en_US"
+            attr_flat["bullet_point#1.value"] = str(bullet_points[0])
+        else:
+            attr_flat["bullet_point#1.language_tag"] = "en_US"
+            attr_flat["bullet_point#1.value"] = name
+
+        # Build the full listing structure
+        return {
+            "listing": {
+                "listingDetails": {
+                    "isDraft": True,
+                    "skuState": "Draft",
+                    "attributePropertiesImsV3": json.dumps(attr_ims, ensure_ascii=False),
+                    "attributeProperties": attr_flat,
+                    "listingLanguageCode": "en_US",
+                },
+                "metadata": {
+                    "menus": [{"attributeGroups": []}],
+                    "metadataNamespace": "UMP",
+                },
+                "offerOnly": {},
+            },
+        }
+
+    async def _native_post(self, payload_json: str) -> Dict[str, Any]:
+        """
+        Execute a native POST from INSIDE the browser using page.evaluate().
+        This bypasses Amazon's WAF because the request comes from a real browser.
+        """
+        csrf = self._csrf_token
+
+        result = await self.page.evaluate("""
+            async (params) => {
+                const { payload, csrf } = params;
+
+                const formData = new URLSearchParams();
+                formData.append('data', payload);
+                formData.append('anti-csrftoken-a2z', csrf);
+
+                try {
+                    const res = await fetch('/abis/ajax/create-listing', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                            'Accept': 'application/json, text/javascript, */*; q=0.01',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'anti-csrftoken-a2z': csrf,
+                            'x-csrf-token': csrf,
+                        },
+                        body: formData.toString(),
+                    });
+
+                    const text = await res.text();
+                    let json;
+                    try {
+                        json = JSON.parse(text);
+                    } catch (e) {
+                        return {
+                            success: false,
+                            status: 'PARSE_ERROR',
+                            error: 'Response not JSON: ' + text.substring(0, 300),
+                            raw: text.substring(0, 500),
+                        };
+                    }
+
+                    return {
+                        success: json.status === 'SUCCESS',
+                        status: json.status || 'ERROR',
+                        asin: json.asin || '',
+                        listing_id: json.listingId || '',
+                        message: json.message || json.error || '',
+                        raw: json,
+                    };
+                } catch (e) {
+                    return {
+                        success: false,
+                        status: 'FETCH_ERROR',
+                        error: e.message,
+                    };
+                }
+            }
+        """, {"payload": payload_json, "csrf": csrf})
+
+        logger.info(f"[ALister] POST result: {json.dumps(result, indent=2, ensure_ascii=False)[:1000]}")
+
+        if result.get("success"):
+            logger.info(f"[ALister] SUCCESS! ASIN={result.get('asin')}, Listing ID={result.get('listing_id')}")
+            return {
+                "success": True,
+                "status": "SUCCESS",
+                "asin": result.get("asin", ""),
+                "listing_id": result.get("listing_id", ""),
+            }
+        else:
+            error = result.get("error", result.get("message", "Unknown"))
+            logger.error(f"[ALister] FAILED: {error}")
+            return {
+                "success": False,
+                "status": result.get("status", "ERROR"),
+                "error": error,
+                "response": result.get("raw"),
+            }
+
+    async def _extract_csrf_from_page(self) -> Optional[str]:
+        """Extract CSRF token from the page using multiple strategies."""
+        try:
+            token = await self.page.evaluate("""
+                () => {
+                    // Strategy 1: window object
+                    const windowToken = window['anti-csrftoken-a2z'] || window.a2zToken;
+                    if (windowToken && windowToken.length > 20) return windowToken;
+
+                    // Strategy 2: DOM meta tag
+                    const metaToken = document.querySelector('[name="anti-csrftoken-a2z"]')?.content;
+                    if (metaToken && metaToken.length > 20) return metaToken;
+
+                    // Strategy 3: hidden input
+                    const inputToken = document.querySelector('input[name="anti-csrftoken-a2z"]')?.value;
+                    if (inputToken && inputToken.length > 20) return inputToken;
+
+                    return "";
+                }
+            """)
+
+            if token and len(token) > 20:
+                return token
+
+            # Fallback: scan page HTML
+            content = await self.page.content()
+            for pattern in [r'"anti-csrftoken-a2z"\s*:\s*"([^"]+)"', r'anti-csrftoken-a2z["\']\s*:\s*["\']([^"\']+)["\']']:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    t = match.group(1)
+                    if len(t) > 20 and not t.startswith('mons_'):
+                        return t
+
+            return None
+
+        except Exception as e:
+            logger.error(f"[ALister] CSRF extraction failed: {e}")
+            return None
 
     async def _load_cookies(self) -> List[Dict[str, Any]]:
         """Load cookies from database and format for Playwright"""
@@ -241,8 +431,7 @@ class ListingSubmitter:
                 return []
 
             raw_cookies = json.loads(decrypt_data(session.cookies_json))
-            
-            # Convert to Playwright format
+
             pw_cookies = []
             for c in raw_cookies:
                 pw_c = {
@@ -255,163 +444,34 @@ class ListingSubmitter:
                 }
                 if c.get("expires"):
                     pw_c["expires"] = c["expires"]
-                if c.get("sameSite"):
-                    ss = c["sameSite"].lower()
-                    if ss in ("lax", "strict", "none"):
-                        pw_c["sameSite"] = ss.upper()
+
+                raw_ss = c.get("sameSite", "")
+                if raw_ss:
+                    ss_lower = str(raw_ss).lower()
+                    if ss_lower == "strict":
+                        pw_c["sameSite"] = "Strict"
+                    elif ss_lower == "none":
+                        pw_c["sameSite"] = "None"
+                    else:
+                        pw_c["sameSite"] = "Lax"
+
                 pw_cookies.append(pw_c)
 
             return pw_cookies
         except Exception as e:
-            logger.error(f"Failed to load cookies: {e}")
+            logger.error(f"[ALister] Failed to load cookies: {e}")
             return []
         finally:
             db.close()
 
-    def _get_fill_script(self, product_data: Dict[str, Any]) -> str:
-        """Generate JS to fill all form fields"""
-        data = json.dumps({
-            "sku": product_data.get("sku", ""),
-            "name": product_data.get("name", ""),
-            "description": product_data.get("description", ""),
-            "price": str(product_data.get("price", 0)),
-            "quantity": str(product_data.get("quantity", 0)),
-            "brand": product_data.get("brand", "Generic"),
-            "ean": product_data.get("ean", ""),
-            "model_number": product_data.get("model_number", ""),
-            "country_of_origin": product_data.get("country_of_origin", ""),
-            "bullet_points": product_data.get("bullet_points", []),
-        })
-        
-        return f"""
-        () => {{
-            try {{
-                const data = {data};
-                const results = {{ filled: 0, errors: [] }};
-
-                // Helper: find and set input value
-                function fillField(selectors, value) {{
-                    if (!value) return false;
-                    for (const sel of selectors) {{
-                        const el = document.querySelector(sel) || document.querySelector(`[name="${{sel}}"]`);
-                        if (el && el.tagName === 'INPUT') {{
-                            const input = el;
-                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                            nativeInputValueSetter.call(input, value);
-                            input.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            input.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                            return true;
-                        }}
-                        if (el && el.tagName === 'TEXTAREA') {{
-                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-                            nativeInputValueSetter.call(el, value);
-                            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                            return true;
-                        }}
-                    }}
-                    return false;
-                }}
-
-                // Try to fill common fields
-                if (fillField(['input[name="sku"]', 'input[data-testid="sku"]', '#sku'], data.sku)) results.filled++;
-                if (fillField(['input[name="item_name"]', 'input[data-testid="item_name"]', '#item_name'], data.name)) results.filled++;
-                if (fillField(['textarea[name="product_description"]', 'textarea[data-testid="product_description"]'], data.description)) results.filled++;
-                if (fillField(['input[name="price"]', 'input[data-testid="price"]', 'input[name="your-price"]'], data.price)) results.filled++;
-                if (fillField(['input[name="quantity"]', 'input[data-testid="quantity"]', 'input[name="qty"]'], data.quantity)) results.filled++;
-                if (fillField(['input[name="brand"]', 'input[data-testid="brand"]'], data.brand)) results.filled++;
-                if (fillField(['input[name="ean"]', 'input[data-testid="ean"]', 'input[name="upc"]'], data.ean)) results.filled++;
-
-                // Check if we're on the right page (form should be visible)
-                const hasForm = document.querySelector('form') || document.querySelector('[data-testid="listing-form"]') || document.querySelector('.listing-form');
-                if (!hasForm) {{
-                    results.errors.push('No form found on page');
-                }}
-
-                results.success = results.filled > 0;
-                return results;
-            }} catch(e) {{
-                return {{ success: false, error: e.message }};
-            }}
-        }}
-        """
-
-    def _get_submit_script(self) -> str:
-        """Generate JS to click the submit/save button"""
-        return """
-        () => {
-            try {
-                // Try common submit button selectors
-                const selectors = [
-                    'button[type="submit"]',
-                    'input[type="submit"]',
-                    'button[data-testid="submit"]',
-                    'button[data-testid="save"]',
-                    'button:contains("Save")',
-                    'button:contains("Submit")',
-                    'button:contains("Save and finish")',
-                    'button:contains("Save and close")',
-                    '[data-action="save"]',
-                    '[data-action="submit"]',
-                ];
-                
-                for (const sel of selectors) {
-                    const btn = document.querySelector(sel);
-                    if (btn && btn.offsetParent !== null) { // visible
-                        btn.click();
-                        return { clicked: true, selector: sel };
-                    }
-                }
-                
-                // Fallback: find any button with "save" or "submit" text
-                const buttons = document.querySelectorAll('button, [role="button"]');
-                for (const btn of buttons) {
-                    const text = (btn.textContent || '').toLowerCase();
-                    if ((text.includes('save') || text.includes('submit') || text.includes('finish')) && btn.offsetParent !== null) {
-                        btn.click();
-                        return { clicked: true, text: text.trim() };
-                    }
-                }
-                
-                return { clicked: false, error: 'No submit button found' };
-            } catch(e) {
-                return { clicked: false, error: e.message };
-            }
-        }
-        """
-
-    def _process_api_responses(self) -> Optional[Dict[str, Any]]:
-        """Process intercepted API responses"""
-        for resp in self.api_responses:
-            if resp["status"] == 200:
-                try:
-                    data = json.loads(resp["body"])
-                    if data.get("status") == "SUCCESS":
-                        return {
-                            "success": True,
-                            "status": "SUCCESS",
-                            "asin": data.get("asin", ""),
-                            "listing_id": data.get("listingId", ""),
-                        }
-                    else:
-                        return {
-                            "success": False,
-                            "error": data.get("message", data.get("error", "Unknown error")),
-                            "response": data,
-                        }
-                except:
-                    pass
-            elif resp["status"] >= 400:
-                return {
-                    "success": False,
-                    "error": f"API returned {resp['status']}: {resp['body'][:300]}",
-                }
-        return None
+    async def _cleanup(self):
+        """Clean up browser"""
+        try:
+            if self.browser:
+                await self.browser.close()
+        except Exception:
+            pass
 
     async def close(self):
-        """Clean up browser"""
-        if self.browser:
-            try:
-                await self.browser.close()
-            except:
-                pass
+        """Public cleanup method"""
+        await self._cleanup()

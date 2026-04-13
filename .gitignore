@@ -1,6 +1,8 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyc
+*.pyo
 *$py.class
 *.so
 .Python
@@ -59,13 +61,9 @@ releases/
 legacy_client/
 info/
 
-# Backend debug/test scripts (local only)
-backend/check_session.py
-backend/migrate_columns.py
-backend/test_cookie_scraper.py
-backend/test_cookie_scraper_debug.py
-backend/test_cookies.py
-backend/app/services/listings_items_service.py
+# Backend debug/test scripts (archived)
+backend/archive/check_session.py
+backend/archive/migrate_columns.py
 
 # Root scripts (local only)
 New-Text-Document.txt

@@ -22,8 +22,7 @@ from app.database import SessionLocal
 from app.models.session import Session as AuthSession
 from app.models.product import Product
 from app.services.session_store import decrypt_data
-from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError
-from app.services.user_agent_config import get_browser_headers
+from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError, get_browser_headers
 from app.services.amazon_session_manager import AmazonSessionManager
 
 # Amazon Seller Central URLs

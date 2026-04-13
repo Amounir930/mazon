@@ -7,8 +7,7 @@ import json
 from typing import Dict, Any, Optional, List
 from loguru import logger
 
-from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError
-from app.services.user_agent_config import AMAZON_USER_AGENT
+from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError, AMAZON_USER_AGENT
 
 SELLER_CENTRAL_BASE = {
     "eg": "https://sellercentral.amazon.eg",

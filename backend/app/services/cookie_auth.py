@@ -16,8 +16,7 @@ from app.services.session_store import (
     decrypt_data,
     get_fernet,
 )
-from app.services.user_agent_config import AMAZON_USER_AGENT
-from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError
+from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError, AMAZON_USER_AGENT
 from app.database import SessionLocal
 from app.models.session import Session
 
