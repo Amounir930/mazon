@@ -2,8 +2,8 @@
 Listing Tasks (Asyncio-based)
 Handles background listing submissions to Amazon
 
-Uses Direct API (ABIS AJAX) — Cookie-based, ALister approach.
-NO SP-API credentials needed — uses cookies from pywebview login.
+Uses SP-API (Phase 1) — Official Amazon Selling Partner API.
+REPLACES: Playwright/ABIS AJAX approach (deprecated).
 """
 import asyncio
 import json
@@ -15,6 +15,8 @@ from app.models.listing import Listing
 from app.models.product import Product
 from app.models.activity_log import ActivityLog
 from app.services.validation_service import ValidationService
+from app.services.sp_api_client import SPAPIClient
+from app.tasks.polling_tasks import poll_listing_status
 from loguru import logger
 import json
 
@@ -107,39 +109,41 @@ async def submit_listing_task(product_id: str) -> dict:
         listing.stage = "submitted"
         db.commit()
 
-        # Step 4: Submit to Amazon via Playwright ListingSubmitter
-        # This uses Playwright to navigate Amazon's UI and submit the listing
-        # — bypasses the 403 protection on the ABIS AJAX API
-        from app.services.listing_submitter import ListingSubmitter
+        # Step 5: Submit to Amazon via SP-API (Phase 1)
         from app.models.session import Session
+        from app.services.session_store import decrypt_data
+        import os
 
-        # Get session with cookies
+        # Get active session (for marketplace/country info)
         db_sessions = SessionLocal()
         auth_session = db_sessions.query(Session).filter(
             Session.auth_method == "browser",
-            Session.cookies_json.isnot(None)
+            Session.is_active == True,
+            Session.is_valid == True,
         ).order_by(Session.created_at.desc()).first()
 
-        if not auth_session:
-            db_sessions.close()
-            logger.error("❌ No browser session with cookies found — user must login via Seller Central first")
-            listing.status = "failed"
-            listing.stage = "failed"
-            listing.error_message = "No active session with cookies — Please login to Amazon Seller Central first"
-            listing.completed_at = datetime.utcnow()
-            db.commit()
-            return {"status": "failed", "error": "No active session with cookies"}
-
-        # Decrypt cookies
-        from app.services.session_store import decrypt_data
-        import json
-        cookies = json.loads(decrypt_data(auth_session.cookies_json))
-        country_code = auth_session.country_code or "eg"
+        # Get credentials — from session OR fallback to ENV
+        if auth_session and auth_session.credentials_json:
+            credentials = json.loads(decrypt_data(auth_session.credentials_json))
+            seller_id = credentials.get("seller_id", "A1DSHARRBRWYZW")
+            marketplace_id = auth_session.marketplace_id or "ARBP9OOSHTCHU"
+            country_code = auth_session.country_code or "eg"
+            logger.info(f"✅ Using session credentials: seller={seller_id}")
+        else:
+            # Fallback to environment variables (Phase 1 setup)
+            seller_id = os.getenv("SP_API_SELLER_ID", "A1DSHARRBRWYZW")
+            marketplace_id = os.getenv("SP_API_MARKETPLACE_ID", "ARBP9OOSHTCHU")
+            country_code = os.getenv("SP_API_COUNTRY", "eg")
+            if auth_session:
+                logger.warning(f"⚠️ No credentials in session — using ENV fallback (seller={seller_id})")
+            else:
+                logger.warning(f"⚠️ No active session — using ENV fallback (seller={seller_id})")
+        
         db_sessions.close()
 
-        logger.info(f"✅ Using session: {len(cookies)} cookies, country={country_code}")
+        logger.info(f"✅ Submitting via SP-API: seller={seller_id}, marketplace={marketplace_id}")
 
-        # Get product data
+        # Get full product data
         product_data = {
             "sku": product.sku,
             "name": product.name,
@@ -153,11 +157,13 @@ async def submit_listing_task(product_id: str) -> dict:
             "brand": product.brand or "Generic",
             "manufacturer": product.manufacturer or "",
             "model_number": product.model_number or "",
-            "country_of_origin": product.country_of_origin or "",
+            "country_of_origin": product.country_of_origin or "CN",
             "upc": product.upc or "",
             "ean": product.ean or "",
             "bullet_points": _parse_json_field(product.bullet_points),
-            "material": product.material or "",
+            "browse_node_id": product.browse_node_id or "21863799031",
+            "included_components": product.name or "",
+            "merchant_suggested_asin": "",  # Product model doesn't have asin field
         }
 
         result = None
@@ -167,12 +173,13 @@ async def submit_listing_task(product_id: str) -> dict:
                 listing.stage = "processing"
                 db.commit()
 
-                # Playwright ListingSubmitter (async)
-                submitter = ListingSubmitter(country_code=country_code, debug=True)
-                try:
-                    result = await submitter.submit_listing(product_data)
-                finally:
-                    await submitter.close()
+                # SP-API client (no Playwright needed!)
+                client = SPAPIClient(marketplace_id=marketplace_id, country_code=country_code)
+                result = client.create_listing_from_product(
+                    seller_id=seller_id,
+                    sku=product.sku,
+                    product_data=product_data,
+                )
 
                 # Success — break out of retry loop
                 break
@@ -196,32 +203,48 @@ async def submit_listing_task(product_id: str) -> dict:
                     logger.warning(f"⚠️ Attempt {attempt + 1} failed for {product.sku}, retrying in {wait_time}s...")
                     await asyncio.sleep(wait_time)
 
-        # Step 5: Update listing with result
-        if result and result.get("success"):
-            listing.status = "success"
-            listing.stage = "success"
-            listing.amazon_asin = result.get("listing_id", "") or result.get("asin", "")
-            listing.amazon_url = f"https://www.amazon.eg/dp/{listing.amazon_asin}" if listing.amazon_asin else ""
+        # Step 6: Update listing with result
+        listing.sp_api_submission_id = result.get("submissionId", "")
+        listing.sp_api_status = result.get("status", "UNKNOWN")
+
+        if result.get("success"):
+            listing.status = "processing"  # Not "success" yet — polling will update this
+            listing.stage = "accepted"
             listing.completed_at = datetime.utcnow()
             db.commit()
-            logger.info(f"✅ Listing success: {product.sku} → ASIN {listing.amazon_asin}")
+            logger.info(f"✅ Listing submitted: {product.sku} → Status: {result.get('status')}")
 
             # Log activity
-            _log_activity(db, product.id, "published", "success", listing.id, {"asin": listing.amazon_asin})
+            _log_activity(db, product.id, "submitted", "success", listing.id, {
+                "submission_id": result.get("submissionId"),
+                "status": result.get("status"),
+            })
+
+            # Start background polling to check for ASIN assignment
+            try:
+                asyncio.create_task(
+                    poll_listing_status(
+                        sku=product.sku,
+                        seller_id=seller_id,
+                        listing_id=listing.id,
+                    )
+                )
+                logger.info(f"🔄 Polling started for {product.sku}")
+            except Exception as e:
+                logger.warning(f"Failed to start polling: {e}")
         else:
-            error_msg = result.get("error", result.get("message", "Unknown error"))
-            is_session_expired = result.get("session_expired", False)
+            errors = result.get("errors", [])
+            error_messages = [e.get("message", "Unknown error") for e in errors]
             listing.status = "failed"
-            listing.stage = "failed"
-            listing.error_message = str(error_msg)
+            listing.stage = "rejected"
+            listing.error_message = "\n".join(error_messages)[:500]
             listing.completed_at = datetime.utcnow()
             db.commit()
-            logger.error(f"❌ Listing failed: {product.sku} — {error_msg}")
+            logger.error(f"❌ Listing rejected: {product.sku} — {error_messages[0] if error_messages else 'Unknown'}")
 
-            # Log activity with session expired flag
+            # Log activity
             _log_activity(db, product.id, "failed", "failed", listing.id, {
-                "error": error_msg,
-                "session_expired": is_session_expired
+                "errors": error_messages,
             })
 
         return {"status": listing.status, "asin": listing.amazon_asin}

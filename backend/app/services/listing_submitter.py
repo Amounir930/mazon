@@ -23,6 +23,14 @@ import re
 from typing import Dict, Any, Optional, List
 from loguru import logger
 
+# CRITICAL FIX for Windows: Playwright requires SelectorEventLoop for subprocess support
+# Must be set BEFORE any asyncio operations
+if sys.platform == "win32":
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except Exception:
+        pass
+
 from app.database import SessionLocal
 from app.models.session import Session as AuthSession
 from app.services.session_store import decrypt_data
@@ -80,6 +88,13 @@ class ListingSubmitter:
     def _submit_listing_sync(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
         """Sync version of submit_listing for Windows thread execution"""
         import sys as _sys
+        import asyncio as _asyncio
+
+        # CRITICAL FIX: Force SelectorEventLoop in this thread
+        # Playwright needs subprocess support which ProactorEventLoop doesn't have
+        if _sys.platform == "win32":
+            _asyncio.set_event_loop_policy(_asyncio.WindowsSelectorEventLoopPolicy())
+
         try:
             from playwright.sync_api import sync_playwright
 

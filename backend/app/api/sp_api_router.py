@@ -79,18 +79,21 @@ async def submit_product_to_amazon(product_id: str, background_tasks: Background
                 detail="مفيش حساب Amazon متصل. روح لـ /settings وسجل دخول الأول"
             )
 
-        # 4. Get Seller credentials
-        seller = db.query(Seller).first()
-        if not seller:
-            raise HTTPException(
-                status_code=400,
-                detail="مفيش Seller ID محفوظ. أضف Seller ID من Settings"
-            )
-
-        credentials = json.loads(decrypt_data(auth_session.credentials_json))
-        seller_id = seller.seller_id  # A1DSHARRBRWYZW
-        marketplace_id = auth_session.marketplace_id or "ARBP9OOSHTCHU"
-        country_code = auth_session.country_code or "eg"
+        # 4. Get Seller credentials — from session OR fallback to ENV
+        import os
+        
+        credentials = {}
+        seller_id = os.getenv("SP_API_SELLER_ID", "A1DSHARRBRWYZW")
+        
+        if auth_session and auth_session.credentials_json:
+            credentials = json.loads(decrypt_data(auth_session.credentials_json))
+            seller_id = credentials.get("seller_id", seller_id)
+            logger.info(f"✅ Using session credentials: seller={seller_id}")
+        else:
+            logger.warning(f"⚠️ No credentials in session — using ENV fallback (seller={seller_id})")
+        
+        marketplace_id = auth_session.marketplace_id if auth_session else os.getenv("SP_API_MARKETPLACE_ID", "ARBP9OOSHTCHU") or "ARBP9OOSHTCHU"
+        country_code = auth_session.country_code if auth_session else os.getenv("SP_API_COUNTRY", "eg") or "eg"
 
         # 5. Create listing record (status: processing)
         listing = Listing(
