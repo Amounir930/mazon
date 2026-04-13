@@ -429,3 +429,17 @@ async def match_skus(db: Session = Depends(get_db)):
 
     result = await SKUMatcher.match_skus(db)
     return result
+
+
+@router.post("/{product_id}/submit-to-amazon")
+async def submit_product_to_amazon(product_id: str):
+    """
+    Submit a product to Amazon via SP-API.
+
+    This endpoint calls the SP-API router internally.
+    """
+    from app.api.sp_api_router import submit_product_to_amazon as sp_submit
+    from fastapi import BackgroundTasks
+    
+    # Note: BackgroundTasks won't work here properly, use /sp-api/submit/{product_id} instead
+    return await sp_submit(product_id)

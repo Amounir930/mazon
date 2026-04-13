@@ -31,6 +31,12 @@ class Listing(Base):
     # Queue Management
     queue_position = Column(Integer)
 
+    # SP-API Integration Fields
+    sp_api_submission_id = Column(String(100), nullable=True)  # Amazon submission ID
+    sp_api_status = Column(String(30), nullable=True)  # ACCEPTED / INVALID / ACTIVE
+    sp_api_last_polled_at = Column(DateTime(timezone=True), nullable=True)  # Last polling timestamp
+    amazon_asin = Column(String(20))  # Amazon Standard Identification Number
+
     # Timestamps
     submitted_at = Column(DateTime(timezone=True))
     completed_at = Column(DateTime(timezone=True))

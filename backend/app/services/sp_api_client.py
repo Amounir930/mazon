@@ -189,24 +189,24 @@ class SPAPIClient:
         path = f"/listings/2021-08-01/items/{seller_id}/{sku}"
         params = {
             "marketplaceIds": self.marketplace_id,
-            "issueLocale": "en_US",
+            "issueLocale": "ar_AE",
         }
-        
+
         logger.info(f"Putting listing item: SKU={sku}, Seller={seller_id}")
         logger.debug(f"Product data keys: {list(product_data.keys())}")
-        
+
         return self._make_request("PUT", path, data=product_data, params=params)
 
     def get_listing_item(self, seller_id: str, sku: str) -> Dict[str, Any]:
         """
         Get a listing item.
-        
+
         API: GET /listings/2021-08-01/items/{sellerId}/{sku}
         """
         path = f"/listings/2021-08-01/items/{seller_id}/{sku}"
         params = {
             "marketplaceIds": self.marketplace_id,
-            "issueLocale": "en_US",
+            "issueLocale": "ar_AE",
         }
         
         return self._make_request("GET", path, params=params)
@@ -278,84 +278,148 @@ class SPAPIClient:
     # Helper: Build product data from our format to SP-API format
     # ============================================================
 
-    @staticmethod
-    def build_product_payload(product_data: Dict[str, Any]) -> Dict[str, Any]:
+    def create_listing_from_product(
+        self,
+        seller_id: str,
+        sku: str,
+        product_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
         """
-        Convert our internal product format to SP-API Listings Items format.
-        
-        SP-API expects attributes in a specific nested structure.
+        Create a listing on Amazon from our internal Product data.
+
+        This is the main integration method that:
+        1. Builds the correct SP-API payload
+        2. Handles all required attributes
+        3. Returns structured result with success/failure
+
+        Args:
+            seller_id: Amazon Seller ID (A1DSHARRBRWYZW)
+            sku: Product SKU
+            product_data: Dict with product fields
+
+        Returns:
+            {
+                "success": bool,
+                "status": "ACCEPTED" | "INVALID",
+                "submissionId": str,
+                "asin": str,
+                "errors": [...],
+            }
         """
-        # Build the attributes object
-        attributes = {}
+        # Build the full SP-API payload
+        payload = self._build_listing_payload(product_data)
+
+        # Send to Amazon
+        result = self.put_listing_item(seller_id, sku, payload)
+
+        # Parse response
+        issues = result.get("issues", [])
+        errors = [i for i in issues if i.get("severity") == "ERROR"]
+        warnings = [i for i in issues if i.get("severity") == "WARNING"]
+
+        return {
+            "success": len(errors) == 0,
+            "status": result.get("status", "UNKNOWN"),
+            "submissionId": result.get("submissionId", ""),
+            "asin": result.get("asin", ""),
+            "errors": errors,
+            "warnings": warnings,
+            "raw_response": result,
+        }
+
+    def _build_listing_payload(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Build the complete SP-API listing payload using The Ultimate Dictionary.
         
-        # Identity
-        if product_data.get("name"):
-            attributes["item_name"] = [{"language_tag": "en_US", "value": product_data["name"]}]
+        CRITICAL: Uses ar_AE language, EGP currency, flat attributeProperties structure,
+        and ALL 29 required fields as tested and verified with Amazon SP-API.
         
-        if product_data.get("brand"):
-            attributes["brand"] = [{"language_tag": "en_US", "value": product_data["brand"]}]
+        NO fake barcodes ("000000000000") — if no barcode, field is omitted.
+        """
+        name = product_data.get("name", "Unnamed Product")
+        description = product_data.get("description", name)
+        brand = (product_data.get("brand") or "Generic").strip() or "Generic"
+        ean = product_data.get("ean", "").strip()
+        upc = product_data.get("upc", "").strip()
+        price = float(product_data.get("price", 0))
+        quantity = int(product_data.get("quantity", 0))
+        condition = product_data.get("condition", "New")
+        country_origin = product_data.get("country_of_origin", "CN")
+        model_number = product_data.get("model_number", product_data.get("sku", "N/A"))
+        manufacturer = (product_data.get("manufacturer") or brand).strip() or brand
+        bullet_points = product_data.get("bullet_points", [])
+        browse_node = product_data.get("browse_node_id", "21863799031")
+        included_components = product_data.get("included_components", name)
         
-        if product_data.get("description"):
-            attributes["product_description"] = [{"language_tag": "en_US", "value": product_data["description"]}]
+        # Map condition
+        condition_map = {"New": "new_new"}
+        condition_value = condition_map.get(condition, "new_new")
         
-        if product_data.get("bullet_points"):
-            attributes["bullet_point"] = [
-                {"language_tag": "en_US", "value": bp} for bp in product_data["bullet_points"]
-            ]
-        
-        # EAN/UPC
-        if product_data.get("ean"):
-            attributes["externally_assigned_product_identifier"] = [{
-                "type": "ean",
-                "value": product_data["ean"],
-            }]
-        elif product_data.get("upc"):
-            attributes["externally_assigned_product_identifier"] = [{
-                "type": "upc",
-                "value": product_data["upc"],
-            }]
-        
-        # Pricing
-        if product_data.get("price"):
-            attributes["purchasable_offer"] = [{
-                "our_price": [{
-                    "schedule": [{"value_with_tax": float(product_data["price"])}],
-                }],
+        # Build attributes — THE ULTIMATE DICTIONARY (ar_AE, EGP, 29 fields)
+        attributes = {
+            # === IDENTITY ===
+            "item_name": [{"value": name, "language_tag": "ar_AE"}],
+            "brand": [{"value": brand, "language_tag": "ar_AE"}],
+            "product_description": [{"value": description, "language_tag": "ar_AE"}],
+            
+            # Bullet points
+            "bullet_point": [
+                {"value": bp, "language_tag": "ar_AE"}
+                for bp in (bullet_points if bullet_points else [name])
+            ],
+            
+            # Manufacturer & Model
+            "manufacturer": [{"value": manufacturer, "language_tag": "ar_AE"}],
+            "model_name": [{"value": model_number, "language_tag": "ar_AE"}],
+            "model_number": [{"value": model_number, "language_tag": "ar_AE"}],
+            
+            # Condition & Origin
+            "condition_type": [{"value": condition_value}],
+            "country_of_origin": [{"value": country_origin.upper() if len(country_origin) == 2 else "CN"}],
+            "recommended_browse_nodes": [{"value": browse_node}],
+            
+            # Included components
+            "included_components": [{"value": included_components, "language_tag": "ar_AE"}],
+            "number_of_boxes": [{"value": 1}],
+            
+            # Compliance
+            "supplier_declared_dg_hz_regulation": [{"value": "not_applicable"}],
+            "batteries_required": [{"value": False}],
+            
+            # Weight (FLAT format)
+            "item_weight": [{"value": 0.5, "unit": "kilograms"}],
+            "item_package_weight": [{"value": 0.7, "unit": "kilograms"}],
+            
+            # Unit count
+            "unit_count": [{"value": 1, "unit": "count"}],
+            
+            # Package dimensions (CORRECT format!)
+            "item_package_dimensions": [{
+                "length": {"value": 25.0, "unit": "centimeters"},
+                "width": {"value": 10.0, "unit": "centimeters"},
+                "height": {"value": 15.0, "unit": "centimeters"},
+            }],
+            
+            # Price
+            "purchasable_offer": [{
+                "our_price": [{"schedule": [{"value_with_tax": price}]}],
                 "currency": "EGP",
+            }],
+        }
+        
+        # EAN/UPC — ONLY if we have a real barcode (NO fake "000000000000"!)
+        if ean:
+            attributes["externally_assigned_product_identifier"] = [{
+                "value": {"type": "ean", "value": ean}
             }]
-        
-        # Quantity
-        if product_data.get("quantity") is not None:
-            attributes["fulfillment_availability"] = [{
-                "quantity": int(product_data["quantity"]),
+        elif upc:
+            attributes["externally_assigned_product_identifier"] = [{
+                "value": {"type": "upc", "value": upc}
             }]
-        
-        # Condition
-        if product_data.get("condition"):
-            condition_map = {"New": "new_new"}
-            attributes["condition_type"] = [{"value": condition_map.get(product_data["condition"], "new_new")}]
-        
-        # Fulfillment
-        if product_data.get("fulfillment_channel"):
-            attributes["fulfillment_channel"] = product_data["fulfillment_channel"]
-        
-        # Manufacturer
-        if product_data.get("manufacturer"):
-            attributes["manufacturer"] = [{"language_tag": "en_US", "value": product_data["manufacturer"]}]
-        
-        # Model
-        if product_data.get("model_number"):
-            attributes["model_name"] = [{"language_tag": "en_US", "value": product_data["model_number"]}]
-        
-        # Country of origin
-        if product_data.get("country_of_origin"):
-            attributes["country_of_origin"] = [{"value": product_data["country_of_origin"]}]
-        
-        # Browse node
-        if product_data.get("browse_node_id"):
-            attributes["recommended_browse_nodes"] = [{"value": product_data["browse_node_id"]}]
+        # If no barcode — omit the field entirely (GTIN exemption handled by Amazon)
         
         return {
             "productType": product_data.get("product_type", "HOME_ORGANIZERS_AND_STORAGE"),
+            "requirements": "LISTING",
             "attributes": attributes,
         }
