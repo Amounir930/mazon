@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional, List
 from loguru import logger
 
 from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError
-from app.services.user_agent_config import get_browser_headers
+from app.services.user_agent_config import AMAZON_USER_AGENT
 
 SELLER_CENTRAL_BASE = {
     "eg": "https://sellercentral.amazon.eg",
@@ -177,13 +177,28 @@ class ABISClient:
             "clientContext": json.dumps(client_context, ensure_ascii=False),
         }
 
-        # Build headers with CSRF token
-        headers = get_browser_headers(
-            origin=self.base_url,
-            referer=f"{self.base_url}/hz/merchant-listings/add-product.html",
-        )
-        headers["anti-csrftoken-a2z"] = token
-        headers["x-csrf-token"] = token
+        # Build headers with CSRF token — THE ABIS HEADER TRINITY
+        # These 3 headers are MANDATORY for Amazon to treat this as AJAX:
+        # 1. X-Requested-With: XMLHttpRequest (tells Amazon this is AJAX, not browsing)
+        # 2. Content-Type: application/x-www-form-urlencoded (NOT application/json!)
+        # 3. Accept: application/json, text/javascript, */*; q=0.01
+        headers = {
+            "User-Agent": AMAZON_USER_AGENT,
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Origin": self.base_url,
+            "Referer": f"{self.base_url}/product-search/search",  # NOT add-product.html (404!)
+            "X-Requested-With": "XMLHttpRequest",  # 🔴 THE AJAX HEADER
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+        }
+
+        # CSRF tokens (mandatory)
+        if token:
+            headers["anti-csrftoken-a2z"] = token
+            headers["x-csrf-token"] = token
 
         url = "/abis/ajax/create-listing"
 
@@ -194,17 +209,20 @@ class ABISClient:
         try:
             client = self._get_client()
 
-            # curl_cffi uses 'content' for form data, not 'data'
+            # curl_cffi session — sends form-encoded data with AJAX headers
             response = client.session.post(
                 f"{self.base_url}{url}",
                 data=form_data,
                 headers=headers,
+                timeout=30,
             )
 
             logger.info(f"Response status: {response.status_code}")
+            logger.debug(f"Final URL: {response.url}")
+            logger.debug(f"Content-Type: {response.headers.get('Content-Type', 'unknown')}")
 
             # Check for redirect to login (session expired)
-            if "/ap/signin" in str(response.url):
+            if "/ap/signin" in str(response.url) or "/gp/signin" in str(response.url):
                 return {
                     "success": False,
                     "status": "SESSION_EXPIRED",
@@ -216,13 +234,34 @@ class ABISClient:
                 result = response.json()
             except Exception:
                 # Check if response is HTML (error page)
-                if "<html" in response.text[:200].lower() or "<!doctype" in response.text[:100].lower():
+                response_text = response.text
+                is_html = "<html" in response_text[:200].lower() or "<!doctype" in response_text[:100].lower()
+
+                if is_html:
+                    # 🔴 FORENSIC DUMP — Print first 1000 chars to identify the page
+                    logger.error("🔴 Received HTML instead of JSON. Dumping first 1000 chars for forensics:")
+                    logger.error(response_text[:1000])
+
+                    # Try to identify what kind of page it is
+                    lower_text = response_text.lower()
+                    if "/ap/signin" in lower_text or "login" in lower_text[:500]:
+                        page_type = "LOGIN PAGE — session expired"
+                    elif "captcha" in lower_text or "robot" in lower_text:
+                        page_type = "CAPTCHA/Robot Check — WAF blocked us"
+                    elif "error" in lower_text:
+                        page_type = "Error page — likely malformed request"
+                    else:
+                        page_type = "Unknown HTML page"
+
                     return {
                         "success": False,
                         "status": "HTML_RESPONSE",
-                        "error": "Received HTML instead of JSON — likely session expired or blocked",
+                        "error": f"Received HTML instead of JSON — {page_type}",
+                        "html_preview": response_text[:500],
                     }
-                result = {"raw": response.text[:500]}
+
+                # Not HTML but not JSON either (maybe empty or plain text)
+                result = {"raw": response_text[:500]}
 
             # Check for success
             if result.get("status") == "SUCCESS":

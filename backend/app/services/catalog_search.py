@@ -1,23 +1,20 @@
 """
 Amazon Catalog Search API Client
-يستخدم niquests + BeautifulSoup للبحث في كتالوج Amazon
+يستخدم curl_cffi (TLS impersonation) + CookieJar + BeautifulSoup للبحث في كتالوج Amazon
 """
 import json
 import re
 from typing import List, Dict, Any, Optional
 from loguru import logger
 
-import niquests
 from bs4 import BeautifulSoup
 
-from app.database import SessionLocal
-from app.models.session import Session as AuthSession
-from app.services.session_store import decrypt_data
+from app.services.amazon_http_client import AmazonHTTPClient
 
 
 class AmazonCatalogSearchClient:
     """
-    عميل للبحث في كتالوج Amazon باستخدام niquests + BeautifulSoup.
+    عميل للبحث في كتالوج Amazon باستخدام curl_cffi + CookieJar + BeautifulSoup.
     بيستخدم الـ Cookies المحفوظة لطلب صفحات Amazon مباشرة.
     """
 
@@ -29,27 +26,21 @@ class AmazonCatalogSearchClient:
         "us": "https://sellercentral.amazon.com",
     }
 
-    def __init__(self, country_code: str = "eg"):
+    def __init__(self, cookies: List[Dict[str, Any]], country_code: str = "eg"):
         self.country_code = country_code
         self.base_url = self.BASE_URLS.get(country_code, self.BASE_URLS["eg"])
-        self.session = niquests.Session()
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+        # Create curl_cffi client with CookieJar + TLS impersonation
+        self.client = AmazonHTTPClient(cookies, country_code)
+        # Update headers for HTML parsing
+        self.client.session.headers.update({
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
             "Accept-Language": "ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
         })
+        logger.info(f"Catalog search client initialized ({country_code.upper()}, {self.client.cookie_jar.count()} cookies, TLS: chrome131)")
 
     def setup_cookies(self, cookies: List[Dict[str, Any]]):
-        """يضيف الـ Cookies للـ Session"""
-        for cookie in cookies:
-            self.session.cookies.set(
-                cookie["name"],
-                cookie["value"],
-                domain=cookie.get("domain", f".amazon.{self.country_code}"),
-                path=cookie.get("path", "/"),
-            )
-        logger.info(f"Setup {len(cookies)} cookies for catalog search")
+        """No-op — cookies already set in AmazonHTTPClient constructor"""
+        pass
 
     def search_by_keyword(self, keyword: str) -> List[Dict[str, Any]]:
         """
@@ -61,7 +52,7 @@ class AmazonCatalogSearchClient:
             params = {"q": keyword}
 
             logger.info(f"Searching: {search_url}?q={keyword}")
-            response = self.session.get(search_url, params=params, timeout=30)
+            response = self.client.session.get(search_url, params=params, timeout=30)
 
             if response.status_code != 200:
                 logger.error(f"Search failed: {response.status_code}")

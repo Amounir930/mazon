@@ -245,6 +245,28 @@ def main():
         page = context.pages[0] if context.pages else context.new_page()
         print("✅ Browser context and page created")
 
+        # =============================================
+        # THE NINJA CSRF SNIFFER (التنصت على الشبكة)
+        # =============================================
+        captured_data = {"csrf_token": None}
+
+        def intercept_request(request):
+            """Sniff outgoing requests for CSRF token in headers."""
+            try:
+                headers = request.headers
+                if 'anti-csrftoken-a2z' in headers:
+                    token = headers['anti-csrftoken-a2z']
+                    # Reject A/B test tokens
+                    if token and len(token) > 30 and not token.startswith('mons_'):
+                        captured_data["csrf_token"] = token
+                        print(f"🕵️ CSRF TOKEN CAPTURED FROM NETWORK: {token[:30]}... ({len(token)} chars)")
+            except Exception:
+                pass
+
+        # Enable request interception
+        page.on("request", intercept_request)
+        print("🕵️ Network sniffer activated — hunting CSRF token from outgoing requests...")
+
         # Install stealth
         install_stealth(page)
 
@@ -366,7 +388,7 @@ def main():
                 print(f"✅✅✅ LOGIN CONFIRMED! URL: {current_url}")
                 print(f"  Path: {url_path}")
                 print(f"  Title: {page.title()}")
-                time.sleep(5)  # Let cookies settle
+                time.sleep(5)  # Let cookies settle and allow background AJAX requests to fire
 
                 # Extract ALL cookies (from ALL domains — .amazon.com, .amazon.eg, etc.)
                 all_cookies = context.cookies()
@@ -386,41 +408,65 @@ def main():
                 result["seller_name"] = extract_seller_name(page)
 
                 # =============================================
-                # FIX 2: Navigate to Add Product page to extract CSRF token
+                # CSRF EXTRACTION: Network Sniffer (Primary) + JS Injection (Fallback)
                 # =============================================
-                base_url = SELLER_CENTRAL_BASE.get(country_code, "https://sellercentral.amazon.eg")
 
-                # Try multiple ABIS URLs (Amazon uses different paths per marketplace)
-                abis_urls = [
-                    f"{base_url}/abis/v2/newproduct",  # ABIS v2 (new)
-                    f"{base_url}/hz/merchant-listings/add-product.html",  # Classic
-                    f"{base_url}/product-search",  # Alternative
-                ]
+                # Step 1: Check if we captured the token from network sniffing
+                if captured_data["csrf_token"]:
+                    result["csrf_token"] = captured_data["csrf_token"]
+                    print(f"✅ NETWORK SNIFFER SUCCESS: CSRF token captured ({len(result['csrf_token'])} chars)")
+                else:
+                    print("⚠️ Network sniffer didn't capture CSRF token — trying JS injection fallback...")
 
-                csrf_extracted = False
-                for abis_url in abis_urls:
-                    print(f"🔍 Trying ABIS URL: {abis_url}")
+                    # Step 2: JS injection fallback
+                    js_extractor = """
+                    () => {
+                        // 1. Check direct window variables
+                        if (window.a2zToken) return window.a2zToken;
+                        if (window['anti-csrftoken-a2z']) return window['anti-csrftoken-a2z'];
+                        if (window.amznCsrfToken) return window.amznCsrfToken;
+
+                        // 2. Deep scan in window objects
+                        for (let key in window) {
+                            if (typeof window[key] === 'string' && key.toLowerCase().includes('csrf')) {
+                                if (window[key].length > 30) return window[key];
+                            }
+                        }
+
+                        // 3. Scan all script tags memory
+                        let scripts = document.querySelectorAll('script');
+                        for (let s of scripts) {
+                            let text = s.innerText;
+                            let match = text.match(/"anti-csrftoken-a2z"\\s*:\\s*"([^"]+)"/i) ||
+                                        text.match(/a2zToken\\s*=\\s*"([^"]+)"/i);
+                            if (match && match[1].length > 30 && !match[1].startsWith('mons_')) {
+                                return match[1];
+                            }
+                        }
+
+                        return null;
+                    }
+                    """
+
                     try:
-                        page.goto(abis_url, wait_until="domcontentloaded", timeout=15000)
-                        time.sleep(3)  # Wait for JS to render the anti-csrf token
-
-                        html_content = page.content()
-                        result["csrf_token"] = extract_csrf_token(html_content)
-
-                        if result["csrf_token"]:
-                            print(f"✅ CSRF Token extracted successfully ({len(result['csrf_token'])} chars)")
-                            print(f"   Token preview: {result['csrf_token'][:30]}...")
-                            csrf_extracted = True
-                            break
+                        csrf_token = page.evaluate(js_extractor)
+                        if csrf_token and len(csrf_token) > 30:
+                            result["csrf_token"] = csrf_token
+                            print(f"✅ JS INJECTION SUCCESS: CSRF token extracted ({len(csrf_token)} chars)")
                         else:
-                            print(f"   ❌ No CSRF token found on this page")
+                            print("⚠️ JS injection didn't find CSRF token — trying HTML regex fallback...")
+                            # Step 3: HTML regex as last resort
+                            html = page.content()
+                            fallback_token = extract_csrf_token(html)
+                            if fallback_token:
+                                result["csrf_token"] = fallback_token
+                                print(f"✅ REGEX FALLBACK SUCCESS: CSRF token extracted ({len(fallback_token)} chars)")
+                            else:
+                                result["csrf_token"] = None
+                                print("❌ All CSRF extraction methods failed")
                     except Exception as e:
-                        print(f"   ⚠️ Error: {e}")
-                        continue
-
-                if not csrf_extracted:
-                    print("❌ FATAL WARNING: CSRF Token not found on any ABIS page!")
-                    print("   This may cause listing submission to fail.")
+                        print(f"❌ Error during JS token extraction: {e}")
+                        result["csrf_token"] = None
 
                 result["success"] = True
                 break

@@ -7,6 +7,9 @@ Endpoints:
 - /abis/ajax/create-listing  (إنشاء Listing)
 - /abis/product/ajax/CreationValidation (التحقق)
 - /abis/ajax/create-offer (إضافة عرض لمنتج موجود)
+
+Updated: Now uses curl_cffi (TLS impersonation) + CookieJar (RFC 6265)
+instead of niquests + manual cookie handling.
 """
 import json
 import re
@@ -15,13 +18,13 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from loguru import logger
 
-import niquests as requests
-
 from app.database import SessionLocal
 from app.models.session import Session as AuthSession
 from app.models.product import Product
 from app.services.session_store import decrypt_data
-from app.services.user_agent_config import AMAZON_USER_AGENT, get_browser_headers
+from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError
+from app.services.user_agent_config import get_browser_headers
+from app.services.amazon_session_manager import AmazonSessionManager
 
 # Amazon Seller Central URLs
 SELLER_CENTRAL_BASE = {
@@ -30,34 +33,25 @@ SELLER_CENTRAL_BASE = {
     "ae": "https://sellercentral.amazon.ae",
 }
 
-# Browser headers (using centralized config)
-BROWSER_HEADERS = get_browser_headers(
-    origin="https://sellercentral.amazon.eg",
-    referer="https://sellercentral.amazon.eg/hz/merchant-listings/add-product.html",
-)
-
 
 class AmazonDirectAPI:
     """
     يرسل بيانات المنتجات مباشرة لـ Amazon عبر ABIS AJAX API.
+    Uses curl_cffi (TLS impersonation) + CookieJar (RFC 6265).
     """
 
     def __init__(self, email: str = "amazon_eg"):
         self.email = email
-        self.session = requests.Session()
-        self.session.headers.update(BROWSER_HEADERS)
+        self.client: Optional[AmazonHTTPClient] = None
         self.country_code = "eg"
         self.base_url = SELLER_CENTRAL_BASE["eg"]
         self.csrf_token = None
         self._authenticated = False
 
     def _setup_session(self) -> bool:
-        """يجهز الجلسة بالـ cookies المحفوظة"""
+        """يجهز الجلسة بالـ cookies المحفوظة — الآن يستخدم AmazonHTTPClient"""
         db = SessionLocal()
         try:
-            # Get ANY active browser session with cookies — don't filter by email
-            # since the stored email may be a placeholder like 'amazon_eg'
-            # Also don't require is_active/is_valid since they may be None
             auth_session = db.query(AuthSession).filter(
                 AuthSession.auth_method == "browser",
                 AuthSession.cookies_json.isnot(None),
@@ -73,33 +67,11 @@ class AmazonDirectAPI:
             self.email = auth_session.email or auth_session.seller_name or self.email
             self.csrf_token = auth_session.csrf_token
 
-            logger.info(f"Session setup for {self.email} ({self.country_code.upper()}) — {len(cookies)} cookies loaded, CSRF: {'YES' if self.csrf_token else 'NO'}")
+            logger.info(f"Session setup for {self.email} ({self.country_code.upper()}) — {len(cookies)} cookies, CSRF: {'YES' if self.csrf_token else 'NO'}")
 
-            # Setup cookies
-            domain_map = {
-                "eg": ".amazon.eg",
-                "sa": ".amazon.sa",
-                "ae": ".amazon.ae",
-            }
-            target_domain = domain_map.get(self.country_code, ".amazon.eg")
-
-            for cookie in cookies:
-                try:
-                    cookie_domain = cookie.get("domain", ".amazon.com")
-                    if cookie_domain == ".amazon.com" and self.country_code != "us":
-                        cookie_domain = target_domain
-
-                    self.session.cookies.set(
-                        cookie["name"],
-                        cookie["value"],
-                        domain=cookie_domain,
-                        path=cookie.get("path", "/"),
-                    )
-                except Exception as e:
-                    logger.debug(f"Cookie setup error for {cookie.get('name')}: {e}")
-
+            # Create curl_cffi client with CookieJar + TLS impersonation
+            self.client = AmazonHTTPClient(cookies, self.country_code)
             self._authenticated = True
-            logger.info(f"Session setup for {self.email} ({self.country_code.upper()})")
             return True
 
         except Exception as e:
@@ -113,34 +85,38 @@ class AmazonDirectAPI:
         try:
             db = SessionLocal()
             try:
+                # Invalidate ANY active browser session (matches _setup_session logic)
                 auth_session = db.query(AuthSession).filter(
                     AuthSession.auth_method == "browser",
-                    AuthSession.email == self.email,
                     AuthSession.is_active == True,
-                ).first()
+                ).order_by(AuthSession.created_at.desc()).first()
 
                 if auth_session:
                     auth_session.is_active = False
                     auth_session.is_valid = False
                     auth_session.last_verified_at = None
                     db.commit()
-                    logger.warning(f"🔒 Auto-invalidated expired session for {self.email}")
+                    logger.warning(f"🔒 Auto-invalidated expired session for {auth_session.email}")
             finally:
                 db.close()
         except Exception as e:
             logger.error(f"Failed to invalidate session: {e}")
 
     def _make_request(self, url: str, data: Dict, method: str = "POST") -> Optional[Dict]:
-        """يعمل request لـ Amazon API مع ABIS headers الكاملة"""
+        """يعمل request لـ Amazon API مع ABIS headers الكاملة — باستخدام curl_cffi"""
+        if not self.client or not self._authenticated:
+            if not self._setup_session():
+                return None
+
         try:
             # Build complete ABIS headers
             abis_headers = {
-                "User-Agent": self.session.headers.get("User-Agent"),
+                "User-Agent": self.client.session.headers.get("User-Agent"),
                 "Accept": "application/json, text/javascript, */*; q=0.01",
-                "Accept-Language": self.session.headers.get("Accept-Language", "en-US,en;q=0.9,ar;q=0.8"),
+                "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
                 "Origin": f"https://sellercentral.amazon.{self.country_code}",
-                "Referer": f"https://sellercentral.amazon.{self.country_code}/hz/merchant-listings/add-product.html",
+                "Referer": f"https://sellercentral.amazon.{self.country_code}/product-search/search",  # NOT add-product.html
                 "X-Requested-With": "XMLHttpRequest",
                 "Sec-Fetch-Dest": "empty",
                 "Sec-Fetch-Mode": "cors",
@@ -150,10 +126,11 @@ class AmazonDirectAPI:
             # Add CSRF token if available
             if self.csrf_token:
                 abis_headers["anti-csrftoken-a2z"] = self.csrf_token
+                abis_headers["x-csrf-token"] = self.csrf_token
 
+            # curl_cffi uses the session directly
             if method == "POST":
-                # Amazon ABIS uses form-encoded data
-                response = self.session.post(
+                response = self.client.session.post(
                     url,
                     data=data,
                     headers=abis_headers,
@@ -161,7 +138,7 @@ class AmazonDirectAPI:
                     allow_redirects=True,
                 )
             else:
-                response = self.session.get(
+                response = self.client.session.get(
                     url,
                     headers=abis_headers,
                     timeout=30,
@@ -174,31 +151,40 @@ class AmazonDirectAPI:
                 try:
                     return response.json()
                 except Exception:
-                    # Check if this is a login page redirect
-                    content_type = response.headers.get("Content-Type", "")
-                    response_text = response.text[:500].lower()
+                    # 🔴 FORENSIC DUMP — Print first 1000 chars of HTML
+                    response_text = response.text
+                    is_html = "<html" in response_text[:200].lower() or "<!doctype" in response_text[:100].lower()
 
-                    if "html" in content_type.lower() or "<!doctype html" in response_text or "/ap/signin" in response_text:
-                        logger.error(f"🔴 Session expired — Amazon returned login page instead of API response")
+                    if is_html:
+                        logger.error("🔴 Received HTML instead of JSON. Dumping first 1000 chars:")
+                        logger.error(response_text[:1000])
 
-                        # Auto-invalidate the session
+                        lower_text = response_text.lower()
+                        if "/ap/signin" in lower_text or "login" in lower_text[:500]:
+                            page_type = "LOGIN PAGE — session expired"
+                        elif "captcha" in lower_text or "robot" in lower_text:
+                            page_type = "CAPTCHA/Robot Check"
+                        else:
+                            page_type = "Unknown HTML page"
+
                         self._authenticated = False
                         self._invalidate_session()
-
                         return {
                             "status": "ERROR",
-                            "message": "🔴 Session expired — Amazon returned login page. Please re-login via Seller Central.",
-                            "session_expired": True
+                            "message": f"🔴 Amazon returned {page_type}. Please re-login.",
+                            "session_expired": True,
+                            "page_type": page_type,
                         }
+
                     logger.debug(f"Non-JSON response from {url}")
-                    return {"raw_html": response.text[:500]}
+                    return {"raw_html": response_text[:500]}
             elif response.status_code == 401 or "/ap/signin" in str(response.url):
                 self._authenticated = False
                 self._invalidate_session()
-                logger.warning("🔴 Session expired — Amazon redirected to login page.")
+                logger.warning("🔴 Session expired — Amazon redirected to login.")
                 return {
                     "status": "ERROR",
-                    "message": "🔴 Session expired — Amazon redirected to login page. Please re-login via Seller Central.",
+                    "message": "🔴 Session expired. Please re-login.",
                     "session_expired": True
                 }
             else:
@@ -208,6 +194,15 @@ class AmazonDirectAPI:
                     "message": f"HTTP {response.status_code} from Amazon"
                 }
 
+        except SessionExpiredError:
+            self._authenticated = False
+            self._invalidate_session()
+            logger.warning("🔴 Session expired detected")
+            return {
+                "status": "ERROR",
+                "message": "🔴 Session expired. Please re-login.",
+                "session_expired": True
+            }
         except Exception as e:
             logger.error(f"Request failed: {e}")
             return None

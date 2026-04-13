@@ -72,12 +72,24 @@ class AmazonCookieJar:
                 name = c.get("name", "")
                 value = c.get("value", "")
 
-                if not name or value is None:
+                if not name:
                     skipped += 1
+                    logger.warning(f"SKIP (no name): {c}")
                     continue
+
+                if value is None:
+                    skipped += 1
+                    logger.warning(f"SKIP (value is None): {name}")
+                    continue
+
+                # Force empty string values to be valid
+                if value == "":
+                    value = ""
 
                 # Rewrite domain from .amazon.com to country-specific
                 cookie_domain = c.get("domain", f".amazon.{self.country_code}")
+                original_domain = cookie_domain
+
                 if cookie_domain == ".amazon.com" and self.country_code != "us":
                     cookie_domain = target_domain
 
@@ -94,19 +106,24 @@ class AmazonCookieJar:
                     domain=cookie_domain,
                     domain_specified=True,
                     domain_initial_dot=True,
-                    path=c.get("path", "/"),
-                    path_specified=bool(c.get("path", "/")),
-                    secure=c.get("secure", False),
+                    path=c.get("path", "/") or "/",
+                    path_specified=True,
+                    secure=bool(c.get("secure", False)),
+                    expires=None,       # ← was missing!
                     discard=True,
-                    rest={"HttpOnly": c.get("httpOnly", None)},
+                    comment=None,       # ← was missing!
+                    comment_url=None,   # ← was missing!
+                    rest={"HttpOnly": c.get("httpOnly", c.get("httpOnly", None))},
                     rfc2109=False,
                 )
                 self.jar.set_cookie(http_cookie)
                 injected += 1
 
             except Exception as e:
-                logger.debug(f"Cookie injection error for '{c.get('name', '?')}': {e}")
                 skipped += 1
+                # Use WARNING level so we can see WHY cookies are skipped
+                import traceback
+                logger.warning(f"SKIP (exception) '{c.get('name', '?')}': {type(e).__name__}: {e}")
 
         logger.info(f"AmazonCookieJar: {injected} cookies loaded, {skipped} skipped (country: {self.country_code})")
 

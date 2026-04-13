@@ -1,12 +1,13 @@
 """
 Amazon Catalog Search API Endpoints
-البحث في كتالوج Amazon باستخدام niquests + BeautifulSoup
+البحث في كتالوج Amazon باستخدام curl_cffi (TLS impersonation) + CookieJar + BeautifulSoup
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 from loguru import logger
 
-from app.services.catalog_search import AmazonCatalogSearchClient, get_active_session
+from app.services.catalog_search import AmazonCatalogSearchClient
+from app.services.amazon_session_manager import AmazonSessionManager
 
 router = APIRouter()
 
@@ -29,16 +30,15 @@ async def search_catalog(
     """
     try:
         # Get active session cookies
-        cookies, country = get_active_session()
+        cookies, country = AmazonSessionManager.get_active_cookies()
         if not cookies:
             raise HTTPException(
                 status_code=401,
                 detail="لا يوجد جلسة نشطة - يرجى تسجيل الدخول أولاً"
             )
 
-        # Initialize search client
-        client = AmazonCatalogSearchClient(country_code=country)
-        client.setup_cookies(cookies)
+        # Initialize search client with cookies (curl_cffi + CookieJar)
+        client = AmazonCatalogSearchClient(cookies, country_code=country)
 
         # Execute search based on type
         results = []
@@ -78,15 +78,14 @@ async def lookup_asin(asin: str):
     Request: GET /api/v1/catalog/lookup/B08XYZ1234
     """
     try:
-        cookies, country = get_active_session()
+        cookies, country = AmazonSessionManager.get_active_cookies()
         if not cookies:
             raise HTTPException(
                 status_code=401,
                 detail="لا يوجد جلسة نشطة - يرجى تسجيل الدخول أولاً"
             )
 
-        client = AmazonCatalogSearchClient(country_code=country)
-        client.setup_cookies(cookies)
+        client = AmazonCatalogSearchClient(cookies, country_code=country)
 
         result = client.search_by_asin(asin)
 

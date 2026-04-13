@@ -2,16 +2,17 @@
 Amazon Product Lookup Service
 بيبحث في Amazon عن طريق ASIN/UPC/EAN قبل إضافة المنتج
 لو المنتج موجود → بيرفض الحفظ ويبلغ المستخدم
+
+Updated: Now uses curl_cffi (TLS impersonation) + CookieJar (RFC 6265).
 """
 import json
 from typing import Optional, Dict, Any
 from loguru import logger
 
-import niquests as requests
-
 from app.database import SessionLocal
 from app.models.session import Session as AuthSession
 from app.services.session_store import decrypt_data
+from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError
 
 SELLER_CENTRAL_BASE = {
     "eg": "https://sellercentral.amazon.eg",
@@ -19,24 +20,18 @@ SELLER_CENTRAL_BASE = {
     "ae": "https://sellercentral.amazon.ae",
 }
 
-BROWSER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
-}
-
 
 class AmazonProductLookup:
-    """بيبحث في Amazon عن طريق ASIN/UPC/EAN"""
+    """بيبحث في Amazon عن طريق ASIN/UPC/EAN — uses curl_cffi + CookieJar"""
 
     def __init__(self, email: str = "amazon_eg"):
         self.email = email
-        self.session = requests.Session()
-        self.session.headers.update(BROWSER_HEADERS)
+        self.client: Optional[AmazonHTTPClient] = None
         self._authenticated = False
+        self.base_url = ""
 
     def _setup_session(self) -> bool:
-        """يجهز الجلسة بالـ cookies"""
+        """يجهز الجلسة بالـ cookies — يستخدم AmazonHTTPClient"""
         db = SessionLocal()
         try:
             auth_session = db.query(AuthSession).filter(
@@ -51,26 +46,13 @@ class AmazonProductLookup:
 
             cookies = json.loads(decrypt_data(auth_session.cookies_json))
             country = auth_session.country_code or "eg"
-
-            domain_map = {"eg": ".amazon.eg", "sa": ".amazon.sa", "ae": ".amazon.ae"}
-            target_domain = domain_map.get(country, ".amazon.eg")
-
-            for cookie in cookies:
-                try:
-                    cookie_domain = cookie.get("domain", ".amazon.com")
-                    if cookie_domain == ".amazon.com" and country != "us":
-                        cookie_domain = target_domain
-                    self.session.cookies.set(
-                        cookie["name"], cookie["value"],
-                        domain=cookie_domain, path=cookie.get("path", "/"),
-                    )
-                except:
-                    pass
-
-            self._authenticated = True
             self.base_url = SELLER_CENTRAL_BASE.get(country, SELLER_CENTRAL_BASE["eg"])
+
+            # Create curl_cffi client with CookieJar
+            self.client = AmazonHTTPClient(cookies, country)
+            self._authenticated = True
             return True
-        except:
+        except Exception:
             return False
         finally:
             db.close()
@@ -95,7 +77,7 @@ class AmazonProductLookup:
                 # Search by UPC/EAN
                 url = f"{self.base_url}/catalog/v3/search?keywords={product_id}"
 
-            response = self.session.get(url, timeout=10, allow_redirects=True)
+            response = self.client.session.get(url, timeout=10, allow_redirects=True)
 
             # Check if we found a product
             if id_type == "ASIN":
