@@ -1,0 +1,16 @@
+Collecting curl_cffi
+  Downloading curl_cffi-0.15.0-cp310-abi3-win_amd64.whl.metadata (18 kB)
+Requirement already satisfied: cffi>=2.0.0 in c:\users\dell\appdata\local\programs\python\python312\lib\site-packages (from curl_cffi) (2.0.0)
+Requirement already satisfied: certifi>=2024.2.2 in c:\users\dell\appdata\local\programs\python\python312\lib\site-packages (from curl_cffi) (2025.11.12)
+Requirement already satisfied: rich in c:\users\dell\appdata\local\programs\python\python312\lib\site-packages (from curl_cffi) (13.9.4)
+Requirement already satisfied: pycparser in c:\users\dell\appdata\local\programs\python\python312\lib\site-packages (from cffi>=2.0.0->curl_cffi) (2.23)
+Requirement already satisfied: markdown-it-py>=2.2.0 in c:\users\dell\appdata\local\programs\python\python312\lib\site-packages (from rich->curl_cffi) (4.0.0)
+Requirement already satisfied: pygments<3.0.0,>=2.13.0 in c:\users\dell\appdata\local\programs\python\python312\lib\site-packages (from rich->curl_cffi) (2.19.2)
+Requirement already satisfied: mdurl~=0.1 in c:\users\dell\appdata\local\programs\python\python312\lib\site-packages (from markdown-it-py>=2.2.0->rich->curl_cffi) (0.1.2)
+Downloading curl_cffi-0.15.0-cp310-abi3-win_amd64.whl (1.7 MB)
+   ---------------------------------------- 1.7/1.7 MB 1.1 MB/s  0:00:01
+Installing collected packages: curl_cffi
+Successfully installed curl_cffi-0.15.0
+
+[notice] A new release of pip is available: 25.3 -> 26.0.1
+[notice] To update, run: python.exe -m pip install --upgrade pip

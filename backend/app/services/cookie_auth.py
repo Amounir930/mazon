@@ -1,7 +1,10 @@
 """
 Cookie-based Amazon Authentication
-الـ cookies بتتسجل من الـ Frontend (PyWebView)
+الـ cookies بتتسجل من الـ Frontend (PyWebView/Playwright login)
 وبتتستخدم للـ API calls بدلاً من SP-API
+
+Updated: Now uses curl_cffi (TLS impersonation) + CookieJar (RFC 6265)
+instead of niquests + raw cookie strings.
 """
 import json
 from datetime import datetime, timezone, timedelta
@@ -13,6 +16,8 @@ from app.services.session_store import (
     decrypt_data,
     get_fernet,
 )
+from app.services.user_agent_config import AMAZON_USER_AGENT
+from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError
 from app.database import SessionLocal
 from app.models.session import Session
 
@@ -85,16 +90,18 @@ class CookieAuth:
         cookies: List[Dict[str, Any]],
         country_code: str = "eg",
         seller_name: Optional[str] = None,
+        csrf_token: Optional[str] = None,
     ) -> Session:
         """
         Save browser cookies to database (encrypted).
-        
+
         Args:
             email: Amazon account email
             cookies: List of cookie dictionaries from browser
             country_code: Marketplace country code
             seller_name: Optional seller name (will be extracted from cookies if not provided)
-            
+            csrf_token: Amazon anti-CSRF token for ABIS requests
+
         Returns:
             Saved Session object
         """
@@ -124,6 +131,7 @@ class CookieAuth:
                 country_code=country_code.lower(),
                 cookies_json=encrypted_cookies,
                 seller_name=seller_name or email,
+                csrf_token=csrf_token,
                 is_active=True,
                 is_valid=True,
                 last_verified_at=datetime.now(timezone.utc),
@@ -147,57 +155,24 @@ class CookieAuth:
     def verify_cookies(cookies: List[Dict[str, Any]], country_code: str = "eg") -> bool:
         """
         Verify that cookies are still valid by making a test API call.
+        Now uses curl_cffi + CookieJar for undetectable requests.
         """
         try:
             if not cookies:
                 logger.warning("Cookies verification: FAILED - empty cookies list")
                 return False
 
-            # Build cookie string for request
-            cookie_string = "; ".join([
-                f"{c['name']}={c['value']}"
-                for c in cookies
-                if c.get("name") and c.get("value")
-            ])
-
-            if not cookie_string:
-                logger.warning("Cookies verification: FAILED - no valid cookies in string")
-                return False
-
-            # Test by accessing seller profile page
-            base_url = SELLER_CENTRAL_BASE.get(country_code.lower(), SELLER_CENTRAL_BASE["eg"])
-            test_url = f"{base_url}/home"
-
-            import niquests as requests
-
-            response = requests.get(
-                test_url,
-                headers={
-                    "Cookie": cookie_string,
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                    "Accept-Language": "en-US,en;q=0.5",
-                },
-                timeout=15,
-                allow_redirects=True,
-            )
-
-            final_url = str(response.url)
-            status_code = response.status_code
-
-            logger.info(f"Cookie verification: URL={final_url}, Status={status_code}")
-            logger.info(f"Redirected to signin: {'/ap/signin' in final_url}")
-            logger.info(f"Cookie string length: {len(cookie_string)} chars")
-
-            # If we're redirected to login page, cookies are invalid
-            is_valid = "/ap/signin" not in final_url and "/gp/signin" not in final_url
-
-            if is_valid:
-                logger.info(f"Cookies verification: PASSED ({len(cookies)} cookies)")
-            else:
-                logger.warning(f"Cookies verification: FAILED - redirected to login ({final_url})")
-
-            return is_valid
+            # Use AmazonHTTPClient (curl_cffi + CookieJar)
+            client = AmazonHTTPClient(cookies, country_code)
+            try:
+                is_valid = client.is_session_valid()
+                if is_valid:
+                    logger.info(f"Cookies verification: PASSED ({client.cookie_jar.count()} cookies, TLS: chrome131)")
+                else:
+                    logger.warning("Cookies verification: FAILED - redirected to login")
+                return is_valid
+            finally:
+                client.close()
 
         except Exception as e:
             logger.error(f"Cookie verification failed: {e}", exc_info=True)
@@ -250,56 +225,39 @@ class CookieAuth:
     ) -> Dict[str, Any]:
         """
         Sync products from Amazon Seller Central using cookies.
-        
+        Now uses curl_cffi + CookieJar for undetectable requests.
+
         Args:
             cookies: List of cookie dictionaries
             country_code: Marketplace country code
-            
+
         Returns:
             Dictionary with products list and metadata
         """
         try:
-            # Build cookie string
-            cookie_string = "; ".join([
-                f"{c['name']}={c['value']}"
-                for c in cookies
-                if c.get("name") and c.get("value")
-            ])
+            client = AmazonHTTPClient(cookies, country_code)
+            try:
+                # Fetch inventory page
+                response = client.get("/inventory")
 
-            # Fetch products from Amazon Inventory page
-            base_url = SELLER_CENTRAL_BASE.get(country_code.lower(), SELLER_CENTRAL_BASE["eg"])
-            inventory_url = f"{base_url}/inventory"
+                # Parse products from HTML response
+                # This is a placeholder - actual parsing depends on Amazon's HTML structure
+                products = []  # TODO: Parse products from HTML
 
-            import niquests as requests
-            
-            response = requests.get(
-                inventory_url,
-                headers={
-                    "Cookie": cookie_string,
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "Accept": "application/json, text/plain, */*",
-                },
-                timeout=30,
-                allow_redirects=True,
-            )
-
-            if "/ap/signin" in response.url:
                 return {
-                    "success": False,
-                    "error": "Session expired - please login again",
-                    "products": [],
+                    "success": True,
+                    "products": products,
+                    "total": len(products),
                 }
+            finally:
+                client.close()
 
-            # Parse products from HTML response
-            # This is a placeholder - actual parsing depends on Amazon's HTML structure
-            products = []  # TODO: Parse products from HTML
-
+        except SessionExpiredError:
             return {
-                "success": True,
-                "products": products,
-                "total": len(products),
+                "success": False,
+                "error": "Session expired - please login again",
+                "products": [],
             }
-
         except Exception as e:
             logger.error(f"Failed to sync products: {e}")
             return {
@@ -315,56 +273,39 @@ class CookieAuth:
     ) -> Dict[str, Any]:
         """
         Sync orders from Amazon Seller Central using cookies.
-        
+        Now uses curl_cffi + CookieJar for undetectable requests.
+
         Args:
             cookies: List of cookie dictionaries
             country_code: Marketplace country code
-            
+
         Returns:
             Dictionary with orders list and metadata
         """
         try:
-            # Build cookie string
-            cookie_string = "; ".join([
-                f"{c['name']}={c['value']}"
-                for c in cookies
-                if c.get("name") and c.get("value")
-            ])
+            client = AmazonHTTPClient(cookies, country_code)
+            try:
+                # Fetch orders page
+                response = client.get("/orders")
 
-            # Fetch orders from Amazon Orders page
-            base_url = SELLER_CENTRAL_BASE.get(country_code.lower(), SELLER_CENTRAL_BASE["eg"])
-            orders_url = f"{base_url}/orders"
+                # Parse orders from HTML response
+                # This is a placeholder - actual parsing depends on Amazon's HTML structure
+                orders = []  # TODO: Parse orders from HTML
 
-            import niquests as requests
-            
-            response = requests.get(
-                orders_url,
-                headers={
-                    "Cookie": cookie_string,
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "Accept": "application/json, text/plain, */*",
-                },
-                timeout=30,
-                allow_redirects=True,
-            )
-
-            if "/ap/signin" in response.url:
                 return {
-                    "success": False,
-                    "error": "Session expired - please login again",
-                    "orders": [],
+                    "success": True,
+                    "orders": orders,
+                    "total": len(orders),
                 }
+            finally:
+                client.close()
 
-            # Parse orders from HTML response
-            # This is a placeholder - actual parsing depends on Amazon's HTML structure
-            orders = []  # TODO: Parse orders from HTML
-
+        except SessionExpiredError:
             return {
-                "success": True,
-                "orders": orders,
-                "total": len(orders),
+                "success": False,
+                "error": "Session expired - please login again",
+                "orders": [],
             }
-
         except Exception as e:
             logger.error(f"Failed to sync orders: {e}")
             return {

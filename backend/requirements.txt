@@ -44,6 +44,9 @@ playwright>=1.40.0
 niquests>=3.18.0
 cryptography>=41.0.0
 
+# TLS Fingerprint Impersonation (Anti-WAF)
+curl_cffi>=0.7.0
+
 # Retry Logic
 tenacity>=8.2.0
 

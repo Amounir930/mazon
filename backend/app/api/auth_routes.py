@@ -89,58 +89,155 @@ class PyWebViewLoginResponse(BaseModel):
 @router.post("/pywebview-login")
 async def pywebview_login(country_code: str = "eg"):
     """
-    يفتح نافذة Amazon عبر PyWebView من الـ Backend مباشرة.
-    المستخدم بيدخل في النافذة → الـ Backend بيقرا الـ cookies تلقائياً.
-    
-    ده بيشتغل 100% لأن الـ Backend هو اللي بيفتح النافذة وبيقرا الـ cookies.
+    يفتح نافذة Amazon عبر Playwright (Stealth Mode) من الـ Backend مباشرة.
+    المستخدم بيدخل في النافذة → الـ Backend بيقرا الـ cookies + CSRF Token + Seller Name تلقائياً.
+
+    Phase 1: Playwright Stealth + Cookie Extraction
+    Phase 2: CSRF Token Extraction
+    Phase 3: Seller Name Extraction
     """
-    logger.info(f"PyWebView login initiated for country: {country_code}")
-    
+    logger.info(f"Playwright login initiated for country: {country_code}")
+
     try:
-        result = await start_amazon_login(country_code)
-        
+        # Try Playwright first (new method — async subprocess)
+        from app.services.playwright_login import login_amazon_playwright
+        result = await login_amazon_playwright(country_code)
+
         if result.get("success"):
-            # Save cookies to database
             cookies = result.get("cookies", [])
-            email = "unknown"  # نحتاج نعرفه من الـ cookies أو نطلبه من الـ Frontend
-            
-            # Extract email from cookies if possible
-            for c in cookies:
-                if c.get("name") in ["ubid-main", "session-id"]:
-                    # We have valid Amazon cookies
-                    email = f"amazon_{country_code}"
-                    break
-            
-            # For now, save with a generic email - user can specify later
+            raw_seller_name = result.get("seller_name") or "Unknown Seller"
+            csrf_token = result.get("csrf_token")
+
+            # =============================================
+            # CRITICAL: Detect false login (seller name = login page title)
+            # =============================================
+            invalid_seller_names = [
+                "Amazon Sign In",
+                "Amazon Sign-In",
+                "Amazon Signin",
+                "Sign In",
+                "تسجيل الدخول",
+                "Login | Amazon",
+                "Amazon Login",
+            ]
+            if raw_seller_name.strip() in invalid_seller_names:
+                logger.error(f"FALSE LOGIN DETECTED! seller_name='{raw_seller_name}' is a login page title, not a seller name")
+                return {
+                    "success": False,
+                    "error": "لم يتم تسجيل الدخول بشكل صحيح. يبدو أن الصفحة لا تزال صفحة تسجيل الدخول.",
+                    "error_details": f"تم اكتشاف اسم البائع '{raw_seller_name}' وهو عنوان صفحة تسجيل الدخول وليس اسم بائع حقيقي.",
+                    "session_id": None,
+                    "hint": "يرجى تسجيل الدخول بالكامل في المتصفح وانتظار صفحة Dashboard.",
+                }
+
+            seller_name = raw_seller_name
+
+            logger.info(f"Cookies extracted ({len(cookies)} total), seller_name: {seller_name}")
+            for c in cookies[:5]:
+                logger.info(f"  - {c.get('name')}: {c.get('value', '')[:30]}...")
+            if len(cookies) > 5:
+                logger.info(f"  ... and {len(cookies) - 5} more")
+
+            if csrf_token:
+                logger.info(f"CSRF Token extracted: {csrf_token[:20]}... ({len(csrf_token)} chars)")
+            else:
+                logger.warning("⚠️ CSRF Token not extracted — listing submission may fail")
+
+            # Save with the actual seller name from Amazon
             from app.services.cookie_auth import CookieAuth
             session = CookieAuth.save_cookies(
-                email=email,
+                email=seller_name,
                 cookies=cookies,
                 country_code=country_code,
-                seller_name=email,
+                seller_name=seller_name,
+                csrf_token=csrf_token,
             )
-            
+
             return {
                 "success": True,
-                "seller_name": email,
+                "seller_name": seller_name,
                 "country_code": country_code,
                 "session_id": session.id,
                 "cookie_count": len(cookies),
-                "message": "تم الاتصال بنجاح!",
+                "csrf_token_extracted": bool(csrf_token),
+                "message": f"تم الاتصال بنجاح! ({seller_name})",
             }
         else:
             return {
                 "success": False,
                 "error": result.get("error", "فشل تسجيل الدخول"),
-                "session_id": result.get("session_id"),
+                "session_id": None,
             }
-            
+
+    except ImportError:
+        # Fallback to old pywebview method
+        logger.warning("Playwright not available, falling back to pywebview")
+        return await _pywebview_login_fallback(country_code)
+
     except Exception as e:
-        logger.error(f"PyWebView login error: {e}", exc_info=True)
+        logger.error(f"Playwright login error: {e}", exc_info=True)
         return {
             "success": False,
             "error": f"خطأ غير متوقع: {str(e)[:150]}",
         }
+
+
+async def _pywebview_login_fallback(country_code: str):
+    """Fallback to old pywebview method"""
+    from app.services.pywebview_login import start_amazon_login
+
+    try:
+        result = await start_amazon_login(country_code)
+
+        if result.get("success"):
+            cookies = result.get("cookies", [])
+            raw_seller_name = result.get("seller_name") or "Unknown Seller"
+
+            # Same false login detection for fallback
+            invalid_seller_names = [
+                "Amazon Sign In",
+                "Amazon Sign-In",
+                "Amazon Signin",
+                "Sign In",
+                "تسجيل الدخول",
+                "Login | Amazon",
+                "Amazon Login",
+            ]
+            if raw_seller_name.strip() in invalid_seller_names:
+                logger.error(f"FALSE LOGIN (fallback)! seller_name='{raw_seller_name}'")
+                return {
+                    "success": False,
+                    "error": "لم يتم تسجيل الدخول بشكل صحيح. يبدو أن الصفحة لا تزال صفحة تسجيل الدخول.",
+                    "session_id": None,
+                }
+
+            seller_name = raw_seller_name
+            email = seller_name
+
+            from app.services.cookie_auth import CookieAuth
+            session = CookieAuth.save_cookies(
+                email=email,
+                cookies=cookies,
+                country_code=country_code,
+                seller_name=seller_name,
+            )
+
+            return {
+                "success": True,
+                "seller_name": seller_name,
+                "country_code": country_code,
+                "session_id": session.id,
+                "cookie_count": len(cookies),
+                "message": f"تم الاتصال بنجاح! ({seller_name})",
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "فشل تسجيل الدخول"),
+            }
+    except Exception as e:
+        logger.error(f"Pywebview fallback error: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
 
 
 @router.get("/pywebview-status/{session_id}")
@@ -238,6 +335,111 @@ async def get_session_status():
         is_valid=session.is_valid,
         last_verified_at=session.last_verified_at.isoformat() if session.last_verified_at else None,
     )
+
+
+@router.get("/debug-session")
+async def debug_session():
+    """
+    عرض تفاصيل الجلسة المحفوظة (للتصحيح فقط).
+    """
+    from app.database import SessionLocal
+    from app.models.session import Session
+    from app.services.session_store import decrypt_data
+    import json
+
+    db = SessionLocal()
+    try:
+        sessions = db.query(Session).filter(
+            Session.auth_method == "browser",
+            Session.cookies_json.isnot(None)
+        ).order_by(Session.created_at.desc()).all()
+
+        result = []
+        for s in sessions:
+            # Decrypt and count cookies (don't show values for security)
+            try:
+                cookies = json.loads(decrypt_data(s.cookies_json))
+                cookie_names = [c.get("name", "unknown") for c in cookies]
+            except Exception:
+                cookie_names = ["decryption_failed"]
+
+            result.append({
+                "id": s.id,
+                "email": s.email,
+                "seller_name": s.seller_name,
+                "country_code": s.country_code,
+                "is_active": s.is_active,
+                "is_valid": s.is_valid,
+                "created_at": str(s.created_at),
+                "last_verified_at": str(s.last_verified_at) if s.last_verified_at else None,
+                "cookie_count": len(cookie_names),
+                "cookie_names": cookie_names,
+            })
+
+        return {
+            "sessions_found": len(result),
+            "sessions": result,
+        }
+    finally:
+        db.close()
+
+
+@router.get("/test-session")
+async def test_session():
+    """
+    اختبار الـ cookies المحفوظة بعمل request حقيقي لـ Amazon.
+    """
+    from app.database import SessionLocal
+    from app.models.session import Session
+    from app.services.session_store import decrypt_data
+    from app.services.amazon_direct_api import AmazonDirectAPI
+    import json
+    import httpx
+
+    db = SessionLocal()
+    try:
+        auth_session = db.query(Session).filter(
+            Session.auth_method == "browser",
+            Session.cookies_json.isnot(None),
+        ).order_by(Session.created_at.desc()).first()
+
+        if not auth_session:
+            return {"status": "error", "message": "No session found"}
+
+        cookies = json.loads(decrypt_data(auth_session.cookies_json))
+        country_code = auth_session.country_code or "eg"
+        base_url = f"https://sellercentral.amazon.{country_code}"
+
+        # Test 1: Try accessing Seller Central home
+        cookie_string = "; ".join([f"{c['name']}={c['value']}" for c in cookies if c.get("name") and c.get("value")])
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Cookie": cookie_string,
+        }
+
+        # Make test request
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15) as client:
+            response = await client.get(f"{base_url}/home", headers=headers)
+
+        # Check if redirected to login
+        is_login_page = "/ap/signin" in str(response.url) or "<!doctype html" in response.text[:200].lower()
+
+        return {
+            "session_found": True,
+            "session_email": auth_session.email,
+            "cookie_count": len(cookies),
+            "test_url": f"{base_url}/home",
+            "response_status": response.status_code,
+            "response_url": str(response.url),
+            "is_login_page": is_login_page,
+            "is_valid": not is_login_page,
+            "cookie_names": [c.get("name") for c in cookies],
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        db.close()
 
 
 @router.post("/verify-session", response_model=SessionStatusResponse)

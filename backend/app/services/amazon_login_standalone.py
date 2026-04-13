@@ -168,10 +168,56 @@ def main():
                             cookie_values = parse_document_cookies(cookie_str)
                             print(f"document.cookie has {len(cookie_values)} cookie values")
                             
-                            # Step 3: Merge metadata with values
+                            # Step 4: Extract seller name from the page
+                            seller_name = None
+                            try:
+                                # Try multiple selectors to find the seller/store name
+                                seller_js = """
+                                (function() {
+                                    // Try multiple ways to get seller name
+                                    var name = null;
+
+                                    // Method 1: Look for seller name in header/nav
+                                    var els = document.querySelectorAll('[data-testid*="seller"], [data-testid*="store"], [class*="seller-name"], [class*="store-name"]');
+                                    if (els.length > 0) name = els[0].textContent.trim();
+
+                                    // Method 2: Look in account menu or dropdown
+                                    if (!name) {
+                                        var accountEls = document.querySelectorAll('[aria-label*="account"], [aria-label*="Account"]');
+                                        if (accountEls.length > 0) name = accountEls[0].textContent.trim();
+                                    }
+
+                                    // Method 3: Look for any element containing "Seller Central" + nearby text
+                                    if (!name) {
+                                        var allEls = document.querySelectorAll('span, div, a, p, strong, b');
+                                        for (var i = 0; i < Math.min(allEls.length, 200); i++) {
+                                            var text = allEls[i].textContent;
+                                            if (text && text.length > 3 && text.length < 100 && !text.includes('Amazon') && !text.includes('Seller Central') && !text.includes('Help')) {
+                                                // Skip very short or very long text, skip Amazon/Seller Central/Help
+                                                name = text.trim();
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    // Method 4: Check page title or meta tags
+                                    if (!name) {
+                                        name = document.title.replace(' - Seller Central', '').replace('Seller Central', '').trim();
+                                    }
+
+                                    return name || 'Unknown Seller';
+                                })();
+                                """
+                                seller_name = window.evaluate_js(seller_js)
+                                print(f"Seller name extracted: {seller_name}")
+                            except Exception as e:
+                                print(f"Failed to extract seller name: {e}")
+                                seller_name = "Unknown Seller"
+
                             login_state["cookies"] = normalize_pywebview_cookies(all_cookies, cookie_values)
+                            login_state["seller_name"] = seller_name
                             print(f"Got {len(login_state['cookies'])} normalized cookies")
-                            
+
                             login_state["done"] = True
                             window.destroy()
                         except Exception as e:

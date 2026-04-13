@@ -21,6 +21,7 @@ from app.database import SessionLocal
 from app.models.session import Session as AuthSession
 from app.models.product import Product
 from app.services.session_store import decrypt_data
+from app.services.user_agent_config import AMAZON_USER_AGENT, get_browser_headers
 
 # Amazon Seller Central URLs
 SELLER_CENTRAL_BASE = {
@@ -29,19 +30,11 @@ SELLER_CENTRAL_BASE = {
     "ae": "https://sellercentral.amazon.ae",
 }
 
-# Browser headers
-BROWSER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9,ar;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-    "Origin": "https://sellercentral.amazon.eg",
-    "Referer": "https://sellercentral.amazon.eg/hz/merchant-listings/add-product.html",
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-origin",
-}
+# Browser headers (using centralized config)
+BROWSER_HEADERS = get_browser_headers(
+    origin="https://sellercentral.amazon.eg",
+    referer="https://sellercentral.amazon.eg/hz/merchant-listings/add-product.html",
+)
 
 
 class AmazonDirectAPI:
@@ -55,26 +48,32 @@ class AmazonDirectAPI:
         self.session.headers.update(BROWSER_HEADERS)
         self.country_code = "eg"
         self.base_url = SELLER_CENTRAL_BASE["eg"]
+        self.csrf_token = None
         self._authenticated = False
 
     def _setup_session(self) -> bool:
         """يجهز الجلسة بالـ cookies المحفوظة"""
         db = SessionLocal()
         try:
+            # Get ANY active browser session with cookies — don't filter by email
+            # since the stored email may be a placeholder like 'amazon_eg'
+            # Also don't require is_active/is_valid since they may be None
             auth_session = db.query(AuthSession).filter(
                 AuthSession.auth_method == "browser",
-                AuthSession.email == self.email,
-                AuthSession.is_active == True,
-                AuthSession.is_valid == True,
-            ).first()
+                AuthSession.cookies_json.isnot(None),
+            ).order_by(AuthSession.created_at.desc()).first()
 
             if not auth_session or not auth_session.cookies_json:
-                logger.warning(f"No active session for {self.email}")
+                logger.warning(f"No active browser session with cookies found")
                 return False
 
             cookies = json.loads(decrypt_data(auth_session.cookies_json))
             self.country_code = auth_session.country_code or "eg"
             self.base_url = SELLER_CENTRAL_BASE.get(self.country_code, SELLER_CENTRAL_BASE["eg"])
+            self.email = auth_session.email or auth_session.seller_name or self.email
+            self.csrf_token = auth_session.csrf_token
+
+            logger.info(f"Session setup for {self.email} ({self.country_code.upper()}) — {len(cookies)} cookies loaded, CSRF: {'YES' if self.csrf_token else 'NO'}")
 
             # Setup cookies
             domain_map = {
@@ -109,19 +108,65 @@ class AmazonDirectAPI:
         finally:
             db.close()
 
-    def _make_request(self, url: str, data: Dict, method: str = "POST") -> Optional[Dict]:
-        """يعمل request لـ Amazon API"""
+    def _invalidate_session(self):
+        """Auto-invalidate session in DB when we detect expired cookies"""
         try:
+            db = SessionLocal()
+            try:
+                auth_session = db.query(AuthSession).filter(
+                    AuthSession.auth_method == "browser",
+                    AuthSession.email == self.email,
+                    AuthSession.is_active == True,
+                ).first()
+
+                if auth_session:
+                    auth_session.is_active = False
+                    auth_session.is_valid = False
+                    auth_session.last_verified_at = None
+                    db.commit()
+                    logger.warning(f"🔒 Auto-invalidated expired session for {self.email}")
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Failed to invalidate session: {e}")
+
+    def _make_request(self, url: str, data: Dict, method: str = "POST") -> Optional[Dict]:
+        """يعمل request لـ Amazon API مع ABIS headers الكاملة"""
+        try:
+            # Build complete ABIS headers
+            abis_headers = {
+                "User-Agent": self.session.headers.get("User-Agent"),
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Accept-Language": self.session.headers.get("Accept-Language", "en-US,en;q=0.9,ar;q=0.8"),
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Origin": f"https://sellercentral.amazon.{self.country_code}",
+                "Referer": f"https://sellercentral.amazon.{self.country_code}/hz/merchant-listings/add-product.html",
+                "X-Requested-With": "XMLHttpRequest",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+            }
+
+            # Add CSRF token if available
+            if self.csrf_token:
+                abis_headers["anti-csrftoken-a2z"] = self.csrf_token
+
             if method == "POST":
                 # Amazon ABIS uses form-encoded data
                 response = self.session.post(
                     url,
                     data=data,
+                    headers=abis_headers,
                     timeout=30,
                     allow_redirects=True,
                 )
             else:
-                response = self.session.get(url, timeout=30, allow_redirects=True)
+                response = self.session.get(
+                    url,
+                    headers=abis_headers,
+                    timeout=30,
+                    allow_redirects=True,
+                )
 
             logger.debug(f"Request to {url}: Status {response.status_code}")
 
@@ -129,15 +174,39 @@ class AmazonDirectAPI:
                 try:
                     return response.json()
                 except Exception:
+                    # Check if this is a login page redirect
+                    content_type = response.headers.get("Content-Type", "")
+                    response_text = response.text[:500].lower()
+
+                    if "html" in content_type.lower() or "<!doctype html" in response_text or "/ap/signin" in response_text:
+                        logger.error(f"🔴 Session expired — Amazon returned login page instead of API response")
+
+                        # Auto-invalidate the session
+                        self._authenticated = False
+                        self._invalidate_session()
+
+                        return {
+                            "status": "ERROR",
+                            "message": "🔴 Session expired — Amazon returned login page. Please re-login via Seller Central.",
+                            "session_expired": True
+                        }
                     logger.debug(f"Non-JSON response from {url}")
                     return {"raw_html": response.text[:500]}
             elif response.status_code == 401 or "/ap/signin" in str(response.url):
                 self._authenticated = False
-                logger.warning("Session expired")
-                return None
+                self._invalidate_session()
+                logger.warning("🔴 Session expired — Amazon redirected to login page.")
+                return {
+                    "status": "ERROR",
+                    "message": "🔴 Session expired — Amazon redirected to login page. Please re-login via Seller Central.",
+                    "session_expired": True
+                }
             else:
                 logger.error(f"Request failed: {response.status_code}")
-                return None
+                return {
+                    "status": "ERROR",
+                    "message": f"HTTP {response.status_code} from Amazon"
+                }
 
         except Exception as e:
             logger.error(f"Request failed: {e}")
@@ -225,6 +294,8 @@ class AmazonDirectAPI:
 
             # Step 2: Create listing
             result = await self._post_create_listing(product)
+
+            logger.info(f"_post_create_listing result: {json.dumps(result, indent=2, ensure_ascii=False) if result else 'None'}")
 
             if result and result.get("status") == "SUCCESS":
                 logger.info(f"Listing created successfully for {product.sku}")

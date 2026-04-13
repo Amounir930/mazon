@@ -23,6 +23,7 @@ class Session(Base):
     country_code = Column(String(5), default="us")  # us, uk, ae, sa, eg
     cookies_json = Column(Text)  # Encrypted JSON of cookies
     seller_name = Column(String(255))
+    csrf_token = Column(String(500))  # Amazon anti-csrf token for ABIS requests
 
     # SP-API auth fields
     lwa_client_id = Column(String(255))

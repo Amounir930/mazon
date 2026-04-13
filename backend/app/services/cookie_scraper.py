@@ -10,10 +10,13 @@ Uses Playwright to:
 
 Features:
 - Retry logic with tenacity for rate limits
-- Session validation before each sync
+- Session validation before each sync (curl_cffi fast-check BEFORE Playwright)
 - Random delays (3-7s) to avoid CAPTCHA/WAF detection
 - Raw response saving on failure for debugging
 - Flexible selectors for Amazon's dynamic DOM
+
+IMPORTANT: Playwright is used for DOM EXTRACTION only.
+Session validation uses curl_cffi (TLS impersonation) for speed and stealth.
 """
 import json
 import os
@@ -36,6 +39,7 @@ from tenacity import (
 from app.database import SessionLocal
 from app.models.session import Session as AuthSession
 from app.services.session_store import decrypt_data
+from app.services.amazon_http_client import AmazonHTTPClient, SessionExpiredError
 
 # Amazon Seller Central URLs
 SELLER_CENTRAL_BASE = {
@@ -182,6 +186,27 @@ class CookieScraper:
         finally:
             db.close()
 
+    async def _fast_session_check(self, cookies: List[Dict], country: str) -> bool:
+        """
+        Fast session validation using curl_cffi (no browser needed).
+        Returns True if session is valid, False otherwise.
+        This is MUCH faster than opening Playwright just for validation.
+        """
+        try:
+            client = AmazonHTTPClient(cookies, country)
+            try:
+                valid = client.is_session_valid()
+                if valid:
+                    logger.info(f"✅ Fast session check PASSED (curl_cffi, {client.cookie_jar.count()} cookies)")
+                else:
+                    logger.warning("⚠️ Fast session check FAILED - session expired")
+                return valid
+            finally:
+                client.close()
+        except Exception as e:
+            logger.warning(f"Fast session check error: {e}")
+            return False
+
     async def _validate_session(self, base_url: str) -> bool:
         """
         Validate session by checking if we can access the home page.
@@ -281,13 +306,14 @@ class CookieScraper:
     async def sync_products(self, email: str) -> Dict[str, Any]:
         """
         Sync products from Amazon Seller Central.
-        
+
         Flow:
         1. Get session from database
-        2. Validate session
-        3. Navigate to inventory page
-        4. Extract products via JavaScript
-        5. Return structured data
+        2. FAST check session via curl_cffi (no browser needed!)
+        3. If fast check passes, open Playwright for DOM extraction
+        4. Navigate to inventory page
+        5. Extract products via JavaScript
+        6. Return structured data
         """
         try:
             # Get session
@@ -300,13 +326,22 @@ class CookieScraper:
                     "total": 0,
                 }
 
-            # Init browser
+            # FAST session check (curl_cffi + CookieJar - no browser!)
+            if not await self._fast_session_check(cookies, country):
+                return {
+                    "success": False,
+                    "error": "Session expired - please login again",
+                    "products": [],
+                    "total": 0,
+                }
+
+            # Only if fast check passes, open browser
             await self._init_browser()
             await self._setup_context(cookies, country)
 
             base = SELLER_CENTRAL_BASE.get(country, SELLER_CENTRAL_BASE["eg"])
 
-            # Validate session
+            # Validate session in browser context
             if not await self._validate_session(base):
                 await self.close()
                 return {
@@ -373,7 +408,7 @@ class CookieScraper:
     async def sync_orders(self, email: str, days: int = 30) -> Dict[str, Any]:
         """
         Sync orders from Amazon Seller Central.
-        
+
         Args:
             email: Amazon account email
             days: Number of days to look back (default 30)
@@ -384,6 +419,15 @@ class CookieScraper:
                 return {
                     "success": False,
                     "error": "No active session - please login again",
+                    "orders": [],
+                    "total": 0,
+                }
+
+            # FAST session check (curl_cffi + CookieJar - no browser!)
+            if not await self._fast_session_check(cookies, country):
+                return {
+                    "success": False,
+                    "error": "Session expired - please login again",
                     "orders": [],
                     "total": 0,
                 }
@@ -475,6 +519,15 @@ class CookieScraper:
                 return {
                     "success": False,
                     "error": "No active session - please login again",
+                    "inventory": [],
+                    "total": 0,
+                }
+
+            # FAST session check (curl_cffi + CookieJar - no browser!)
+            if not await self._fast_session_check(cookies, country):
+                return {
+                    "success": False,
+                    "error": "Session expired - please login again",
                     "inventory": [],
                     "total": 0,
                 }

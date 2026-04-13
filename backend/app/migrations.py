@@ -208,6 +208,12 @@ def run_migrations(engine) -> None:
             except Exception as e:
                 logger.warning(f"Migration 11 skipped (status column or data issue): {e}")
 
+        # ==========================================
+        # Migration 12: Add csrf_token to sessions
+        # ==========================================
+        if "sessions" in existing_tables:
+            _add_column_if_missing(conn, "sessions", "csrf_token", "VARCHAR(500)")
+
         conn.commit()
 
     logger.info("Database migration completed successfully")

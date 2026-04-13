@@ -107,21 +107,50 @@ async def submit_listing_task(product_id: str) -> dict:
         listing.stage = "submitted"
         db.commit()
 
-        # Step 4: Submit to Amazon via Direct API (ABIS AJAX — Cookie-based, ALister approach)
-        # This uses the cookies from the pywebview login — NO SP-API credentials needed
-        from app.services.amazon_direct_api import AmazonDirectAPI
-        from app.services.session_store import SessionStore
+        # Step 4: Submit to Amazon via ABIS Client (Phase 4 — correct payload format + CSRF)
+        # This uses the new ABISClient with:
+        # - application/x-www-form-urlencoded (NOT application/json)
+        # - CSRF Token extraction from page
+        # - Proper cookie handling
+        from app.services.abis_client import ABISClient
+        from app.models.session import Session
 
-        # Get email from active session
-        session_store = SessionStore()
-        sessions = session_store.list_sessions()
-        active_session = next((s for s in sessions if s.get("is_active")), None)
-        email = active_session.get("email", "default") if active_session else "default"
+        # Get session with cookies
+        db_sessions = SessionLocal()
+        auth_session = db_sessions.query(Session).filter(
+            Session.auth_method == "browser",
+            Session.cookies_json.isnot(None)
+        ).order_by(Session.created_at.desc()).first()
 
-        client = AmazonDirectAPI(
-            email=email,
-            country_code=seller.region.lower() if seller and seller.region else "eg",
-        )
+        if not auth_session:
+            db_sessions.close()
+            logger.error("❌ No browser session with cookies found — user must login via Seller Central first")
+            listing.status = "failed"
+            listing.stage = "failed"
+            listing.error_message = "No active session with cookies — Please login to Amazon Seller Central first"
+            listing.completed_at = datetime.utcnow()
+            db.commit()
+            return {"status": "failed", "error": "No active session with cookies"}
+
+        # Decrypt cookies
+        from app.services.session_store import decrypt_data
+        import json
+        cookies = json.loads(decrypt_data(auth_session.cookies_json))
+        country_code = auth_session.country_code or "eg"
+        db_sessions.close()
+
+        logger.info(f"✅ Using session: {len(cookies)} cookies, country={country_code}")
+
+        # Initialize ABIS client
+        client = ABISClient(cookies=cookies, country_code=country_code)
+
+        # Set CSRF token from auth session (if available)
+        csrf_token = auth_session.csrf_token
+        if csrf_token:
+            client.csrf_token = csrf_token
+            logger.info(f"✅ CSRF token loaded from session: {csrf_token[:20]}...")
+        else:
+            logger.warning("⚠️ No CSRF token in session — will fetch fresh token before POST")
 
         result = None
         for attempt in range(MAX_RETRIES):
@@ -130,8 +159,30 @@ async def submit_listing_task(product_id: str) -> dict:
                 listing.stage = "processing"
                 db.commit()
 
-                # Direct API uses product_id directly — it fetches product data from DB
-                result = await client.create_listing(product_id)
+                # Get product data for ABIS payload
+                product_data = {
+                    "sku": product.sku,
+                    "name": product.name,
+                    "description": product.description or "",
+                    "price": float(product.price) if product.price else 0,
+                    "quantity": product.quantity or 0,
+                    "currency": product.currency or "EGP",
+                    "product_type": product.product_type or "",
+                    "condition": product.condition or "New",
+                    "fulfillment_channel": product.fulfillment_channel or "MFN",
+                    "brand": product.brand or "Generic",
+                    "manufacturer": product.manufacturer or "",
+                    "model_number": product.model_number or "",
+                    "country_of_origin": product.country_of_origin or "",
+                    "upc": product.upc or "",
+                    "ean": product.ean or "",
+                    "bullet_points": _parse_json_field(product.bullet_points),
+                    "material": product.material or "",
+                }
+
+                # ABIS Client is synchronous (not async)
+                result = client.create_listing(product_data)
+
                 # Success — break out of retry loop
                 break
             except Exception as e:
@@ -167,15 +218,20 @@ async def submit_listing_task(product_id: str) -> dict:
             # Log activity
             _log_activity(db, product.id, "published", "success", listing.id, {"asin": listing.amazon_asin})
         else:
+            error_msg = result.get("error", result.get("message", "Unknown error"))
+            is_session_expired = result.get("session_expired", False)
             listing.status = "failed"
             listing.stage = "failed"
-            listing.error_message = str(result.get("error", result.get("message", "Unknown error")))
+            listing.error_message = str(error_msg)
             listing.completed_at = datetime.utcnow()
             db.commit()
-            logger.error(f"❌ Listing failed: {product.sku}")
+            logger.error(f"❌ Listing failed: {product.sku} — {error_msg}")
 
-            # Log activity
-            _log_activity(db, product.id, "failed", "failed", listing.id, {"error": result.get("error", "Unknown error")})
+            # Log activity with session expired flag
+            _log_activity(db, product.id, "failed", "failed", listing.id, {
+                "error": error_msg,
+                "session_expired": is_session_expired
+            })
 
         return {"status": listing.status, "asin": listing.amazon_asin}
 
