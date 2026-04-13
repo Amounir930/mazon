@@ -107,12 +107,10 @@ async def submit_listing_task(product_id: str) -> dict:
         listing.stage = "submitted"
         db.commit()
 
-        # Step 4: Submit to Amazon via ABIS Client (Phase 4 — correct payload format + CSRF)
-        # This uses the new ABISClient with:
-        # - application/x-www-form-urlencoded (NOT application/json)
-        # - CSRF Token extraction from page
-        # - Proper cookie handling
-        from app.services.abis_client import ABISClient
+        # Step 4: Submit to Amazon via Playwright ListingSubmitter
+        # This uses Playwright to navigate Amazon's UI and submit the listing
+        # — bypasses the 403 protection on the ABIS AJAX API
+        from app.services.listing_submitter import ListingSubmitter
         from app.models.session import Session
 
         # Get session with cookies
@@ -141,16 +139,26 @@ async def submit_listing_task(product_id: str) -> dict:
 
         logger.info(f"✅ Using session: {len(cookies)} cookies, country={country_code}")
 
-        # Initialize ABIS client
-        client = ABISClient(cookies=cookies, country_code=country_code)
-
-        # Set CSRF token from auth session (if available)
-        csrf_token = auth_session.csrf_token
-        if csrf_token:
-            client.csrf_token = csrf_token
-            logger.info(f"✅ CSRF token loaded from session: {csrf_token[:20]}...")
-        else:
-            logger.warning("⚠️ No CSRF token in session — will fetch fresh token before POST")
+        # Get product data
+        product_data = {
+            "sku": product.sku,
+            "name": product.name,
+            "description": product.description or "",
+            "price": float(product.price) if product.price else 0,
+            "quantity": product.quantity or 0,
+            "currency": product.currency or "EGP",
+            "product_type": product.product_type or "HOME_ORGANIZERS_AND_STORAGE",
+            "condition": product.condition or "New",
+            "fulfillment_channel": product.fulfillment_channel or "MFN",
+            "brand": product.brand or "Generic",
+            "manufacturer": product.manufacturer or "",
+            "model_number": product.model_number or "",
+            "country_of_origin": product.country_of_origin or "",
+            "upc": product.upc or "",
+            "ean": product.ean or "",
+            "bullet_points": _parse_json_field(product.bullet_points),
+            "material": product.material or "",
+        }
 
         result = None
         for attempt in range(MAX_RETRIES):
@@ -159,29 +167,12 @@ async def submit_listing_task(product_id: str) -> dict:
                 listing.stage = "processing"
                 db.commit()
 
-                # Get product data for ABIS payload
-                product_data = {
-                    "sku": product.sku,
-                    "name": product.name,
-                    "description": product.description or "",
-                    "price": float(product.price) if product.price else 0,
-                    "quantity": product.quantity or 0,
-                    "currency": product.currency or "EGP",
-                    "product_type": product.product_type or "",
-                    "condition": product.condition or "New",
-                    "fulfillment_channel": product.fulfillment_channel or "MFN",
-                    "brand": product.brand or "Generic",
-                    "manufacturer": product.manufacturer or "",
-                    "model_number": product.model_number or "",
-                    "country_of_origin": product.country_of_origin or "",
-                    "upc": product.upc or "",
-                    "ean": product.ean or "",
-                    "bullet_points": _parse_json_field(product.bullet_points),
-                    "material": product.material or "",
-                }
-
-                # ABIS Client is synchronous (not async)
-                result = client.create_listing(product_data)
+                # Playwright ListingSubmitter (async)
+                submitter = ListingSubmitter(country_code=country_code, debug=True)
+                try:
+                    result = await submitter.submit_listing(product_data)
+                finally:
+                    await submitter.close()
 
                 # Success — break out of retry loop
                 break
