@@ -163,7 +163,7 @@ async def submit_listing_task(product_id: str) -> dict:
             "bullet_points": _parse_json_field(product.bullet_points),
             "browse_node_id": product.browse_node_id or "21863799031",
             "included_components": product.name or "",
-            "merchant_suggested_asin": "",  # Product model doesn't have asin field
+            "merchant_suggested_asin": (product.attributes or {}).get("asin", "") if isinstance(product.attributes, dict) else "",
         }
 
         result = None

@@ -417,7 +417,19 @@ class SPAPIClient:
                 "value": {"type": "upc", "value": upc}
             }]
         # If no barcode — omit the field entirely (GTIN exemption handled by Amazon)
-        
+
+        # Merchant suggested ASIN — use SKU as fallback (max 10 chars!)
+        merchant_asin = product_data.get("merchant_suggested_asin", "")
+        if not merchant_asin:
+            # Use SKU as the suggested ASIN (Amazon accepts this for new products)
+            merchant_asin = product_data.get("sku", "")
+        # Amazon limit: 10 characters max
+        merchant_asin = str(merchant_asin)[:10].strip() if merchant_asin else ""
+        if merchant_asin:
+            attributes["merchant_suggested_asin"] = [{
+                "value": merchant_asin
+            }]
+
         return {
             "productType": product_data.get("product_type", "HOME_ORGANIZERS_AND_STORAGE"),
             "requirements": "LISTING",

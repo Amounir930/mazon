@@ -11,7 +11,7 @@ async def poll_listing_status(
     seller_id: str,
     listing_id: str,
     max_polls: int = 12,
-    interval_seconds: int = 300,
+    interval_seconds: int = 30,  # TESTING: 30s instead of 300s
 ):
     """
     Poll Amazon SP-API for listing status updates.

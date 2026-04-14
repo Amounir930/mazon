@@ -2,10 +2,17 @@
 SP-API Router
 Handles all Amazon SP-API operations through our backend
 """
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 from loguru import logger
+
+# Load .env file from backend directory
+env_path = Path(__file__).parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 from app.database import SessionLocal
 from app.models.product import Product
@@ -66,23 +73,16 @@ async def submit_product_to_amazon(product_id: str, background_tasks: Background
                 detail="المنتج محتاج كمية صحيحة"
             )
 
-        # 3. Get active session
+        # 3. Get active session (for marketplace/country info) — fallback to ENV
+        import os
+        
         auth_session = db.query(AuthSession).filter(
             AuthSession.auth_method == "browser",
             AuthSession.is_active == True,
             AuthSession.is_valid == True,
         ).order_by(AuthSession.created_at.desc()).first()
 
-        if not auth_session or not auth_session.credentials_json:
-            raise HTTPException(
-                status_code=400,
-                detail="مفيش حساب Amazon متصل. روح لـ /settings وسجل دخول الأول"
-            )
-
         # 4. Get Seller credentials — from session OR fallback to ENV
-        import os
-        
-        credentials = {}
         seller_id = os.getenv("SP_API_SELLER_ID", "A1DSHARRBRWYZW")
         
         if auth_session and auth_session.credentials_json:
@@ -108,6 +108,22 @@ async def submit_product_to_amazon(product_id: str, background_tasks: Background
         db.commit()
 
         # 6. Build product data for SP-API
+        # Parse attributes JSON safely
+        try:
+            product_attrs = json.loads(product.attributes) if isinstance(product.attributes, str) else {}
+        except Exception:
+            product_attrs = {}
+
+        # Parse bullet_points JSON string if needed
+        bullet_points = product.bullet_points
+        if isinstance(bullet_points, str):
+            try:
+                bullet_points = json.loads(bullet_points)
+            except Exception:
+                bullet_points = []
+        if not isinstance(bullet_points, list):
+            bullet_points = []
+
         product_data = {
             "sku": product.sku,
             "name": product.name or product.name_en or "Unnamed Product",
@@ -123,8 +139,10 @@ async def submit_product_to_amazon(product_id: str, background_tasks: Background
             "fulfillment_channel": product.fulfillment_channel or "MFN",
             "country_of_origin": product.country_of_origin or "CN",
             "product_type": product.product_type or "HOME_ORGANIZERS_AND_STORAGE",
-            "bullet_points": product.bullet_points if isinstance(product.bullet_points, list) else [],
+            "bullet_points": bullet_points,
             "browse_node_id": product.browse_node_id or "21863799031",
+            # Merchant suggested ASIN — from product attributes or fallback to SKU (max 10 chars!)
+            "merchant_suggested_asin": (product_attrs.get("suggested_asin") or product_attrs.get("merchant_suggested_asin") or product.sku)[:10].strip(),
         }
 
         # 7. Initialize SP-API client
