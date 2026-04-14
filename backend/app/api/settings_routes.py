@@ -175,13 +175,15 @@ def _save_sp_credentials(data: SaveSPApiCredentialsRequest):
     if data.client_secret and '•' not in data.client_secret:
         env_vars['SP_API_CLIENT_SECRET'] = data.client_secret
     env_vars['SP_API_REFRESH_TOKEN'] = data.refresh_token
+    # Enable SP-API when credentials are saved
+    env_vars['SP_API_ENABLED'] = 'True'
 
     # Write back to .env - preserve format
     with open(env_path, 'w', encoding='utf-8') as f:
         # First write known keys in order
         ordered_keys = [
             'APP_NAME', 'DEBUG', 'API_V1_PREFIX',
-            'SP_API_CLIENT_ID', 'SP_API_CLIENT_SECRET', 'SP_API_REFRESH_TOKEN',
+            'SP_API_CLIENT_ID', 'SP_API_CLIENT_SECRET', 'SP_API_REFRESH_TOKEN', 'SP_API_ENABLED',
             'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION', 'AWS_SELLER_ROLE_ARN',
             'SP_API_SELLER_ID', 'SP_API_MARKETPLACE_ID', 'SP_API_COUNTRY',
             'USE_AMAZON_MOCK', 'LOG_LEVEL', 'LOG_ROTATION', 'LOG_RETENTION', 'QWEN_API_KEY'

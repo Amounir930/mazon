@@ -94,8 +94,9 @@ class ProductCreate(BaseModel):
     @field_validator("price")
     @classmethod
     def validate_price(cls, v: Decimal) -> Decimal:
-        if v <= 0:
-            raise ValueError("Price must be positive")
+        if v < 0:
+            raise ValueError("Price cannot be negative")
+        # Allow 0 as placeholder — user can fill price later
         return v.quantize(Decimal("0.01"))
 
 

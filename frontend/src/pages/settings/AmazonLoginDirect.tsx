@@ -30,8 +30,7 @@ export default function AmazonLoginDirect({ email, onSuccess, country_code = 'eg
       })
       
       const result = await response.json()
-      console.log('Login result:', result)
-      
+
       if (result.success) {
         setStatus('success')
         toast.success(`تم الاتصال بنجاح! (${result.seller_name})`)

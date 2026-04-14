@@ -40,13 +40,6 @@ export default function SettingsPage() {
 
     const secretToSend = editingSecret ? spClientSecret : (spCredentials?.client_secret || '')
 
-    console.log('🔍 Sending save request with:', {
-      seller_id: spSellerId,
-      client_id: spClientId,
-      client_secret: secretToSend ? secretToSend.substring(0, 20) + '...' : 'EMPTY',
-      refresh_token: spRefreshToken ? spRefreshToken.substring(0, 20) + '...' : 'EMPTY',
-    })
-
     try {
       const result = await saveMutation.mutateAsync({
         client_id: spClientId,
@@ -54,10 +47,6 @@ export default function SettingsPage() {
         refresh_token: spRefreshToken,
         seller_id: spSellerId,
       })
-
-      console.log('✅ Backend response:', result)
-      console.log('✅ result.data:', result.data)
-      console.log('✅ result.data.is_connected:', result.data.is_connected)
 
       if (result.data.is_connected) {
         toast.success(result.data.message)
@@ -68,8 +57,6 @@ export default function SettingsPage() {
       refetchSP()
       refetchSession()
     } catch (e: any) {
-      console.error('❌ Save Error:', e)
-      console.error('❌ Error response:', e?.response?.data)
       const errorMsg = e?.response?.data?.detail || e?.message || 'فشل الحفظ'
       toast.error(errorMsg, { duration: 10000 })
     }
@@ -78,16 +65,14 @@ export default function SettingsPage() {
   const handleVerify = async () => {
     try {
       const result = await verifyMutation.mutateAsync()
-      console.log('🔍 Verify result:', result)
-      console.log('🔍 result.data:', result.data)
-      
-      if (result.data.is_valid || result.data.is_connected) {
+
+      // useVerifyConnection returns data directly (not Axios response)
+      if (result.is_valid || result.is_connected) {
         toast.success(t('settings.verifySuccess'))
       } else {
         toast.error(t('settings.verifyError'))
       }
     } catch (e: any) {
-      console.error('❌ Verify error:', e)
       toast.error(e?.response?.data?.detail || t('settings.verifyError'))
     }
     refetchSession()

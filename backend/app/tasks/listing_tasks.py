@@ -81,29 +81,20 @@ async def submit_listing_task(product_id: str) -> dict:
         listing.stage = "processing"
         db.commit()
 
-        # Validate product before submission
-        product_data = {
-            "sku": product.sku,
-            "name": product.name,
-            "price": float(product.price) if product.price else 0,
-            "images": _parse_json_field(product.images, []),
-            "brand": product.brand,
-            "product_type": product.product_type,
-            "condition": product.condition,
-            "fulfillment_channel": product.fulfillment_channel,
-            "upc": product.upc,
-            "ean": product.ean,
-        }
-        validation = ValidationService.validate_product_dict(product_data)
-        if not validation.valid:
-            listing.status = "failed"
-            listing.stage = "failed"
-            listing.error_message = f"Validation failed: {validation.to_dict()['errors']}"
-            listing.completed_at = datetime.utcnow()
-            db.commit()
-            _log_activity(db, product.id, "failed", "failed", listing.id, {"validation_errors": validation.to_dict()['errors']})
-            logger.error(f"❌ Validation failed for {product.sku}: {validation.to_dict()['errors']}")
-            return {"status": "failed", "error": validation.to_dict()['errors']}
+        # DISABLED: Skip validation — submit to Amazon even with incomplete data
+        # Validation is now optional. Users can submit products with missing fields.
+        # product_data = {
+        #     "sku": product.sku,
+        #     ...
+        # }
+        # validation = ValidationService.validate_product_dict(product_data)
+        # if not validation.valid:
+        #     listing.status = "failed"
+        #     ...
+        #     return {"status": "failed", "error": validation.to_dict()['errors']}
+
+        # Log that validation was skipped
+        logger.info(f"⚠️ Skipping validation for {product.sku} — submitting with available data")
 
         # Transition to submitted stage before API call
         listing.stage = "submitted"

@@ -48,19 +48,27 @@ export default function DashboardPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map(({ label, value, icon: Icon, accent }) => (
-          <div key={label} className={`neon-card neon-card--accent neon-card--${accent} contain-layout`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-text-secondary">{label}</p>
-                <p className="text-3xl font-bold text-text-primary mt-1">{value}</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-bg-elevated/50 border border-border-subtle flex items-center justify-center">
-                <Icon className="w-6 h-6 text-text-primary" />
+        {stats.map(({ label, value, icon: Icon, accent }) => {
+          const iconColors: Record<string, string> = {
+            blue: 'text-neon-blue',
+            orange: 'text-amazon-orange',
+            green: 'text-neon-cyan',
+            red: 'text-neon-red',
+          }
+          return (
+            <div key={label} className={`neon-card neon-card--accent neon-card--${accent} contain-layout`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-text-secondary">{label}</p>
+                  <p className="text-3xl font-bold text-text-primary mt-1">{value}</p>
+                </div>
+                <div className="w-12 h-12 rounded-xl bg-bg-elevated/50 border border-border-subtle flex items-center justify-center">
+                  <Icon className={`w-6 h-6 ${iconColors[accent] || 'text-text-primary'}`} />
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Quick Actions */}

@@ -11,6 +11,7 @@ Implements Base + Delta Pattern:
 Saves 84% of tokens compared to generating each product separately.
 """
 from typing import Dict, Any
+import json
 from loguru import logger
 
 from app.core.llm_provider import QwenProvider
@@ -78,6 +79,33 @@ class AIProductAssistant:
                             items.append("")
                         bp[key] = items
 
+            # FIX: Normalize product_type BEFORE Pydantic validation
+            if 'base_product' in raw_result:
+                bp = raw_result['base_product']
+                product_type = bp.get('product_type', '')
+                if product_type:
+                    from app.services.sp_api_client import SPAPIClient
+                    normalized = SPAPIClient.normalize_product_type(product_type)
+                    if normalized != product_type:
+                        logger.info(f"🔄 Normalized product_type: '{product_type}' → '{normalized}'")
+                        bp['product_type'] = normalized
+
+            # FIX: If AI didn't generate variants, create them automatically from base_product
+            if 'variants' not in raw_result or not raw_result['variants']:
+                logger.warning("AI didn't return variants — auto-generating from base_product")
+                bp = raw_result['base_product']
+                raw_result['variants'] = []
+                for i in range(copies):
+                    variant_sku = f"{bp.get('model_number', 'PROD')}-{str(i+1).zfill(3)}"
+                    raw_result['variants'].append({
+                        "variant_number": i + 1,
+                        "name_ar": bp.get('product_type', name),
+                        "name_en": bp.get('product_type', name),
+                        "description_ar": bp.get('bullet_points_ar', [''])[0] if bp.get('bullet_points_ar') else name,
+                        "description_en": bp.get('bullet_points_en', [''])[0] if bp.get('bullet_points_en') else name,
+                        "suggested_sku": variant_sku,
+                    })
+
             result = AIProductResponse(**raw_result)
             logger.info(
                 f"✅ Generated {len(result.variants)} variant(s) — "
@@ -86,7 +114,14 @@ class AIProductAssistant:
             )
             return result
         except Exception as e:
-            logger.error(f"Pydantic validation failed: {e}\nRaw data: {raw_result}")
+            logger.error(f"Pydantic validation failed: {e}")
+            logger.error(f"Raw AI response: {json.dumps(raw_result, ensure_ascii=False)[:500]}")
+            # Try to give helpful error messages
+            error_str = str(e)
+            if 'product_type' in error_str.lower():
+                logger.error(f"Product type issue: {error_str}")
+            if 'ean' in error_str.lower():
+                logger.error(f"EAN issue: {error_str}")
             raise ValueError(f"AI generated invalid product data: {e}")
     
     def _build_system_prompt(self, learned_fields: list[str] = None) -> str:
@@ -108,18 +143,44 @@ class AIProductAssistant:
    - كل نقطة 20 حرف على الأقل
    - تركز على الفوائد للمشتري
 
+⚠️ مهم جداً - نوع المنتج (product_type):
+يجب أن تستخدم أحد القيم التالية بالإنجليزية فقط (ممنوع العربي!):
+- HOME_KITCHEN → للأجهزة المنزلية والمطبخ (خلاطات، أفران، أدوات مطبخ، إلخ)
+- HOME_ORGANIZERS_AND_STORAGE → للتخزين والتنظيم
+- ELECTRONICS → للإلكترونيات (تلفزيونات، هواتف، لابتوبات، إلخ)
+- BABY_PRODUCT → لمنتجات الأطفال
+- APPAREL → للملابس والأزياء
+- TOYS_AND_GAMES → للألعاب
+- BEAUTY → لمستحضرات التجميل والعناية
+- SPORTING_GOODS → للرياضة
+- OFFICE_PRODUCTS → لمستلزمات المكتب
+- PET_PRODUCTS → لمستلزمات الحيوانات الأليفة
+مثال: منتج "مضرب يدوي كهربائي" → product_type = "HOME_KITCHEN"
+
 معايير Amazon:
 - اسم المنتج: max 200 حرف، يتضمن العلامة + الموديل + المواصفات الأساسية
 - الوصف: max 2000 حرف، شامل المميزات + الاستخدام
 - Bullet Points: 5 نقاط، كل نقطة max 500 حرف، تركز على الفوائد
 - Keywords: max 250 حرف، SEO optimized
-- SKU: يجب أن يكون فريد وقابل للقراءة (مثال: MIX-300W-001)
+
+⚠️ قواعد SKU إجبارية (مهم جداً):
+- SKU لازم يكون فريد لكل منتج — ممنوع التكرار نهائياً
+- استخدم دائماً شرطة "-" بين كل مجموعة حروف أو أرقام لكسر التكرار
+- الصيغة: [اختصار-نوع-المنتج]-[مواصفات]-[رقم-متغير]
+- أمثلة صحيحة: MIX-300W-001, BLND-5SPD-002, GRIL-PRO-003
+- أمثلة خاطئة: MIX300W001, BLND5SPD002 (بدون شرطة — ممنوع!)
+- كل منتج لازم يكون له SKU مختلف تماماً حتى لو نفس المنتج
 
 ⚠️ مهم جداً:
 - ارجع JSON فقط بدون أي نص إضافي
 - لا تضيف markdown code blocks (```)
 - لا تضيف JSON Schema أو type definitions
 - ارجع القيم مباشرة كما في المثال أدناه
+
+⚠️ تحذير: لازم ترجع حقل "variants" في الـ JSON — ده حقل إجباري!
+- لو copies = 1: رجّع variants فيه عنصر واحد
+- لو copies = 3: رجّع variants فيه 3 عناصر
+- كل variant لازم يكون فيه: variant_number, name_ar, name_en, description_ar, description_en, suggested_sku
 """.strip()
 
         # Add learned fields section
@@ -158,11 +219,21 @@ class AIProductAssistant:
 
 {variants_instruction}
 
+⚠️ مهم: الـ JSON لازم يحتوي على حقلين أساسيين:
+1. "base_product": البيانات المشتركة (البراند، الباركود، النقاط البيعية، إلخ)
+2. "variants": قائمة بـ {copies} منتج مختلف — كل منتج فيه name_ar, name_en, description_ar, description_en, suggested_sku
+
+⚠️ product_type إجباري — استخدم قيمة إنجليزية فقط:
+HOME_KITCHEN (مطبخ) | ELECTRONICS (إلكترونيات) | HOME_ORGANIZERS_AND_STORAGE (تخزين)
+BABY_PRODUCT (أطفال) | APPAREL (ملابس) | TOYS_AND_GAMES (ألعاب)
+BEAUTY (عناية) | SPORTING_GOODS (رياضة) | OFFICE_PRODUCTS (مكتب) | PET_PRODUCTS (حيوانات)
+
 التنسيق المطلوب (JSON فقط):
-{{"base_product": {{"brand": "اسم البراند", "manufacturer": "اسم المصنع", "product_type": "نوع المنتج", "price": null, "ean": "6281234567890", "upc": "", "bullet_points_ar": ["نقطة بيعية كاملة 1 - سطر يشرح ميزة مهمة", "نقطة بيعية كاملة 2 - سطر يشرح فائدة", "نقطة بيعية كاملة 3 - سطر يشرح ميزة", "نقطة بيعية كاملة 4 - سطر يشرح فائدة", "نقطة بيعية كاملة 5 - سطر يشرح ميزة"], "bullet_points_en": ["Full selling point 1 - line describing feature", "Full selling point 2 - line describing benefit", "Full selling point 3 - line describing feature", "Full selling point 4 - line describing benefit", "Full selling point 5 - line describing feature"], "keywords": ["كلمة1", "كلمة2"], "material": "المادة", "target_audience": "الفئة", "condition": "New", "fulfillment_channel": "MFN", "country_of_origin": "CN", "model_number": "MOD-001", "included_components": "كلمة واحدة"}}, "variants": [{{"variant_number": 1, "name_ar": "الاسم بالعربي", "name_en": "English Name", "description_ar": "وصف شامل 3 سطور - يشرح المميزات والاستخدامات والفوائد بشكل تفصيلي. هذا المنتج مصنوع من مواد عالية الجودة. مثالي للاستخدام اليومي.", "description_en": "Full 3-line description describing features, benefits and uses in detail. Made from high quality materials. Perfect for daily use.", "suggested_sku": "SKU-001"}}]}}
+{{"base_product": {{"brand": "اسم البراند", "manufacturer": "اسم المصنع", "product_type": "HOME_KITCHEN", "price": null, "ean": "6281234567890", "upc": "", "bullet_points_ar": ["نقطة بيعية كاملة 1 - سطر يشرح ميزة مهمة", "نقطة بيعية كاملة 2 - سطر يشرح فائدة", "نقطة بيعية كاملة 3 - سطر يشرح ميزة", "نقطة بيعية كاملة 4 - سطر يشرح فائدة", "نقطة بيعية كاملة 5 - سطر يشرح ميزة"], "bullet_points_en": ["Full selling point 1 - line describing feature", "Full selling point 2 - line describing benefit", "Full selling point 3 - line describing feature", "Full selling point 4 - line describing benefit", "Full selling point 5 - line describing feature"], "keywords": ["كلمة1", "كلمة2"], "material": "المادة", "target_audience": "الفئة", "condition": "New", "fulfillment_channel": "MFN", "country_of_origin": "CN", "model_number": "MOD-001", "included_components": "كلمة واحدة"}}, "variants": [{{"variant_number": 1, "name_ar": "الاسم بالعربي", "name_en": "English Name", "description_ar": "وصف شامل 3 سطور - يشرح المميزات والاستخدامات والفوائد بشكل تفصيلي. هذا المنتج مصنوع من مواد عالية الجودة. مثالي للاستخدام اليومي.", "description_en": "Full 3-line description describing features, benefits and uses in detail. Made from high quality materials. Perfect for daily use.", "suggested_sku": "SKU-001"}}]}}
 
 قواعد مهمة:
 - الباركود EAN: إجباري - ولّد 13 رقم صحيح (مثال: 628xxxxxxxxx)
+- product_type: إجباري - استخدم قيمة إنجليزية (HOME_KITCHEN, ELECTRONICS, إلخ) — ممنوع العربي!
 - التسعير (price): اتركه null - لا تكتب رقم
 - المكونات المرفقة (included_components): كلمة واحدة فقط
 - الوصف: 3 سطور كاملة على الأقل
@@ -174,4 +245,5 @@ class AIProductAssistant:
 - استخدم double quotes فقط (لا تستخدم single quotes)
 - تأكد من إغلاق جميع الأقواس {{}} و []
 - لا تستخدم YAML format (لا تستخدم indentation بدل الأقواس)
+- ⚠️ لا تنسَ حقل "variants" — ده إجباري وميمكنش تسيبه
 """.strip()

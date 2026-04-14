@@ -474,7 +474,7 @@ export default function ProductCreatePage() {
         toast.success('تم تحسين البيانات بالذكاء الاصطناعي!')
       }
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'فشل التحسين')
+      toast.error('فشل التحسين: ' + String(e?.response?.data?.detail || e?.message || 'فشل التحسين'))
     } finally {
       setImproving(false)
     }
@@ -508,10 +508,7 @@ export default function ProductCreatePage() {
       errors.push('الوصف بالعربي لازم يكون وصف كامل - 3 سطور على الأقل (50 حرف كحد أدنى)')
     if (required.description_en.trim().length < 50)
       errors.push('الوصف بالإنجليزي لازم يكون وصف كامل - 3 سطور على الأقل (50 حرف كحد أدنى)')
-    // النقاط البيعية - 5 نقاط إجبارية كاملة
-    const validBullets = required.bullet_points.filter(bp => bp.trim().length >= 20)
-    if (validBullets.length < 5)
-      errors.push(`النقاط البيعية لازم تكون 5 نقاط كاملة - كل نقطة جملة مفيدة (${validBullets.length}/5 مكتملة)`)
+    // النقاط البيعية - اختيارية (ممنوع إجباري)
     // التسعير والكمية - اختياري (ممنوع إجباري)
     // No validation on price/quantity - they are optional
     if (!mainImageUrl && !isEditMode)
@@ -612,16 +609,21 @@ export default function ProductCreatePage() {
   const buildPayload = (variantIndex = 0) => {
     const allImages = [mainImageUrl, ...extraImageUrls].filter(Boolean)
     const variantSuffix = variantIndex > 0 ? ` - Variant ${variantIndex + 1}` : ''
+    // Unique SKU: timestamp + variant index + 2 random segments separated by dashes to prevent duplicates
+    const skuTimestamp = Date.now()
+    const rand1 = Math.random().toString(36).substring(2, 5).toUpperCase()
+    const rand2 = Math.random().toString(36).substring(2, 5).toUpperCase()
+    const sku = isEditMode ? editProduct.sku : `AUTO-${skuTimestamp}-${variantIndex}-${rand1}-${rand2}`
 
     return {
-      sku: isEditMode ? editProduct.sku : `AUTO-${Date.now()}-${variantIndex}`,
+      sku,
       seller_id: selectedSellerId || undefined,
       name: `${required.name_en.trim()}${variantSuffix}`,
       name_ar: `${required.name_ar.trim()}${variantSuffix}`,
       name_en: `${required.name_en.trim()}${variantSuffix}`,
       brand: required.brand || DEFAULT_VALUES.brand,
-      price: parseFloat(required.price),
-      quantity: parseInt(required.quantity),
+      price: parseFloat(required.price) || 0, // FIX: default to 0 if empty (backend accepts ge=0)
+      quantity: parseInt(required.quantity) || 0, // FIX: default to 0 if empty
       currency: 'EGP', // Default currency
       product_type: required.product_type,
       condition: required.condition,
@@ -669,8 +671,11 @@ export default function ProductCreatePage() {
 
     setSubmitting(true)
     try {
+      // Use AI products count if available, otherwise use listingCopies
+      const actualCopies = aiProducts.length > 0 ? aiProducts.length : listingCopies
+      
       const payloads = []
-      for (let i = 0; i < listingCopies; i++) {
+      for (let i = 0; i < actualCopies; i++) {
         payloads.push(buildPayload(i))
       }
 
@@ -693,22 +698,59 @@ export default function ProductCreatePage() {
       }
 
       // CREATE MODE: Create new product(s)
-      if (listingCopies === 1) {
+      if (actualCopies === 1) {
         await createMutation.mutateAsync(payloads[0] as any)
         toast.success('✅ تم حفظ المنتج!')
       } else {
-        toast.loading(`جاري إنشاء ${listingCopies} منتج...`)
+        toast.loading(`جاري إنشاء ${actualCopies} منتج...`)
         let successCount = 0
+        const failedProducts: Array<{ index: number; error: string }> = []
+
         for (let i = 0; i < payloads.length; i++) {
           try {
             await createMutation.mutateAsync(payloads[i] as any)
             successCount++
-          } catch {
-            // silently fail for individual items
+          } catch (err: any) {
+            // FIX: Properly extract error message from FastAPI 422 response
+            let errorMsg = 'خطأ غير معروف'
+            const responseDetail = err?.response?.data?.detail
+
+            if (Array.isArray(responseDetail)) {
+              // FastAPI validation errors (422) — each item: {type, loc, msg, input, ctx}
+              errorMsg = responseDetail.map((e: any) => {
+                const field = Array.isArray(e.loc) ? e.loc.join('.') : String(e.loc || '')
+                const msg = String(e.msg || e.message || '')
+                return `${field}: ${msg}`
+              }).join('\n')
+            } else if (typeof responseDetail === 'string') {
+              errorMsg = responseDetail
+            } else if (responseDetail && typeof responseDetail === 'object') {
+              // Object detail — stringify it safely
+              errorMsg = String(JSON.stringify(responseDetail, null, 2))
+            } else if (typeof err?.message === 'string') {
+              errorMsg = err.message
+            }
+
+            // SAFETY: Ensure errorMsg is always a string (not object/array)
+            const safeErrorMsg = typeof errorMsg === 'string' ? errorMsg : String(errorMsg)
+            failedProducts.push({ index: i + 1, error: safeErrorMsg })
           }
         }
+
         toast.dismiss()
-        toast.success(`✅ تم إنشاء ${successCount} منتج!`)
+
+        if (successCount > 0) {
+          toast.success(`✅ تم إنشاء ${successCount} من ${actualCopies} منتج`)
+        }
+
+        if (failedProducts.length > 0) {
+          const errorDetails = failedProducts.map(f => `المنتج ${f.index}: ${f.error}`).join('\n')
+          toast.error(`❌ فشل ${failedProducts.length} منتج:\n${errorDetails}`, { duration: 12000 })
+        }
+
+        if (successCount === 0) {
+          toast.error('فشل إنشاء أي منتج - تحقق من البيانات', { duration: 10000 })
+        }
       }
 
       navigate('/products')
@@ -716,20 +758,27 @@ export default function ProductCreatePage() {
       // FIX: Proper error message extraction for 422 validation errors
       let errorMsg = 'حدث خطأ غير معروف'
       const detail = error?.response?.data?.detail
-      
+
       if (Array.isArray(detail)) {
         // FastAPI validation errors (422)
-        errorMsg = detail.map((err: any) => err.msg || err.message).join('\n')
+        errorMsg = detail.map((err: any) => {
+          const field = Array.isArray(err.loc) ? err.loc.join('.') : String(err.loc || '')
+          const msg = String(err.msg || err.message || '')
+          return `${field}: ${msg}`
+        }).join('\n')
       } else if (typeof detail === 'string') {
         errorMsg = detail
+      } else if (typeof detail === 'object' && detail !== null) {
+        errorMsg = JSON.stringify(detail, null, 2)
       } else if (error?.response?.data?.message) {
-        errorMsg = error.response.data.message
+        errorMsg = String(error.response.data.message)
       } else if (typeof error?.message === 'string') {
         errorMsg = error.message
       }
-      
-      toast.error('فشل الحفظ: ' + errorMsg)
-      console.error('Save error:', error)
+
+      // SAFETY: Ensure errorMsg is always a string
+      const safeMsg = typeof errorMsg === 'string' ? errorMsg : String(errorMsg)
+      toast.error('فشل الحفظ: ' + safeMsg)
     } finally {
       setSubmitting(false)
     }
@@ -755,11 +804,16 @@ export default function ProductCreatePage() {
       toast.info('⏳ تم الاستلام — جاري المعالجة لدى أمازون')
       navigate('/listings')
     } catch (error: any) {
-      const errorMsg = error?.response?.data?.detail
+      let errorMsg = error?.response?.data?.detail
         || error?.response?.data?.message
         || (typeof error?.message === 'string' ? error.message : 'حدث خطأ غير معروف')
+      // Handle array detail (FastAPI 422)
+      if (Array.isArray(errorMsg)) {
+        errorMsg = errorMsg.map((e: any) => String(e.msg || e.message || '')).join('\n')
+      }
+      // SAFETY: Ensure errorMsg is always a string
+      errorMsg = typeof errorMsg === 'string' ? errorMsg : String(errorMsg)
       toast.error('فشل الإرسال: ' + errorMsg)
-      console.error('Submit error:', error)
     } finally {
       setSubmitting(false)
     }
@@ -1074,7 +1128,7 @@ export default function ProductCreatePage() {
           />
         </Field>
 
-        <Field label="النقاط البيعية (5 نقاط)" required hint="5 نقاط بيعية كاملة - كل نقطة سطر كامل يشرح ميزة أو فائدة مهمة للمشتري">
+        <Field label="النقاط البيعية" hint="💡 يُنصح بكتابة 5 نقاط كاملة — كل نقطة جملة مفيدة تشرح ميزة أو فائدة مهمة للمشتري (اختياري)">
           <div className="space-y-3">
             {required.bullet_points.map((bp, i) => (
               <div key={i} className="flex gap-2">
@@ -1463,7 +1517,7 @@ export default function ProductCreatePage() {
             <img
               src={mainImagePreview || mainImageUrl}
               alt="Main product"
-              className="w-full h-64 object-contain bg-gray-100 dark:bg-gray-900 rounded-lg"
+              className="w-full h-64 object-contain bg-bg-tertiary rounded-lg"
             />
             <button
               onClick={() => {

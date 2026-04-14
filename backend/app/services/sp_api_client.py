@@ -15,12 +15,46 @@ import hmac
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from urllib.parse import quote, urlencode
+from pathlib import Path
 
 import requests
 from requests_auth_aws_sigv4 import AWSSigV4
 from loguru import logger
 
+# Load .env file if not already loaded
+from dotenv import load_dotenv
+_env_path = Path(__file__).parent.parent.parent / '.env'
+if _env_path.exists():
+    load_dotenv(_env_path, override=False)
+
 from app.config import Settings
+
+
+# Amazon SP-API valid product types mapping (Arabic -> English)
+ARABIC_TO_AMAZON_PRODUCT_TYPE = {
+    "أدوات تنظيم وتخزين المنزل": "HOME_ORGANIZERS_AND_STORAGE",
+    "منتجات أطفال": "BABY_PRODUCT",
+    "ملابس وأزياء": "APPAREL",
+    "المنزل والمطبخ": "HOME_KITCHEN",
+    "إلكترونيات": "ELECTRONICS",
+    "ألعاب وألعاب": "TOYS_AND_GAMES",
+    "العناية الشخصية والجمال": "BEAUTY",
+    "الرياضة والسلع الرياضية": "SPORTING_GOODS",
+    "مستلزمات المكتبة والأدوات المكتبية": "OFFICE_PRODUCTS",
+    "مستلزمات الحيوانات الأليفة": "PET_PRODUCTS",
+    # Common Arabic product types that might be auto-generated
+    "أدوات المطبخ": "HOME_KITCHEN",
+    "أدوات منزلية": "HOME_KITCHEN",
+    "مطبخ": "HOME_KITCHEN",
+    "إلكترونيات": "ELECTRONICS",
+    "أطفال": "BABY_PRODUCT",
+    "ملابس": "APPAREL",
+    "ألعاب": "TOYS_AND_GAMES",
+    "جمال": "BEAUTY",
+    "رياضة": "SPORTING_GOODS",
+    "مكتب": "OFFICE_PRODUCTS",
+    "حيوانات": "PET_PRODUCTS",
+}
 
 
 class SPAPIClient:
@@ -360,6 +394,23 @@ class SPAPIClient:
             logger.error(f"Failed to get seller ID: {e}")
             return None
 
+    def get_seller_account(self) -> Optional[Dict[str, Any]]:
+        """
+        Get seller account info including name.
+        API: GET /sellers/v1/account
+        """
+        try:
+            path = "/sellers/v1/account"
+            result = self._make_request("GET", path)
+            payload = result.get("payload", {})
+            if payload:
+                logger.info(f"✅ Seller account: {payload}")
+                return payload
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to get seller account: {e}")
+            return None
+
     # ============================================================
     # Product Type Definitions API
     # ============================================================
@@ -501,10 +552,21 @@ class SPAPIClient:
         # Send to Amazon
         result = self.put_listing_item(seller_id, sku, payload)
 
+        # DEBUG: Log the full request/response for troubleshooting
+        logger.info(f"📦 Request payload productType: {payload.get('productType')}")
+        logger.debug(f"📦 Full payload keys: {list(payload.keys())}")
+
         # Parse response
         issues = result.get("issues", [])
         errors = [i for i in issues if i.get("severity") == "ERROR"]
         warnings = [i for i in issues if i.get("severity") == "WARNING"]
+        
+        # Log errors in detail
+        if errors:
+            for err in errors:
+                logger.error(f"❌ Amazon Error: {err.get('message')}")
+                logger.error(f"   Code: {err.get('code')}")
+                logger.error(f"   Path: {err.get('path', 'N/A')}")
 
         return {
             "success": len(errors) == 0,
@@ -637,7 +699,70 @@ class SPAPIClient:
             }]
 
         return {
-            "productType": product_data.get("product_type", "HOME_ORGANIZERS_AND_STORAGE"),
+            "productType": self.normalize_product_type(product_data.get("product_type", "HOME_KITCHEN")),
             "requirements": "LISTING",
             "attributes": attributes,
         }
+
+    @staticmethod
+    def normalize_product_type(product_type: str) -> str:
+        """
+        Convert Arabic product type to Amazon valid English product type.
+        
+        Examples:
+            "المنزل والمطبخ" → "HOME_KITCHEN"
+            "مضرب يدوي كهربائي" → "HOME_KITCHEN"
+            "HOME_KITCHEN" → "HOME_KITCHEN"
+        """
+        if not product_type:
+            return "HOME_KITCHEN"
+        
+        # If already a valid Amazon product type (uppercase with underscores)
+        if product_type.isupper() and "_" in product_type:
+            return product_type
+        
+        # Try exact match
+        if product_type in ARABIC_TO_AMAZON_PRODUCT_TYPE:
+            return ARABIC_TO_AMAZON_PRODUCT_TYPE[product_type]
+        
+        # Try partial match (check if any keyword is in the product type)
+        product_type_lower = product_type.lower()
+        for arabic, amazon_type in ARABIC_TO_AMAZON_PRODUCT_TYPE.items():
+            if arabic.lower() in product_type_lower or product_type_lower in arabic.lower():
+                logger.info(f"🔄 Product type mapped: '{product_type}' → '{amazon_type}'")
+                return amazon_type
+        
+        # Fallback: try to extract keywords
+        # NOTE: Using list of tuples to preserve order! More specific keywords first.
+        keywords_map = [
+            # Kitchen/Home appliances (check these FIRST - they're more specific)
+            ("مضرب", "HOME_KITCHEN"), ("خلاط", "HOME_KITCHEN"), ("فرن", "HOME_KITCHEN"),
+            ("أدوات مطبخ", "HOME_KITCHEN"), ("أدوات منزلية", "HOME_KITCHEN"),
+            ("مطبخ", "HOME_KITCHEN"), ("منزل", "HOME_KITCHEN"),
+            ("يدوي", "HOME_KITCHEN"), ("أدوات", "HOME_KITCHEN"),
+            # Storage
+            ("تخزين", "HOME_ORGANIZERS_AND_STORAGE"),
+            # Electronics (general electronics)
+            ("إلكتروني", "ELECTRONICS"), ("جهاز", "ELECTRONICS"), ("ماكينة", "ELECTRONICS"),
+            ("كهربائي", "ELECTRONICS"), ("تلفاز", "ELECTRONICS"), ("تلفزيون", "ELECTRONICS"),
+            ("ذكي", "ELECTRONICS"), ("سمارت", "ELECTRONICS"),
+            ("كمبيوتر", "ELECTRONICS"), ("لابتوب", "ELECTRONICS"),
+            ("موبايل", "ELECTRONICS"), ("هاتف", "ELECTRONICS"),
+            # Other categories
+            ("أطفال", "BABY_PRODUCT"), ("طفل", "BABY_PRODUCT"),
+            ("ملابس", "APPAREL"), ("زي", "APPAREL"),
+            ("ألعاب", "TOYS_AND_GAMES"), ("لعبة", "TOYS_AND_GAMES"),
+            ("جمال", "BEAUTY"), ("عناية", "BEAUTY"),
+            ("رياضة", "SPORTING_GOODS"), ("رياضي", "SPORTING_GOODS"),
+            ("مكتب", "OFFICE_PRODUCTS"),
+            ("حيوان", "PET_PRODUCTS"),
+        ]
+        
+        for keyword, amazon_type in keywords_map:
+            if keyword in product_type_lower:
+                logger.info(f"🔄 Product type mapped by keyword: '{product_type}' → '{amazon_type}'")
+                return amazon_type
+        
+        # Default fallback
+        logger.warning(f"⚠️ Unknown product type '{product_type}', defaulting to HOME_KITCHEN")
+        return "HOME_KITCHEN"

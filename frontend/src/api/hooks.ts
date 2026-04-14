@@ -139,24 +139,30 @@ export function useSubmitListing() {
   })
 }
 
+export function useRetryListing() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (listing_id: string) => {
+      const { data } = await listingsApi.retry(listing_id)
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: listingKeys.lists() })
+    },
+  })
+}
+
 // ==================== Catalog Search Hooks ====================
 
 export function useCatalogSearch() {
   return useMutation({
     mutationFn: async (params: { query: string; searchType: string }) => {
-      console.log('[useCatalogSearch] Searching:', params)
       const { data } = await catalogApi.search({
         query: params.query,
         search_type: params.searchType,
       })
-      console.log('[useCatalogSearch] Response:', data)
       return data
-    },
-    onSuccess: (data) => {
-      console.log('[useCatalogSearch] Success:', data)
-    },
-    onError: (error) => {
-      console.error('[useCatalogSearch] Error:', error)
     },
   })
 }
@@ -179,15 +185,8 @@ export function useSellerInfo() {
   return useQuery({
     queryKey: sellerKeys.info,
     queryFn: async () => {
-      try {
-        console.log('[useSellerInfo] Fetching seller info...')
-        const { data } = await sellersApi.info()
-        console.log('[useSellerInfo] Response:', data)
-        return data
-      } catch (error) {
-        console.error('[useSellerInfo] Error:', error)
-        throw error
-      }
+      const { data } = await sellersApi.info()
+      return data
     },
     staleTime: 1000 * 60 * 5,
     retry: 2,

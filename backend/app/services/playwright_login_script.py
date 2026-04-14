@@ -13,6 +13,7 @@ import re
 import tempfile
 from pathlib import Path
 from typing import Optional
+from loguru import logger
 
 # =============================================
 # Centralized User-Agent (MUST match niquests/requests)
@@ -25,12 +26,12 @@ AMAZON_USER_AGENT = (
 
 WINDOWS_USER_AGENT = AMAZON_USER_AGENT  # Alias for backward compatibility
 
-print("=" * 60)
-print("🚀 Playwright Login Script Started")
-print(f"   Python: {sys.version}")
-print(f"   Working Dir: {os.getcwd()}")
-print(f"   Script: {__file__}")
-print("=" * 60)
+logger.info("=" * 60)
+logger.info("🚀 Playwright Login Script Started")
+logger.info(f"   Python: {sys.version}")
+logger.info(f"   Working Dir: {os.getcwd()}")
+logger.info(f"   Script: {__file__}")
+logger.info("=" * 60)
 
 # =============================================
 # Amazon Seller Central URLs
@@ -90,7 +91,7 @@ def extract_seller_name(page) -> str:
         if response and isinstance(response, dict):
             seller_name = response.get("sellerName") or response.get("merchantName")
             if seller_name:
-                print(f"Seller name extracted via API: {seller_name}")
+                logger.info(f"Seller name extracted via API: {seller_name}")
                 return seller_name
     except Exception:
         pass
@@ -105,7 +106,7 @@ def extract_seller_name(page) -> str:
         if match:
             seller_name = match.group(1).strip()
             if seller_name and 2 < len(seller_name) < 100 and seller_name.lower() not in ['amazon', 'unknown']:
-                print(f"Seller name extracted from greeting: {seller_name}")
+                logger.info(f"Seller name extracted from greeting: {seller_name}")
                 return seller_name
     except Exception:
         pass
@@ -127,7 +128,7 @@ def extract_seller_name(page) -> str:
         if response and isinstance(response, dict):
             seller_name = response.get("sellerName") or response.get("merchantName") or response.get("displayName")
             if seller_name:
-                print(f"Seller name extracted from dashboard API: {seller_name}")
+                logger.info(f"Seller name extracted from dashboard API: {seller_name}")
                 return seller_name
     except Exception:
         pass
@@ -140,12 +141,12 @@ def extract_seller_name(page) -> str:
                 title = title.replace(suffix, "")
             title = title.strip()
             if title and 2 < len(title) < 100 and title.lower() not in ['amazon', 'unknown', 'amazon seller central']:
-                print(f"Seller name from title: {title}")
+                logger.info(f"Seller name from title: {title}")
                 return title
     except Exception:
         pass
 
-    print("WARNING: Could not extract seller name, using email as fallback")
+    logger.info("WARNING: Could not extract seller name, using email as fallback")
     return "Unknown Seller"
 
 
@@ -178,12 +179,12 @@ def extract_csrf_token(html_content: str) -> Optional[str]:
                     r'^ab',
                 ]
                 if any(re.search(inv, token, re.IGNORECASE) for inv in invalid_patterns):
-                    print(f"CSRF candidate rejected (A/B test): {token[:30]}...")
+                    logger.info(f"CSRF candidate rejected (A/B test): {token[:30]}...")
                     continue
-                print(f"CSRF Token extracted via regex ({len(token)} chars)")
+                logger.info(f"CSRF Token extracted via regex ({len(token)} chars)")
                 return token
 
-    print("WARNING: No CSRF token found with any regex pattern")
+    logger.info("WARNING: No CSRF token found with any regex pattern")
     return None
 
 
@@ -192,7 +193,7 @@ def main():
     output_file = os.environ.get("AMZN_OUTPUT", "")
 
     if not output_file:
-        print("ERROR: AMZN_OUTPUT not set")
+        logger.info("ERROR: AMZN_OUTPUT not set")
         sys.exit(1)
 
     base_url = SELLER_CENTRAL_BASE.get(country_code.lower(), SELLER_CENTRAL_BASE["eg"])
@@ -208,24 +209,24 @@ def main():
         "url": login_url,
     }
 
-    print(f"Opening Playwright (headless=False, stealth, persistent) → {login_url}")
-    print("=" * 60)
-    print("🔥 STARTING BROWSER LAUNCH (PERSISTENT CONTEXT)...")
-    print("=" * 60)
+    logger.info(f"Opening Playwright (headless=False, stealth, persistent) → {login_url}")
+    logger.info("=" * 60)
+    logger.info("🔥 STARTING BROWSER LAUNCH (PERSISTENT CONTEXT)...")
+    logger.info("=" * 60)
 
     try:
         from playwright.sync_api import sync_playwright
 
         playwright = sync_playwright().start()
-        print("✅ Playwright started")
+        logger.info("✅ Playwright started")
 
         # =============================================
         # FIX 1: Persistent Context (save Local Storage, IndexedDB, Cache)
         # =============================================
         user_data_dir = os.path.join(tempfile.gettempdir(), "amazon_browser_profile_eg" if country_code == "eg" else f"amazon_browser_profile_{country_code}")
-        print(f"📁 User Data Dir: {user_data_dir}")
+        logger.info(f"📁 User Data Dir: {user_data_dir}")
 
-        print("🚀 Launching Chromium with persistent context...")
+        logger.info("🚀 Launching Chromium with persistent context...")
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=user_data_dir,
             headless=False,
@@ -240,10 +241,10 @@ def main():
                 "--disable-blink-features=AutomationControlled",
             ],
         )
-        print("✅ Browser launched with persistent context!")
+        logger.info("✅ Browser launched with persistent context!")
 
         page = context.pages[0] if context.pages else context.new_page()
-        print("✅ Browser context and page created")
+        logger.info("✅ Browser context and page created")
 
         # =============================================
         # THE NINJA CSRF SNIFFER (التنصت على الشبكة)
@@ -259,13 +260,13 @@ def main():
                     # Reject A/B test tokens
                     if token and len(token) > 30 and not token.startswith('mons_'):
                         captured_data["csrf_token"] = token
-                        print(f"🕵️ CSRF TOKEN CAPTURED FROM NETWORK: {token[:30]}... ({len(token)} chars)")
+                        logger.info(f"🕵️ CSRF TOKEN CAPTURED FROM NETWORK: {token[:30]}... ({len(token)} chars)")
             except Exception:
                 pass
 
         # Enable request interception
         page.on("request", intercept_request)
-        print("🕵️ Network sniffer activated — hunting CSRF token from outgoing requests...")
+        logger.info("🕵️ Network sniffer activated — hunting CSRF token from outgoing requests...")
 
         # Install stealth
         install_stealth(page)
@@ -275,17 +276,17 @@ def main():
             import ctypes
             hwnd = page.evaluate("() => window.outerHeight ? 1 : 0")
             ctypes.windll.user32.SetForegroundWindow(ctypes.windll.kernel32.GetCurrentProcessId())
-            print("📌 Attempting to bring browser window to foreground...")
+            logger.info("📌 Attempting to bring browser window to foreground...")
         except Exception as e:
-            print(f"   (Could not force window to foreground: {e})")
+            logger.info(f"   (Could not force window to foreground: {e})")
 
-        print(f"Navigating to {login_url}...")
+        logger.info(f"Navigating to {login_url}...")
         page.goto(login_url, wait_until="domcontentloaded", timeout=60000)
 
-        print("✅✅✅ Browser window should now be visible!")
-        print("👉 Look for the Chromium window on your screen")
-        print("Waiting for user to login (close browser when done)...")
-        print("Login in the browser window and wait for dashboard to load.")
+        logger.info("✅✅✅ Browser window should now be visible!")
+        logger.info("👉 Look for the Chromium window on your screen")
+        logger.info("Waiting for user to login (close browser when done)...")
+        logger.info("Login in the browser window and wait for dashboard to load.")
 
         start_time = time.time()
         timeout_seconds = 300
@@ -302,7 +303,7 @@ def main():
                 from urllib.parse import urlparse
                 parsed = urlparse(current_url)
                 url_path = parsed.path  # e.g. "/ap/signin" or "/home" (NOT query params!)
-                print(f"[Check] URL Path: {url_path}")
+                logger.info(f"[Check] URL Path: {url_path}")
 
                 # =============================================
                 # LAYER 2: REJECT if on ANY login/auth page
@@ -312,7 +313,7 @@ def main():
                 is_auth_page = any(url_path.startswith(prefix) for prefix in auth_prefixes)
 
                 if is_auth_page:
-                    print(f"  ❌ Still on auth page: {url_path} — waiting...")
+                    logger.info(f"  ❌ Still on auth page: {url_path} — waiting...")
                     continue
 
                 # =============================================
@@ -323,8 +324,8 @@ def main():
                 # but they ARE logged in — we just can't navigate to /home!
                 
                 if not is_auth_page:
-                    print(f"  ✅ NOT on auth page → User is logged in!")
-                    print(f"     Current page: {url_path}")
+                    logger.info(f"  ✅ NOT on auth page → User is logged in!")
+                    logger.info(f"     Current page: {url_path}")
                     
                     # Try to navigate to /home to confirm, but don't block if it fails
                     try:
@@ -332,21 +333,21 @@ def main():
                         time.sleep(1)
                         current_url = page.url
                         url_path = urlparse(current_url).path
-                        print(f"  ✅ Navigated to /home: {url_path}")
+                        logger.info(f"  ✅ Navigated to /home: {url_path}")
                     except Exception as nav_error:
                         # Navigation failed (Amazon redirected us) — but user IS logged in!
-                        print(f"  ⚠️ Could not navigate to /home: {nav_error}")
-                        print(f"     But user IS logged in (not on /ap/ or /gp/) — proceeding!")
+                        logger.info(f"  ⚠️ Could not navigate to /home: {nav_error}")
+                        logger.info(f"     But user IS logged in (not on /ap/ or /gp/) — proceeding!")
                         # Extract current page URL for result
                         current_url = page.url
                         url_path = urlparse(current_url).path
                         # Don't block — proceed with cookie extraction
 
-                    print(f"  ✅ Dashboard detected via URL: {url_path}")
+                    logger.info(f"  ✅ Dashboard detected via URL: {url_path}")
                     # Proceed to Layer 4 and then extract cookies
                 else:
                     # Still on auth page
-                    print(f"  ❌ Still on auth page: {url_path} — waiting...")
+                    logger.info(f"  ❌ Still on auth page: {url_path} — waiting...")
                     continue
 
                 # =============================================
@@ -354,14 +355,14 @@ def main():
                 # =============================================
                 try:
                     page_title = page.title()
-                    print(f"[Check] Page Title: {page_title}")
+                    logger.info(f"[Check] Page Title: {page_title}")
 
                     # REJECT if page title indicates login
                     login_titles = ["sign in", "تسجيل الدخول", "sign-in", "login to amazon"]
                     is_login_title = any(lt in page_title.lower() for lt in login_titles)
 
                     if is_login_title:
-                        print(f"  ❌ Page title indicates login — false positive!")
+                        logger.info(f"  ❌ Page title indicates login — false positive!")
                         continue
 
                     # CONFIRM if page title indicates dashboard
@@ -369,37 +370,37 @@ def main():
                     is_dashboard_title = any(dt in page_title.lower() for dt in dashboard_titles)
 
                     if not is_dashboard_title:
-                        print(f"  ⚠️ Page title not confirmed as dashboard — checking content...")
+                        logger.info(f"  ⚠️ Page title not confirmed as dashboard — checking content...")
                         # Check page content as fallback
                         page_content = page.content()
                         dashboard_content = ["account health", "global snapshot", "add a product"]
                         if not any(dc in page_content.lower() for dc in dashboard_content):
-                            print(f"  ❌ Page content doesn't match dashboard — waiting...")
+                            logger.info(f"  ❌ Page content doesn't match dashboard — waiting...")
                             continue
 
                 except Exception as e:
-                    print(f"  ⚠️ Title/content check error: {e}")
+                    logger.info(f"  ⚠️ Title/content check error: {e}")
                     # Don't block on content errors, URL path is reliable enough
                     pass
 
                 # =============================================
                 # SUCCESS: We're definitely logged in!
                 # =============================================
-                print(f"✅✅✅ LOGIN CONFIRMED! URL: {current_url}")
-                print(f"  Path: {url_path}")
-                print(f"  Title: {page.title()}")
+                logger.info(f"✅✅✅ LOGIN CONFIRMED! URL: {current_url}")
+                logger.info(f"  Path: {url_path}")
+                logger.info(f"  Title: {page.title()}")
                 time.sleep(5)  # Let cookies settle and allow background AJAX requests to fire
 
                 # Extract ALL cookies (from ALL domains — .amazon.com, .amazon.eg, etc.)
                 all_cookies = context.cookies()
-                print(f"Extracted {len(all_cookies)} cookies via Playwright (all domains)")
+                logger.info(f"Extracted {len(all_cookies)} cookies via Playwright (all domains)")
 
                 if not all_cookies:
                     result["error"] = "No cookies extracted"
                     break
 
                 cookie_names = [c["name"] for c in all_cookies]
-                print(f"Cookie names: {cookie_names}")
+                logger.info(f"Cookie names: {cookie_names}")
 
                 result["cookies"] = all_cookies
                 result["url"] = current_url
@@ -414,9 +415,9 @@ def main():
                 # Step 1: Check if we captured the token from network sniffing
                 if captured_data["csrf_token"]:
                     result["csrf_token"] = captured_data["csrf_token"]
-                    print(f"✅ NETWORK SNIFFER SUCCESS: CSRF token captured ({len(result['csrf_token'])} chars)")
+                    logger.info(f"✅ NETWORK SNIFFER SUCCESS: CSRF token captured ({len(result['csrf_token'])} chars)")
                 else:
-                    print("⚠️ Network sniffer didn't capture CSRF token — trying JS injection fallback...")
+                    logger.info("⚠️ Network sniffer didn't capture CSRF token — trying JS injection fallback...")
 
                     # Step 2: JS injection fallback
                     js_extractor = """
@@ -452,27 +453,27 @@ def main():
                         csrf_token = page.evaluate(js_extractor)
                         if csrf_token and len(csrf_token) > 30:
                             result["csrf_token"] = csrf_token
-                            print(f"✅ JS INJECTION SUCCESS: CSRF token extracted ({len(csrf_token)} chars)")
+                            logger.info(f"✅ JS INJECTION SUCCESS: CSRF token extracted ({len(csrf_token)} chars)")
                         else:
-                            print("⚠️ JS injection didn't find CSRF token — trying HTML regex fallback...")
+                            logger.info("⚠️ JS injection didn't find CSRF token — trying HTML regex fallback...")
                             # Step 3: HTML regex as last resort
                             html = page.content()
                             fallback_token = extract_csrf_token(html)
                             if fallback_token:
                                 result["csrf_token"] = fallback_token
-                                print(f"✅ REGEX FALLBACK SUCCESS: CSRF token extracted ({len(fallback_token)} chars)")
+                                logger.info(f"✅ REGEX FALLBACK SUCCESS: CSRF token extracted ({len(fallback_token)} chars)")
                             else:
                                 result["csrf_token"] = None
-                                print("❌ All CSRF extraction methods failed")
+                                logger.info("❌ All CSRF extraction methods failed")
                     except Exception as e:
-                        print(f"❌ Error during JS token extraction: {e}")
+                        logger.info(f"❌ Error during JS token extraction: {e}")
                         result["csrf_token"] = None
 
                 result["success"] = True
                 break
 
             except Exception as e:
-                print(f"Login poll error: {e}")
+                logger.info(f"Login poll error: {e}")
                 continue
 
         # Close persistent context
@@ -482,8 +483,8 @@ def main():
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
-        print(f"Playwright error: {e}")
-        print(f"Traceback:\n{tb}")
+        logger.info(f"Playwright error: {e}")
+        logger.info(f"Traceback:\n{tb}")
         result["error"] = f"{str(e)}\n\n{tb}"
         try:
             context.close()
@@ -495,8 +496,8 @@ def main():
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, default=str)
 
-    print(f"Result written to {output_file}")
-    print(f"Success: {result['success']}, Cookies: {len(result['cookies'])}, Seller: {result['seller_name']}")
+    logger.info(f"Result written to {output_file}")
+    logger.info(f"Success: {result['success']}, Cookies: {len(result['cookies'])}, Seller: {result['seller_name']}")
 
 
 if __name__ == "__main__":
@@ -506,7 +507,7 @@ if __name__ == "__main__":
         import traceback
         tb = traceback.format_exc()
         error_msg = f"{str(e)}\n\n{tb}"
-        print(f"FATAL ERROR: {error_msg}")
+        logger.info(f"FATAL ERROR: {error_msg}")
         # Try to write error to output file if possible
         try:
             output_file = os.environ.get("AMZN_OUTPUT", "")
@@ -522,7 +523,7 @@ if __name__ == "__main__":
                 }
                 with open(output_file, "w", encoding="utf-8") as f:
                     json.dump(error_result, f, ensure_ascii=False, default=str)
-                print(f"Error written to {output_file}")
+                logger.info(f"Error written to {output_file}")
         except Exception:
             pass
         # Keep console open on error so we can see the message

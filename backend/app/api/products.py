@@ -124,7 +124,8 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
             detail="SKU already exists for this seller"
         )
 
-    # Validate against Amazon requirements to determine status
+    # DISABLED: No validation blocking — always allow product creation
+    # Validation is now optional for display purposes only
     from app.services.validation_service import ValidationService
 
     validation = ValidationService.validate_product(
@@ -141,8 +142,9 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
         bullet_points=data.bullet_points or [],
     )
 
-    # Determine status: valid = draft (ready), invalid = incomplete
-    status = "draft" if validation.valid else "incomplete"
+    # Always allow creation — status is just for UI display
+    # "draft" = ready for Amazon, "incomplete" = missing some fields (but still savable)
+    status = "draft"  # Always mark as draft — no blocking
 
     product = Product(
         seller_id=seller_id,

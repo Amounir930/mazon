@@ -44,26 +44,21 @@ export default function ProductListPage() {
   const SELLER_ID = 'A1DSHARRBRWYZW'
 
   const handleDeleteFromAmazon = async (sku: string) => {
-    console.log('[SP-API DELETE] Triggered for SKU:', sku)
     if (!window.confirm(`هل أنت متأكد من حذف "${sku}" من Amazon؟ هذا الإجراء لا رجعة فيه.`)) return
     try {
-      console.log('[SP-API DELETE] Calling mutation...')
       await deleteFromAmazonMutation.mutateAsync({ sellerId: SELLER_ID, sku })
       toast.success(`تم حذف ${sku} من Amazon`)
       refetch()
     } catch (error: any) {
-      console.error('[SP-API DELETE] Error:', error)
       toast.error(error.response?.data?.detail || error.message || 'فشل الحذف من Amazon')
     }
   }
 
   const handleUpdatePriceOnAmazon = async (product: Product) => {
-    console.log('[SP-API PATCH] Triggered for SKU:', product.sku)
     const newPrice = prompt(`السعر الحالي: ${product.price} ج.م\nأدخل السعر الجديد:`, String(product.price))
     if (!newPrice || isNaN(Number(newPrice)) || Number(newPrice) <= 0) return
 
     try {
-      console.log('[SP-API PATCH] Calling mutation with price:', newPrice)
       await patchAmazonMutation.mutateAsync({
         sellerId: SELLER_ID,
         sku: product.sku,
@@ -84,7 +79,6 @@ export default function ProductListPage() {
       toast.success(`تم تحديث سعر ${product.sku} على Amazon`)
       refetch()
     } catch (error: any) {
-      console.error('[SP-API PATCH] Error:', error)
       toast.error(error.response?.data?.detail || error.message || 'فشل تحديث السعر على Amazon')
     }
   }
@@ -138,10 +132,6 @@ export default function ProductListPage() {
 
   const handleEdit = (product: Product) => {
     navigate('/products/create', { state: { editMode: true, editProduct: product } })
-  }
-
-  const handleIncompleteList = (id: string) => {
-    toast.error('المنتج ناقص بيانات أساسية لـ Amazon (صور، UPC/EAN، bullet points). أكمل البيانات أولاً.')
   }
 
   const handleCompleteData = (product: Product) => {
@@ -458,7 +448,7 @@ export default function ProductListPage() {
           <button
             onClick={handleExportToAmazon}
             disabled={exportMutation.isPending}
-            className="flex items-center gap-2 bg-amazon-orange hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-lg transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 bg-amazon-orange hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-xl transition-colors disabled:opacity-50"
             title="تصدير المنتجات الكاملة فقط (بدون منتجات ناقصة)"
           >
             {exportMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
@@ -469,7 +459,7 @@ export default function ProductListPage() {
             <button
               onClick={() => handleImportFromAmazon(false)}
               disabled={amazonImporting}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-3 rounded-lg transition-colors disabled:opacity-50 text-sm"
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-3 rounded-xl transition-colors disabled:opacity-50 text-sm"
               title="استيراد سريع - بيانات أساسية فقط"
             >
               {amazonImporting && !fullSyncMode ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -478,7 +468,7 @@ export default function ProductListPage() {
             <button
               onClick={() => handleImportFromAmazon(true)}
               disabled={amazonImporting}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-3 rounded-lg transition-colors disabled:opacity-50 text-sm"
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-3 rounded-xl transition-colors disabled:opacity-50 text-sm"
               title="مزامنة كاملة - يجيب السعر والكمية والوصف وكل التفاصيل"
             >
               {amazonImporting && fullSyncMode ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -487,7 +477,7 @@ export default function ProductListPage() {
           </div>
 
           {/* استيراد من Excel */}
-          <label className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors cursor-pointer">
+          <label className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold px-6 py-3 rounded-xl transition-colors cursor-pointer">
             <FileSpreadsheet className="w-5 h-5" />
             استيراد من Excel
             <input
@@ -500,7 +490,7 @@ export default function ProductListPage() {
 
           <Link
             to="/products/create"
-            className="flex items-center gap-2 bg-amazon-orange hover:bg-amazon-light text-amazon-dark font-semibold px-6 py-3 rounded-lg transition-colors"
+            className="flex items-center gap-2 bg-amazon-orange hover:bg-amazon-light text-amazon-dark font-semibold px-6 py-3 rounded-xl transition-colors"
           >
             <Plus className="w-5 h-5" />
             إضافة منتج
@@ -610,10 +600,10 @@ export default function ProductListPage() {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => isIncomplete ? handleIncompleteList(product.id) : handleList(product.id)}
+                        onClick={() => handleList(product.id)}
                         disabled={listMutation.isPending}
                         className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-colors disabled:opacity-50"
-                        title={isIncomplete ? "المنتج ناقص بيانات - أكمل البيانات أولاً" : "رفع للأمازون"}
+                        title="رفع للأمازون"
                       >
                         {listMutation.isPending && listMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                       </button>

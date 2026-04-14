@@ -8,7 +8,7 @@ Uses Base + Delta Pattern:
 - variants: Per-product differences (name, description, SKU)
 """
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional
+from typing import List, Optional, ClassVar
 
 
 class PriceEstimate(BaseModel):
@@ -24,7 +24,14 @@ class BaseProductData(BaseModel):
     """
     brand: str = Field(default="Generic", min_length=1, max_length=200)
     manufacturer: str = Field(default="Generic", min_length=1, max_length=200)
-    product_type: str = Field(..., min_length=1, max_length=100)
+    
+    # MANDATORY: Amazon SP-API product type — must be one of the official English values
+    product_type: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Amazon SP-API product type (English only, e.g., HOME_KITCHEN, ELECTRONICS)"
+    )
     price: Optional[float] = Field(default=None, description="Price in EGP - optional, AI leaves empty")
     ean: str = Field(..., min_length=13, max_length=13, description="EAN barcode - 13 digits, MANDATORY")
     upc: Optional[str] = Field(default="", max_length=12)
@@ -39,6 +46,33 @@ class BaseProductData(BaseModel):
     model_number: str = Field(default="", max_length=100)
     included_components: str = Field(default="", max_length=200, description="Simple one-word component name")
     estimated_price_egp: Optional[PriceEstimate] = None
+
+    # Valid Amazon SP-API product types
+    VALID_PRODUCT_TYPES: ClassVar[set] = {
+        "HOME_KITCHEN", "HOME_ORGANIZERS_AND_STORAGE", "ELECTRONICS",
+        "BABY_PRODUCT", "APPAREL", "TOYS_AND_GAMES", "BEAUTY",
+        "SPORTING_GOODS", "OFFICE_PRODUCTS", "PET_PRODUCTS",
+        "LUGGAGE", "FURNITURE", "WIRELESS", "JEWELRY", "SPORTS",
+        "LAWN_AND_GARDEN", "AUTOMOTIVE", "INDUSTRIAL", "MUSICAL_INSTRUMENTS",
+        "VIDEO_GAMES", "SOFTWARE", "BOOKS", "DVD", "MUSIC",
+        "GROCERY", "HEALTH_PERSONAL_CARE", "GIFT_CARD",
+    }
+
+    @field_validator("product_type")
+    @classmethod
+    def validate_product_type(cls, v: str) -> str:
+        """Product type must not contain Arabic characters"""
+        if not v or not v.strip():
+            raise ValueError("product_type is MANDATORY")
+        v_stripped = v.strip()
+        # Reject if it contains Arabic characters
+        if any('\u0600' <= c <= '\u06FF' for c in v_stripped):
+            raise ValueError(
+                f"product_type '{v_stripped}' contains Arabic characters. "
+                f"Use English values only: HOME_KITCHEN, ELECTRONICS, BABY_PRODUCT, etc."
+            )
+        # Accept any non-Arabic value — backend normalizer will handle conversion
+        return v_stripped
 
     @field_validator("ean")
     @classmethod

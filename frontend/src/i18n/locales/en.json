@@ -160,6 +160,8 @@
     "saveError": "Failed to save",
     "verifySuccess": "Connection is valid",
     "verifyError": "Connection is invalid - check credentials",
+    "locked": "Locked",
+    "lockedDesc": "Logout to edit credentials",
     "requiredFields": {
       "sellerId": "Seller ID is required",
       "clientId": "Client ID is required",
@@ -177,6 +179,7 @@
       "number": "#",
       "product": "Product",
       "status": "Status",
+      "error": "Error Reason",
       "feedId": "Feed ID",
       "time": "Time",
       "action": "Action"

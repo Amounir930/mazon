@@ -181,6 +181,10 @@ async def generate_product(request: AIProductRequest):
             specs=request.specs,
             copies=request.copies,
         )
+
+        # DEBUG: Log AI response for troubleshooting
+        logger.info(f"✅ AI generated {len(result.variants)} variant(s)")
+        logger.info(f"   base_product: brand={result.base_product.brand}, product_type={result.base_product.product_type}")
         
         # Build warnings - EAN is now mandatory from AI, no warning needed
         warnings: list[str] = []

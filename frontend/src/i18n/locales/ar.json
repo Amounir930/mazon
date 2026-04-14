@@ -179,6 +179,7 @@
       "number": "#",
       "product": "المنتج",
       "status": "الحالة",
+      "error": "سبب الرفض",
       "feedId": "Feed ID",
       "time": "الوقت",
       "action": "إجراء"

@@ -471,7 +471,7 @@ async def pull_products_from_amazon(
         logger.info(f"Pulling products from Amazon: {len(cookies)} cookies, country={country}")
 
         # Method 1: Try CookieScraper (Playwright DOM extraction)
-        scraper = CookieScraper(debug=True)
+        scraper = CookieScraper()
         try:
             # Get email from session
             active_session = db.query(AuthSession).filter(
