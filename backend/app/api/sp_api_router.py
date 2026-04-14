@@ -447,3 +447,76 @@ async def patch_listing(
     except Exception as e:
         logger.error(f"Patch listing error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# Catalog SP-API Endpoints (Phase 3)
+# ============================================================
+
+
+@router.get("/catalog/search")
+async def search_catalog_sp_api(
+    keywords: Optional[str] = None,
+    identifiers: Optional[str] = None,
+    page_size: int = 10,
+    client: SPAPIClient = Depends(get_sp_api_client),
+):
+    """
+    Search Amazon catalog via SP-API (official replacement for scraping).
+
+    Query params:
+    - keywords: Search terms (e.g., "wireless headphones")
+    - identifiers: Comma-separated EAN/UPC/ISBN/ASIN (optional)
+    - page_size: Results count (default: 10, max: 20)
+
+    Returns official catalog data: summaries, images, dimensions, identifiers.
+    """
+    try:
+        result = client.search_catalog_items(
+            keywords=keywords,
+            identifiers=identifiers.split(",") if identifiers else None,
+            page_size=page_size,
+            included_data=["summaries", "images", "identifiers", "dimensions"],
+        )
+
+        return {
+            "success": True,
+            "method": "SP-API",
+            "total_results": result.get("numberOfResults", 0),
+            "items": result.get("items", []),
+            "pagination": result.get("pagination", {}),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Catalog search error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/catalog/{asin}")
+async def get_catalog_item_sp_api(
+    asin: str,
+    client: SPAPIClient = Depends(get_sp_api_client),
+):
+    """
+    Get catalog item details by ASIN via SP-API.
+
+    Returns full product info: summaries, images, dimensions, identifiers.
+    """
+    try:
+        result = client.get_catalog_item(
+            asin=asin,
+            included_data=["summaries", "images", "identifiers", "dimensions", "links"],
+        )
+
+        return {
+            "success": True,
+            "method": "SP-API",
+            "asin": asin,
+            "item": result,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Catalog lookup error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown, FileSpreadsheet, X, Check, Download, AlertCircle, Image as ImageIcon, CloudOff, Cloud } from 'lucide-react'
-import { useProducts, useDeleteProduct, useSubmitListing, useSyncFromAmazon, useExportToAmazon, useExportPriceInventory, useExportListingLoader, useDeleteListing, usePatchListing, useSessionStatus } from '@/api/hooks'
+import { useProducts, useDeleteProduct, useSubmitListing, useSyncFromAmazon, useExportToAmazon, useExportPriceInventory, useExportListingLoader, useDeleteListing, usePatchListing } from '@/api/hooks'
 import { productsApi } from '@/api/endpoints'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import type { Product } from '@/types/api'
@@ -37,18 +37,14 @@ export default function ProductListPage() {
   // SP-API mutations (Amazon official)
   const deleteFromAmazonMutation = useDeleteListing()
   const patchAmazonMutation = usePatchListing()
-  const { data: sessionData } = useSessionStatus()
 
-  // Extract seller_id from session for SP-API calls
-  const sellerId = sessionData?.is_connected ? undefined : undefined // Will be auto-resolved by backend
+  // Use ENV seller_id as default (from .env: A1DSHARRBRWYZW)
+  const SELLER_ID = 'A1DSHARRBRWYZW'
 
   const handleDeleteFromAmazon = async (sku: string) => {
     if (!window.confirm(`هل أنت متأكد من حذف "${sku}" من Amazon؟ هذا الإجراء لا رجعة فيه.`)) return
     try {
-      await deleteFromAmazonMutation.mutateAsync({
-        sellerId: sellerId || 'A1DSHARRBRWYZW',
-        sku,
-      })
+      await deleteFromAmazonMutation.mutateAsync({ sellerId: SELLER_ID, sku })
       toast.success(`تم حذف ${sku} من Amazon`)
       refetch()
     } catch (error: any) {
@@ -62,7 +58,7 @@ export default function ProductListPage() {
 
     try {
       await patchAmazonMutation.mutateAsync({
-        sellerId: sellerId || 'A1DSHARRBRWYZW',
+        sellerId: SELLER_ID,
         sku: product.sku,
         data: {
           product_type: product.product_type || 'HOME_ORGANIZERS_AND_STORAGE',
@@ -541,27 +537,23 @@ export default function ProductListPage() {
                         {deleteMutation.isPending && deleteMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                       </button>
 
-                      {/* SP-API Actions (Amazon Official) */}
-                      {sessionData?.is_connected && (
-                        <>
-                          <button
-                            onClick={() => handleUpdatePriceOnAmazon(product)}
-                            disabled={patchAmazonMutation.isPending}
-                            className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors disabled:opacity-50"
-                            title="تحديث السعر على Amazon"
-                          >
-                            {patchAmazonMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteFromAmazon(product.sku)}
-                            disabled={deleteFromAmazonMutation.isPending}
-                            className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
-                            title="حذف من Amazon SP-API"
-                          >
-                            {deleteFromAmazonMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudOff className="w-4 h-4" />}
-                          </button>
-                        </>
-                      )}
+                      {/* SP-API Actions (Amazon Official) — shows when session OR .env credentials */}
+                      <button
+                        onClick={() => handleUpdatePriceOnAmazon(product)}
+                        disabled={patchAmazonMutation.isPending}
+                        className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors disabled:opacity-50"
+                        title="تحديث السعر على Amazon (SP-API)"
+                      >
+                        {patchAmazonMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteFromAmazon(product.sku)}
+                        disabled={deleteFromAmazonMutation.isPending}
+                        className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+                        title="حذف من Amazon (SP-API)"
+                      >
+                        {deleteFromAmazonMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudOff className="w-4 h-4" />}
+                      </button>
                     </div>
                   </td>
                 </tr>

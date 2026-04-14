@@ -440,6 +440,8 @@ export function useDisconnectAmazon() {
 export const spApiKeys = {
   listing: (sku: string) => ['sp-api', 'listing', sku] as const,
   listings: (params?: Record<string, unknown>) => ['sp-api', 'listings', params] as const,
+  catalog: (params?: Record<string, unknown>) => ['sp-api', 'catalog', params] as const,
+  catalogItem: (asin: string) => ['sp-api', 'catalog', asin] as const,
 }
 
 export function useSPApiListing(sku: string) {
@@ -506,5 +508,33 @@ export function usePatchListing() {
       queryClient.invalidateQueries({ queryKey: spApiKeys.listing(variables.sku) })
       queryClient.invalidateQueries({ queryKey: listingKeys.lists() })
     },
+  })
+}
+
+export function useSearchCatalogSPApi(params?: {
+  keywords?: string
+  identifiers?: string
+  page_size?: number
+}) {
+  return useQuery({
+    queryKey: spApiKeys.catalog(params),
+    queryFn: async () => {
+      const { data } = await spApi.searchCatalog(params)
+      return data
+    },
+    enabled: !!(params?.keywords || params?.identifiers),
+    staleTime: 1000 * 60 * 5,
+  })
+}
+
+export function useCatalogItemSPApi(asin: string) {
+  return useQuery({
+    queryKey: spApiKeys.catalogItem(asin),
+    queryFn: async () => {
+      const { data } = await spApi.getCatalogItem(asin)
+      return data
+    },
+    enabled: !!asin,
+    staleTime: 1000 * 60 * 5,
   })
 }

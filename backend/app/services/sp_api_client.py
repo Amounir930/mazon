@@ -370,6 +370,86 @@ class SPAPIClient:
         return self._make_request("GET", path, params=params)
 
     # ============================================================
+    # Catalog Items API (v2022-04-01)
+    # ============================================================
+
+    def search_catalog_items(
+        self,
+        keywords: str | None = None,
+        identifiers: list | None = None,
+        page_size: int = 10,
+        included_data: list | None = None,
+    ) -> Dict[str, Any]:
+        """
+        Search Amazon catalog via SP-API.
+
+        API: GET /catalog/2022-04-01/items
+        Docs: https://developer-docs.amazon.com/sp-api/docs/catalog-items-api-v2022-04-01-reference#searchcatalogitems
+
+        Args:
+            keywords: Search keywords (e.g., "wireless headphones")
+            identifiers: List of identifiers (EAN, UPC, ISBN, ASIN, etc.)
+            page_size: Number of results (default: 10, max: 20 per Amazon)
+            included_data: Additional data to include
+                Options: ["summaries", "images", "dimensions", "identifiers", "links"]
+
+        Returns:
+            {
+                "numberOfResults": int,
+                "pagination": {"nextToken": "..."},
+                "items": [...]
+            }
+        """
+        path = "/catalog/2022-04-01/items"
+        params: Dict[str, Any] = {"marketplaceIds": self.marketplace_id}
+
+        if keywords:
+            params["keywords"] = keywords
+        if identifiers:
+            params["identifiers"] = ",".join(identifiers)
+        if page_size:
+            params["pageSize"] = min(page_size, 20)  # Amazon hard limit
+        if included_data:
+            params["includedData"] = ",".join(included_data)
+
+        logger.info(
+            f"Searching catalog: keywords={keywords}, identifiers={identifiers}, "
+            f"page_size={page_size}"
+        )
+
+        return self._make_request("GET", path, params=params)
+
+    def get_catalog_item(
+        self,
+        asin: str,
+        marketplace_ids: list | None = None,
+        included_data: list | None = None,
+    ) -> Dict[str, Any]:
+        """
+        Get catalog item by ASIN.
+
+        API: GET /catalog/2022-04-01/items/{asin}
+        Docs: https://developer-docs.amazon.com/sp-api/docs/catalog-items-api-v2022-04-01-reference#getcatalogitem
+
+        Args:
+            asin: Amazon Standard Identification Number
+            marketplace_ids: List of marketplace IDs (defaults to current)
+            included_data: Additional data to include
+                Options: ["summaries", "images", "dimensions", "identifiers", "links"]
+
+        Returns:
+            Full catalog item payload
+        """
+        path = f"/catalog/2022-04-01/items/{asin}"
+        params: Dict[str, Any] = {"marketplaceIds": marketplace_ids or self.marketplace_id}
+
+        if included_data:
+            params["includedData"] = ",".join(included_data)
+
+        logger.info(f"Getting catalog item: ASIN={asin}")
+        return self._make_request("GET", path, params=params)
+
+    # ============================================================
     # Helper: Build product data from our format to SP-API format
     # ============================================================
 

@@ -191,6 +191,17 @@ export const spApi = {
   // NEW: Patch listing (partial update)
   patchListing: (sellerId: string, sku: string, data: SPApiPatchRequest) =>
     api.patch<SPApiPatchResponse>(`/sp-api/listing/${sellerId}/${sku}`, data),
+
+  // NEW: Search Amazon catalog via SP-API
+  searchCatalog: (params?: {
+    keywords?: string
+    identifiers?: string
+    page_size?: number
+  }) => api.get<SPApiSearchResponse>('/sp-api/catalog/search', { params }),
+
+  // NEW: Get catalog item by ASIN
+  getCatalogItem: (asin: string) =>
+    api.get(`/sp-api/catalog/${asin}`),
 }
 
 // ==================== Listings API ====================
