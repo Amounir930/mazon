@@ -36,59 +36,7 @@ export default function ListingQueuePage() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="neon-card p-0 overflow-hidden">
-        <table className="neon-table">
-          <thead>
-            <tr>
-              <th>{t('listingQueue.columns.number')}</th>
-              <th>{t('listingQueue.columns.product')}</th>
-              <th>{t('listingQueue.columns.status')}</th>
-              <th>{t('listingQueue.columns.feedId')}</th>
-              <th>{t('listingQueue.columns.time')}</th>
-              <th>{t('listingQueue.columns.action')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {listings?.map((listing: Listing, idx: number) => (
-              <tr key={listing.id}>
-                <td className="text-text-secondary">{idx + 1}</td>
-                <td className="font-medium text-text-primary">
-                  {listing.product_id?.slice(0, 8)}...
-                </td>
-                <td>
-                  <StatusBadge status={listing.status} />
-                </td>
-                <td className="font-mono text-text-secondary text-sm">
-                  {listing.feed_submission_id || '-'}
-                </td>
-                <td className="text-text-secondary text-sm">
-                  {listing.created_at ? new Date(listing.created_at).toLocaleTimeString() : '-'}
-                </td>
-                <td>
-                  {listing.status === 'failed' && (
-                    <button className="neon-btn neon-btn--warning neon-btn--sm">
-                      <RotateCcw className="w-4 h-4" />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {(!listings || listings.length === 0) && (
-          <div className="neon-empty">
-            <div className="neon-empty__icon">
-              <RotateCcw className="w-12 h-12" />
-            </div>
-            <h3 className="neon-empty__title">{t('listingQueue.emptyTitle')}</h3>
-            <p className="neon-empty__description">{t('listingQueue.emptyDesc')}</p>
-          </div>
-        )}
-      </div>
-
-      {/* Stats - Redesigned like the image */}
+      {/* Stats - Top position */}
       {listings && listings.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Order: نجح → في الطابور → قيد المعالجة → فشل (RTL) */}
@@ -141,6 +89,58 @@ export default function ListingQueuePage() {
           </div>
         </div>
       )}
+
+      {/* Table */}
+      <div className="neon-card p-0 overflow-hidden">
+        <table className="neon-table">
+          <thead>
+            <tr>
+              <th>{t('listingQueue.columns.number')}</th>
+              <th>{t('listingQueue.columns.product')}</th>
+              <th>{t('listingQueue.columns.status')}</th>
+              <th>{t('listingQueue.columns.feedId')}</th>
+              <th>{t('listingQueue.columns.time')}</th>
+              <th>{t('listingQueue.columns.action')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {listings?.map((listing: Listing, idx: number) => (
+              <tr key={listing.id}>
+                <td className="text-text-secondary">{idx + 1}</td>
+                <td className="font-medium text-text-primary">
+                  {listing.product_id?.slice(0, 8)}...
+                </td>
+                <td>
+                  <StatusBadge status={listing.status} />
+                </td>
+                <td className="font-mono text-text-secondary text-sm">
+                  {listing.feed_submission_id || '-'}
+                </td>
+                <td className="text-text-secondary text-sm">
+                  {listing.created_at ? new Date(listing.created_at).toLocaleTimeString() : '-'}
+                </td>
+                <td>
+                  {listing.status === 'failed' && (
+                    <button className="neon-btn neon-btn--warning neon-btn--sm">
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {(!listings || listings.length === 0) && (
+          <div className="neon-empty">
+            <div className="neon-empty__icon">
+              <RotateCcw className="w-12 h-12" />
+            </div>
+            <h3 className="neon-empty__title">{t('listingQueue.emptyTitle')}</h3>
+            <p className="neon-empty__description">{t('listingQueue.emptyDesc')}</p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
