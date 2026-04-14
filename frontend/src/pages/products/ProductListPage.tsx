@@ -540,6 +540,28 @@ export default function ProductListPage() {
                       <button onClick={() => handleDelete(product.id)} disabled={deleteMutation.isPending} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50" title="حذف">
                         {deleteMutation.isPending && deleteMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                       </button>
+
+                      {/* SP-API Actions (Amazon Official) */}
+                      {sessionData?.is_connected && (
+                        <>
+                          <button
+                            onClick={() => handleUpdatePriceOnAmazon(product)}
+                            disabled={patchAmazonMutation.isPending}
+                            className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors disabled:opacity-50"
+                            title="تحديث السعر على Amazon"
+                          >
+                            {patchAmazonMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteFromAmazon(product.sku)}
+                            disabled={deleteFromAmazonMutation.isPending}
+                            className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+                            title="حذف من Amazon SP-API"
+                          >
+                            {deleteFromAmazonMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudOff className="w-4 h-4" />}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
