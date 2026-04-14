@@ -42,19 +42,54 @@ export default function ProductListPage() {
   const SELLER_ID = 'A1DSHARRBRWYZW'
 
   const handleDeleteFromAmazon = async (sku: string) => {
+    console.log('[SP-API DELETE] Triggered for SKU:', sku)
     if (!window.confirm(`هل أنت متأكد من حذف "${sku}" من Amazon؟ هذا الإجراء لا رجعة فيه.`)) return
     try {
+      console.log('[SP-API DELETE] Calling mutation...')
       await deleteFromAmazonMutation.mutateAsync({ sellerId: SELLER_ID, sku })
       toast.success(`تم حذف ${sku} من Amazon`)
       refetch()
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'فشل الحذف من Amazon')
+      console.error('[SP-API DELETE] Error:', error)
+      toast.error(error.response?.data?.detail || error.message || 'فشل الحذف من Amazon')
     }
   }
 
   const handleUpdatePriceOnAmazon = async (product: Product) => {
+    console.log('[SP-API PATCH] Triggered for SKU:', product.sku)
     const newPrice = prompt(`السعر الحالي: ${product.price} ج.م\nأدخل السعر الجديد:`, String(product.price))
     if (!newPrice || isNaN(Number(newPrice)) || Number(newPrice) <= 0) return
+
+    try {
+      console.log('[SP-API PATCH] Calling mutation with price:', newPrice)
+      await patchAmazonMutation.mutateAsync({
+        sellerId: SELLER_ID,
+        sku: product.sku,
+        data: {
+          product_type: product.product_type || 'HOME_ORGANIZERS_AND_STORAGE',
+          patches: [
+            {
+              op: 'replace',
+              path: '/attributes/purchasable_offer',
+              value: [{
+                our_price: [{ schedule: [{ value_with_tax: Number(newPrice) }] }],
+                currency: 'EGP',
+              }],
+            },
+          ],
+        },
+      })
+      toast.success(`تم تحديث سعر ${product.sku} على Amazon`)
+      refetch()
+    } catch (error: any) {
+      console.error('[SP-API PATCH] Error:', error)
+      toast.error(error.response?.data?.detail || error.message || 'فشل تحديث السعر على Amazon')
+    }
+  }
+
+  const handleUpdateQuantityOnAmazon = async (product: Product) => {
+    const newQty = prompt(`الكمية الحالية: ${product.quantity}\nأدخل الكمية الجديدة:`, String(product.quantity))
+    if (!newQty || isNaN(Number(newQty)) || Number(newQty) < 0) return
 
     try {
       await patchAmazonMutation.mutateAsync({
@@ -65,16 +100,16 @@ export default function ProductListPage() {
           patches: [
             {
               op: 'replace',
-              path: '/attributes/purchasable_offer/0/our_price/0/schedule/0/value_with_tax',
-              value: Number(newPrice),
+              path: '/attributes/quantity',
+              value: [{ value: Number(newQty) }],
             },
           ],
         },
       })
-      toast.success(`تم تحديث سعر ${product.sku} على Amazon`)
+      toast.success(`تم تحديث كمية ${product.sku} على Amazon`)
       refetch()
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'فشل تحديث السعر على Amazon')
+      toast.error(error.response?.data?.detail || 'فشل تحديث الكمية على Amazon')
     }
   }
 
@@ -272,9 +307,44 @@ export default function ProductListPage() {
     }
   }
 
-  // ==================== Disabled Amazon Import ====================
-  const handleImportFromAmazon = async () => {
-    toast.error('هذه الميزة تحتاج تسجيل دخول كامل عبر Amazon SP-API.')
+  // ==================== Import from Amazon (SP-API) ====================
+  const [amazonImporting, setAmazonImporting] = useState(false)
+  const [fullSyncMode, setFullSyncMode] = useState(false)
+
+  const handleImportFromAmazon = async (fullSync: boolean = false) => {
+    const confirmMsg = fullSync
+      ? 'سيتم استيراد المنتجات من Amazon مع كل التفاصيل (السعر، الكمية، الوصف، النقاط).\n\nهذا قد يستغرق بضع دقائق. هل تريد المتابعة؟'
+      : 'سيتم استيراد آخر 10 منتجات من Amazon إلى قاعدة البيانات المحلية (بيانات أساسية فقط).\n\nهل تريد المتابعة؟'
+
+    if (!window.confirm(confirmMsg)) return
+
+    setAmazonImporting(true)
+    setFullSyncMode(fullSync)
+    try {
+      const response = await fetch(`/api/v1/sp-api/import-products?limit=20&full_sync=${fullSync}`, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.detail || 'فشل الاستيراد')
+      }
+
+      const result = await response.json()
+
+      if (result.success) {
+        const syncLabel = fullSync ? 'مزامنة كاملة' : 'استيراد سريع'
+        toast.success(`✅ ${result.message} (${result.full_details_fetched || 0} منتج بتفاصيل كاملة)`)
+        refetch()
+      } else {
+        toast.error(result.message || 'فشل الاستيراد')
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'فشل الاتصال بـ Amazon')
+    } finally {
+      setAmazonImporting(false)
+      setFullSyncMode(false)
+    }
   }
 
   // ==================== Export Handlers ====================
@@ -393,14 +463,26 @@ export default function ProductListPage() {
             تصدير لـ Amazon
           </button>
 
-          <button
-            onClick={handleImportFromAmazon}
-            disabled={syncMutation.isPending}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {syncMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-            استيراد من Amazon
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleImportFromAmazon(false)}
+              disabled={amazonImporting}
+              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-3 rounded-lg transition-colors disabled:opacity-50 text-sm"
+              title="استيراد سريع - بيانات أساسية فقط"
+            >
+              {amazonImporting && !fullSyncMode ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              استيراد سريع
+            </button>
+            <button
+              onClick={() => handleImportFromAmazon(true)}
+              disabled={amazonImporting}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-3 rounded-lg transition-colors disabled:opacity-50 text-sm"
+              title="مزامنة كاملة - يجيب السعر والكمية والوصف وكل التفاصيل"
+            >
+              {amazonImporting && fullSyncMode ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              مزامنة كاملة
+            </button>
+          </div>
 
           {/* استيراد من Excel */}
           <label className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors cursor-pointer">

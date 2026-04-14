@@ -516,8 +516,11 @@ export function useSearchCatalogSPApi(params?: {
   identifiers?: string
   page_size?: number
 }) {
+  // Stable query key — serialize params to avoid infinite refetches
+  const queryKey = ['sp-api', 'catalog', params?.keywords, params?.identifiers, params?.page_size] as const
+
   return useQuery({
-    queryKey: spApiKeys.catalog(params),
+    queryKey,
     queryFn: async () => {
       const { data } = await spApi.searchCatalog(params)
       return data

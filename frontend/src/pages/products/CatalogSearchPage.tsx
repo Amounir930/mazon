@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Package, Loader2, ExternalLink, Plus, AlertCircle, Cloud, Globe } from 'lucide-react'
-import { useCatalogSearch, useSearchCatalogSPApi, useSessionStatus } from '@/api/hooks'
+import { Search, Package, Loader2, ExternalLink, Plus, AlertCircle, Cloud } from 'lucide-react'
+import { useSearchCatalogSPApi } from '@/api/hooks'
 import toast from 'react-hot-toast'
 
 const searchTypes = [
@@ -15,28 +15,23 @@ export default function CatalogSearchPage() {
   const navigate = useNavigate()
   const [searchType, setSearchType] = useState('KEYWORD')
   const [query, setQuery] = useState('')
-  const [searchMethod, setSearchMethod] = useState<'sp-api' | 'scraping'>('sp-api')
 
-  // SP-API hooks
-  const { data: sessionData } = useSessionStatus()
-  const isSessionConnected = sessionData?.is_connected ?? false
+  // SP-API catalog search (uses .env credentials from backend)
+  const [searchTriggered, setSearchTriggered] = useState(false)
+  const [searchKeywords, setSearchKeywords] = useState<string | undefined>(undefined)
+  const [searchIdentifiers, setSearchIdentifiers] = useState<string | undefined>(undefined)
 
-  // Fallback to scraping if no session
-  const activeMethod = isSessionConnected && searchMethod === 'sp-api' ? 'sp-api' : 'scraping'
+  const { data: spApiData, isFetching: spApiFetching, refetch } = useSearchCatalogSPApi(
+    searchTriggered
+      ? {
+          keywords: searchKeywords,
+          identifiers: searchIdentifiers,
+          page_size: 20,
+        }
+      : undefined
+  )
 
-  // Scraping hook (legacy)
-  const { mutate: searchScraping, data: scrapingData, isPending: scrapingPending, error: scrapingError, reset: resetScraping } = useCatalogSearch()
-
-  // SP-API hook
-  const spApiParams = activeMethod === 'sp-api' ? {
-    keywords: searchType === 'KEYWORD' ? query : undefined,
-    identifiers: searchType !== 'KEYWORD' ? query : undefined,
-    page_size: 20,
-  } : undefined
-
-  const { data: spApiData, isFetching: spApiFetching } = useSearchCatalogSPApi(spApiParams)
-
-  const isPending = activeMethod === 'sp-api' ? spApiFetching : scrapingPending
+  const isPending = spApiFetching
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -45,14 +40,21 @@ export default function CatalogSearchPage() {
       return
     }
 
-    if (activeMethod === 'sp-api') {
-      // SP-API search — useQuery handles automatically
-      toast.success('جاري البحث عبر SP-API الرسمي...')
+    if (searchType === 'KEYWORD') {
+      setSearchKeywords(query.trim())
+      setSearchIdentifiers(undefined)
     } else {
-      // Scraping fallback
-      resetScraping()
-      searchScraping({ query: query.trim(), searchType })
+      setSearchKeywords(undefined)
+      setSearchIdentifiers(query.trim())
     }
+
+    setSearchTriggered(true)
+    toast.success('جاري البحث عبر SP-API الرسمي...')
+
+    // Trigger refetch with new params
+    setTimeout(() => {
+      refetch()
+    }, 100)
   }
 
   const handleAddProduct = (product: any) => {
@@ -80,69 +82,50 @@ export default function CatalogSearchPage() {
 
   const currentSearchType = searchTypes.find((t) => t.id === searchType)
 
-  // Normalize data from both methods
-  const results = activeMethod === 'sp-api'
-    ? (spApiData?.items || []).map((item: any) => ({
-        title: item.summaries?.[0]?.title || item.itemName || 'بدون اسم',
-        asin: item.asin || '',
-        brand: item.brand || '',
-        images: item.images?.[0]?.variant === 'MAIN' ? [item.images[0].url] : (item.images?.map((i: any) => i.url) || []),
-        price: null, // SP-API doesn't return price
-      }))
-    : (scrapingData?.results || [])
+  // Normalize SP-API results
+  const results = (spApiData?.items || []).map((item: any) => {
+    // Extract images
+    const allImages: string[] = []
+    if (item.images) {
+      for (const imgGroup of item.images) {
+        if (imgGroup.images) {
+          for (const img of imgGroup.images) {
+            if (img.variant === 'MAIN' && img.width === 500) {
+              allImages.push(img.link)
+            }
+          }
+        }
+      }
+    }
 
-  const totalResults = activeMethod === 'sp-api'
-    ? spApiData?.total_results || 0
-    : scrapingData?.total || 0
+    // Extract title from summaries
+    let title = ''
+    let brand = ''
+    if (item.summaries && item.summaries.length > 0) {
+      title = item.summaries[0].itemName || ''
+      brand = item.summaries[0].brand || ''
+    }
+
+    return {
+      title: title || item.itemName || 'بدون اسم',
+      asin: item.asin || '',
+      brand,
+      images: allImages,
+      price: null,
+    }
+  })
+
+  const totalResults = spApiData?.total_results || 0
 
   return (
     <div className="space-y-6" dir="rtl">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Search className="w-6 h-6 text-amazon-orange" />
-          البحث في كتالوج Amazon
+          <Cloud className="w-6 h-6 text-green-500" />
+          البحث في كتالوج Amazon (SP-API)
         </h1>
-        <p className="text-gray-400 mt-1">ابحث عن منتجات موجودة في Amazon وأضفها لمتجرك</p>
-      </div>
-
-      {/* Search Method Toggle */}
-      <div className="bg-[#12121a] rounded-xl border border-gray-800/50 p-4">
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-400">طريقة البحث:</span>
-          <button
-            onClick={() => setSearchMethod('sp-api')}
-            disabled={!isSessionConnected}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              searchMethod === 'sp-api'
-                ? 'bg-green-600 text-white'
-                : isSessionConnected
-                  ? 'bg-[#1a1a2e] text-gray-400 hover:text-white hover:bg-[#2a2a3e]'
-                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-            }`}
-            title={isSessionConnected ? 'SP-API الرسمي (بيانات أكمل)' : 'تحتاج session نشطة'}
-          >
-            <Cloud className="w-4 h-4" />
-            SP-API الرسمي
-          </button>
-          <button
-            onClick={() => setSearchMethod('scraping')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-              searchMethod === 'scraping'
-                ? 'bg-blue-600 text-white'
-                : 'bg-[#1a1a2e] text-gray-400 hover:text-white hover:bg-[#2a2a3e]'
-            }`}
-          >
-            <Globe className="w-4 h-4" />
-            البحث العادي
-          </button>
-          {activeMethod === 'sp-api' && (
-            <span className="text-xs text-green-400">✅ متصل</span>
-          )}
-          {activeMethod === 'scraping' && !isSessionConnected && (
-            <span className="text-xs text-amber-400">⚠️ SP-API غير متاح — استخدام البحث العادي</span>
-          )}
-        </div>
+        <p className="text-gray-400 mt-1">ابحث في كتالوج Amazon الرسمي وأضف المنتجات لمتجرك</p>
       </div>
 
       {/* Search Form */}
@@ -181,7 +164,7 @@ export default function CatalogSearchPage() {
             <button
               type="submit"
               disabled={isPending}
-              className="px-6 py-3 bg-amazon-orange hover:bg-orange-600 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+              className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {isPending ? (
                 <>
@@ -190,7 +173,7 @@ export default function CatalogSearchPage() {
                 </>
               ) : (
                 <>
-                  <Search className="w-5 h-5" />
+                  <Cloud className="w-5 h-5" />
                   بحث
                 </>
               )}
@@ -200,16 +183,12 @@ export default function CatalogSearchPage() {
       </div>
 
       {/* Error Message */}
-      {(scrapingError || (spApiData && !spApiData.success)) && (
+      {spApiData && !spApiData.success && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
           <div>
             <p className="text-red-400 font-medium">فشل البحث</p>
-            <p className="text-red-300/70 text-sm mt-1">
-              {activeMethod === 'sp-api'
-                ? 'فشل البحث عبر SP-API'
-                : (scrapingError as any)?.response?.data?.detail || (scrapingError as any)?.message || 'حدث خطأ أثناء البحث'}
-            </p>
+            <p className="text-red-300/70 text-sm mt-1">فشل البحث عبر SP-API — تحقق من الـ credentials</p>
           </div>
         </div>
       )}
@@ -221,9 +200,9 @@ export default function CatalogSearchPage() {
             <h2 className="text-lg font-semibold text-white">
               نتائج البحث ({totalResults} نتيجة)
             </h2>
-            <span className="text-xs text-gray-500 flex items-center gap-1">
-              {activeMethod === 'sp-api' ? <Cloud className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
-              {activeMethod === 'sp-api' ? 'SP-API الرسمي' : 'البحث العادي'}
+            <span className="text-xs text-green-400 flex items-center gap-1">
+              <Cloud className="w-3 h-3" />
+              SP-API الرسمي
             </span>
           </div>
 
@@ -231,7 +210,7 @@ export default function CatalogSearchPage() {
             <div className="text-center py-12">
               <Package className="w-12 h-12 text-gray-600 mx-auto mb-3" />
               <p className="text-gray-400">لم يتم العثور على نتائج</p>
-              <p className="text-gray-500 text-sm mt-1">جرّب كلمة بحث مختلفة أو نوع بحث آخر</p>
+              <p className="text-gray-500 text-sm mt-1">جرّب كلمة بحث مختلفة</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -246,7 +225,7 @@ export default function CatalogSearchPage() {
                       {product.images?.[0] ? (
                         <img
                           src={product.images[0]}
-                          alt={product.title || product.name}
+                          alt={product.title}
                           className="w-full h-full object-cover"
                         />
                       ) : (
@@ -257,7 +236,7 @@ export default function CatalogSearchPage() {
                     {/* Product Info */}
                     <div className="flex-1 min-w-0">
                       <h3 className="text-white font-medium truncate">
-                        {product.title || product.name || 'بدون اسم'}
+                        {product.title || 'بدون اسم'}
                       </h3>
                       <div className="flex flex-wrap gap-2 mt-2 text-xs text-gray-400">
                         {product.asin && (

@@ -155,6 +155,7 @@ async def submit_listing_task(product_id: str) -> dict:
             "condition": product.condition or "New",
             "fulfillment_channel": product.fulfillment_channel or "MFN",
             "brand": product.brand or "Generic",
+            "color": product.attributes.get("color", "متعدد") if isinstance(product.attributes, dict) else "متعدد",
             "manufacturer": product.manufacturer or "",
             "model_number": product.model_number or "",
             "country_of_origin": product.country_of_origin or "CN",
@@ -241,6 +242,47 @@ async def submit_listing_task(product_id: str) -> dict:
             listing.completed_at = datetime.utcnow()
             db.commit()
             logger.error(f"❌ Listing rejected: {product.sku} — {error_messages[0] if error_messages else 'Unknown'}")
+
+            # === AI LEARNING FEEDBACK: Store rejection errors in product's optimized_data ===
+            try:
+                if product.optimized_data:
+                    import json as _json
+                    opt_data = _json.loads(product.optimized_data) if isinstance(product.optimized_data, str) else product.optimized_data
+                else:
+                    opt_data = {}
+
+                if "rejection_history" not in opt_data:
+                    opt_data["rejection_history"] = []
+
+                opt_data["rejection_history"].append({
+                    "date": datetime.utcnow().isoformat(),
+                    "errors": error_messages,
+                    "submission_id": result.get("submissionId", ""),
+                })
+
+                # Extract missing required fields from error messages
+                missing_fields = []
+                for msg in error_messages:
+                    # Amazon errors like: "'عدد العناصر' مطلوب لكنه مفقود."
+                    # Extract field name between quotes
+                    import re
+                    match = re.search(r"'([^']+)' مطلوب", msg)
+                    if match:
+                        missing_fields.append(match.group(1))
+
+                if missing_fields:
+                    if "learned_fields" not in opt_data:
+                        opt_data["learned_fields"] = []
+                    for field in missing_fields:
+                        if field not in opt_data["learned_fields"]:
+                            opt_data["learned_fields"].append(field)
+
+                product.optimized_data = _json.dumps(opt_data, ensure_ascii=False)
+                db.commit()
+                logger.info(f"🧠 AI Learning: Stored {len(missing_fields)} missing fields for {product.sku}: {missing_fields}")
+            except Exception as e:
+                logger.warning(f"Failed to store AI learning feedback: {e}")
+            # ==================================================================
 
             # Log activity
             _log_activity(db, product.id, "failed", "failed", listing.id, {

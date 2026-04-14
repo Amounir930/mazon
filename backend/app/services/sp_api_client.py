@@ -201,16 +201,18 @@ class SPAPIClient:
 
     def get_listing_item(self, seller_id: str, sku: str) -> Dict[str, Any]:
         """
-        Get a listing item.
+        Get a listing item with full details (including attributes).
 
         API: GET /listings/2021-08-01/items/{sellerId}/{sku}
+        Docs: https://developer-docs.amazon.com/sp-api/docs/listings-items-api-v2021-08-01-reference#getlistingsitem
         """
         path = f"/listings/2021-08-01/items/{seller_id}/{sku}"
         params = {
             "marketplaceIds": self.marketplace_id,
             "issueLocale": "ar_AE",
+            "includedData": "attributes,summaries,issues",  # CRITICAL: returns full attributes
         }
-        
+
         return self._make_request("GET", path, params=params)
 
     def delete_listing_item(self, seller_id: str, sku: str) -> Dict[str, Any]:
@@ -377,6 +379,7 @@ class SPAPIClient:
         self,
         keywords: str | None = None,
         identifiers: list | None = None,
+        identifiers_type: str | None = None,
         page_size: int = 10,
         included_data: list | None = None,
     ) -> Dict[str, Any]:
@@ -407,6 +410,9 @@ class SPAPIClient:
             params["keywords"] = keywords
         if identifiers:
             params["identifiers"] = ",".join(identifiers)
+        if identifiers_type:
+            # Required when using identifiers - valid values: ASIN, EAN, UPC, ISBN, JAN, MINSAN, SKU
+            params["identifiersType"] = identifiers_type.upper()
         if page_size:
             params["pageSize"] = min(page_size, 20)  # Amazon hard limit
         if included_data:
@@ -525,62 +531,79 @@ class SPAPIClient:
         bullet_points = product_data.get("bullet_points", [])
         browse_node = product_data.get("browse_node_id", "21863799031")
         included_components = product_data.get("included_components", name)
-        
+        color = product_data.get("color", "متعدد")  # DEFAULT: Multi (required by Amazon)
+
         # Map condition
         condition_map = {"New": "new_new"}
         condition_value = condition_map.get(condition, "new_new")
         
-        # Build attributes — THE ULTIMATE DICTIONARY (ar_AE, EGP, 29 fields)
+        number_of_items = int(product_data.get("number_of_items", 1))
+        package_quantity = int(product_data.get("package_quantity", 1))
+        material = product_data.get("material", "")
+        target_audience = product_data.get("target_audience", "")
+
+        # Build attributes — THE ULTIMATE DICTIONARY (ar_AE, EGP, 30+ fields)
         attributes = {
             # === IDENTITY ===
             "item_name": [{"value": name, "language_tag": "ar_AE"}],
             "brand": [{"value": brand, "language_tag": "ar_AE"}],
+            "color": [{"value": color, "language_tag": "ar_AE"}],
             "product_description": [{"value": description, "language_tag": "ar_AE"}],
-            
+
             # Bullet points
             "bullet_point": [
                 {"value": bp, "language_tag": "ar_AE"}
                 for bp in (bullet_points if bullet_points else [name])
             ],
-            
+
             # Manufacturer & Model
             "manufacturer": [{"value": manufacturer, "language_tag": "ar_AE"}],
             "model_name": [{"value": model_number, "language_tag": "ar_AE"}],
             "model_number": [{"value": model_number, "language_tag": "ar_AE"}],
-            
+
             # Condition & Origin
             "condition_type": [{"value": condition_value}],
             "country_of_origin": [{"value": country_origin.upper() if len(country_origin) == 2 else "CN"}],
             "recommended_browse_nodes": [{"value": browse_node}],
-            
+
             # Included components
             "included_components": [{"value": included_components, "language_tag": "ar_AE"}],
             "number_of_boxes": [{"value": 1}],
-            
+            "number_of_items": [{"value": number_of_items}],
+            "package_quantity": [{"value": package_quantity}],
+
+            # Material & Target
+            "material": [{"value": material, "language_tag": "ar_AE"}] if material else None,
+            "target_audience": [{"value": target_audience, "language_tag": "ar_AE"}] if target_audience else None,
+
             # Compliance
             "supplier_declared_dg_hz_regulation": [{"value": "not_applicable"}],
             "batteries_required": [{"value": False}],
-            
+            "safety_warning": [{"value": "لا يوجد", "language_tag": "ar_AE"}],
+
             # Weight (FLAT format)
             "item_weight": [{"value": 0.5, "unit": "kilograms"}],
             "item_package_weight": [{"value": 0.7, "unit": "kilograms"}],
-            
+
             # Unit count
-            "unit_count": [{"value": 1, "unit": "count"}],
-            
+            "unit_count": [{"value": number_of_items, "unit": "count"}],
+
             # Package dimensions (CORRECT format!)
             "item_package_dimensions": [{
                 "length": {"value": 25.0, "unit": "centimeters"},
                 "width": {"value": 10.0, "unit": "centimeters"},
                 "height": {"value": 15.0, "unit": "centimeters"},
             }],
-            
+
             # Price
             "purchasable_offer": [{
                 "our_price": [{"schedule": [{"value_with_tax": price}]}],
                 "currency": "EGP",
             }],
         }
+
+        # Remove None values
+        attributes = {k: v for k, v in attributes.items() if v is not None}
         
         # EAN/UPC — ONLY if we have a real barcode (NO fake "000000000000"!)
         if ean:

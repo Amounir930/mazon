@@ -1,7 +1,8 @@
 /**
- * Product Create Page - Phase 2 Rebuild
- * 
- * 3 Pages Architecture:
+ * Product Create Page - Phase 3: AI + Instructions
+ *
+ * 4 Pages Architecture:
+ * Page 0: مساعد الذكاء الاصطناعي (واجهة أولى)
  * Page 1: الحقول الإجبارية (29 حقل مطلوب من Amazon)
  * Page 2: الحقول الاختيارية
  * Page 3: الصور + عدد الإعلانات + أزرار الإرسال
@@ -12,10 +13,13 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Package, DollarSign, Image as ImageIcon, Save, Loader2,
   AlertTriangle, CheckCircle, Upload, X, FileSpreadsheet, Eye,
-  Truck, ShoppingCart, Tag, Globe
+  Truck, ShoppingCart, Tag, Globe, Sparkles
 } from 'lucide-react'
 import { useCreateProduct } from '@/api/hooks'
 import { productsApi, imagesApi } from '@/api/endpoints'
+import { aiApi } from '@/api/ai'
+import { AIAssistantPanel } from '@/components/ai/AIAssistantPanel'
+import type { AIMergedProduct } from '@/types/ai'
 import {
   PRODUCT_TYPES, BROWSE_NODES, CONDITIONS, FULFILLMENT_CHANNELS,
   ID_TYPES, COUNTRIES, UNIT_TYPES, WEIGHT_UNITS, DIMENSION_UNITS,
@@ -135,6 +139,7 @@ const StepIndicator = ({
 }) => (
   <div className="flex items-center justify-center gap-2 mb-6">
     {[
+      { n: 0, label: '🤖 مساعد AI', icon: Sparkles },
       { n: 1, label: 'الحقول الإجبارية', icon: Tag },
       { n: 2, label: 'الحقول الاختيارية', icon: ShoppingCart },
       { n: 3, label: 'الصور والإرسال', icon: ImageIcon },
@@ -174,7 +179,7 @@ export default function ProductCreatePage() {
   const editProduct = (location.state as any)?.editProduct as any
   const isEditMode = !!editProduct
 
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useState(0)
   const [submitting, setSubmitting] = useState(false)
 
   // ==================== PAGE 1: الحقول الإجبارية ====================
@@ -236,6 +241,56 @@ export default function ProductCreatePage() {
   const [extraImagePreviews, setExtraImagePreviews] = useState<string[]>([])
   const [uploadingImages, setUploadingImages] = useState(false)
   const [listingCopies, setListingCopies] = useState(1)
+
+  // ==================== AI Generated Products ====================
+  const [aiProducts, setAiProducts] = useState<AIMergedProduct[]>([])
+  const [selectedAiProduct, setSelectedAiProduct] = useState<number | null>(null)
+
+  // ==================== Task 3: Amazon Import by ASIN/UPC/EAN ====================
+  const [importSearch, setImportSearch] = useState('')
+  const [importType, setImportType] = useState('ASIN')
+  const [importing, setImporting] = useState(false)
+
+  const handleImportFromAmazon = useCallback(async () => {
+    if (!importSearch.trim()) { toast.error('أدخل ASIN أو UPC أو EAN'); return }
+    setImporting(true)
+    try {
+      const response = await fetch('/api/v1/ai/import-from-amazon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ search_value: importSearch.trim(), search_type: importType }),
+      })
+      const data = await response.json()
+      if (!data.found) {
+        toast.error(data.message || 'لم يتم العثور على المنتج')
+        return
+      }
+      // Fill form with imported data
+      setRequired(prev => ({
+        ...prev,
+        name_ar: data.title || prev.name_ar,
+        name_en: data.title || prev.name_en,
+        description_ar: data.description || prev.description_ar,
+        description_en: data.description || prev.description_en,
+        bullet_points: [...(data.bullet_points || []), '', '', '', '', ''].slice(0, 5),
+        brand: data.brand || prev.brand,
+        manufacturer: data.manufacturer || prev.manufacturer,
+        product_type: data.product_type || prev.product_type,
+        country_of_origin: data.country_of_origin || prev.country_of_origin,
+      }))
+      // Set images if available
+      if (data.images && data.images.length > 0) {
+        setMainImageUrl(data.images[0])
+        setExtraImageUrls(data.images.slice(1, 9))
+      }
+      toast.success('تم استيراد البيانات من Amazon!')
+      setPage(1)
+    } catch (e: any) {
+      toast.error('فشل الاستيراد')
+    } finally {
+      setImporting(false)
+    }
+  }, [importSearch, importType])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const extraFileInputRef = useRef<HTMLInputElement>(null)
@@ -301,6 +356,82 @@ export default function ProductCreatePage() {
     }
   }, [editProduct])
 
+  // ==================== AI: Handle generated products ====================
+  const handleAiProductsGenerated = useCallback((products: AIMergedProduct[]) => {
+    setAiProducts(products)
+    if (products.length > 0) {
+      setSelectedAiProduct(0)
+      fillFormFromAi(products[0])
+      // Task 4: Sync listingCopies with AI-generated count
+      setListingCopies(products.length)
+    }
+  }, [])
+
+  const fillFormFromAi = useCallback((product: AIMergedProduct) => {
+    setRequired(prev => ({
+      ...prev,
+      name_ar: product.name_ar || prev.name_ar,
+      name_en: product.name_en || prev.name_en,
+      description_ar: product.description_ar || prev.description_ar,
+      description_en: product.description_en || prev.description_en,
+      bullet_points: [...product.bullet_points_ar, '', '', '', '', ''].slice(0, 5),
+      brand: product.brand || prev.brand,
+      manufacturer: product.manufacturer || prev.manufacturer,
+      model_number: product.model_number || prev.model_number,
+      product_type: product.product_type || prev.product_type,
+      country_of_origin: product.country_of_origin || prev.country_of_origin,
+      price: product.price ? String(product.price) : prev.price,
+      ean: product.ean || prev.ean,
+    }))
+    setOptional(prev => ({
+      ...prev,
+      keywords: product.keywords || prev.keywords,
+      material: product.material || prev.material,
+      target_audience: product.target_audience || prev.target_audience,
+    }))
+  }, [])
+
+  // ==================== Task 5: SEO Improvement via AI ====================
+  const [improving, setImproving] = useState(false)
+
+  const handleImproveWithAI = useCallback(async () => {
+    setImproving(true)
+    try {
+      const nameToImprove = required.name_ar || required.name_en || ''
+      const descToImprove = required.description_ar || required.description_en || ''
+      const specs = `${descToImprove} | ${required.bullet_points.filter(Boolean).join(' | ')}`
+
+      const result = await aiApi.generateProduct({
+        name: nameToImprove,
+        specs: specs || 'منتج عام',
+        copies: 1,
+      })
+
+      if (result.variants.length > 0) {
+        const v = result.variants[0]
+        const b = result.base_product
+        // Only improve: name, description, bullet_points, keywords — NOT static fields
+        setRequired(prev => ({
+          ...prev,
+          name_ar: v.name_ar || prev.name_ar,
+          name_en: v.name_en || prev.name_en,
+          description_ar: v.description_ar || prev.description_ar,
+          description_en: v.description_en || prev.description_en,
+          bullet_points: [...b.bullet_points_ar, '', '', '', '', ''].slice(0, 5),
+        }))
+        setOptional(prev => ({
+          ...prev,
+          keywords: b.keywords || prev.keywords,
+        }))
+        toast.success('تم تحسين البيانات بالذكاء الاصطناعي!')
+      }
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'فشل التحسين')
+    } finally {
+      setImproving(false)
+    }
+  }, [required, setRequired, setOptional])
+
   // ==================== Validation ====================
   const validate = (): { valid: boolean; errors: string[] } => {
     const errors: string[] = []
@@ -310,10 +441,13 @@ export default function ProductCreatePage() {
       errors.push('اسم المنتج بالعربي لازم 3 أحرف على الأقل')
     if (required.name_en.trim().length < VALIDATION_RULES.name_en.min)
       errors.push('اسم المنتج بالإنجليزي لازم 3 أحرف على الأقل')
+    // Task 2: Barcode is MANDATORY - no exemption
     if (required.id_type !== 'EXEMPT') {
       const idLen = required.id_type === 'UPC' ? 12 : 13
       if (required.ean.length !== idLen)
         errors.push(`الباركود لازم يكون ${idLen} رقم`)
+    } else {
+      errors.push('الباركود (EAN أو UPC) مطلوب — لا يمكن الرفع بدونه')
     }
     if (!required.brand || required.brand.trim().length < 1)
       errors.push('البراند مطلوب')
@@ -593,9 +727,182 @@ export default function ProductCreatePage() {
     ), { duration: 10000 })
   }
 
+  // ==================== Render Page 0: مساعد الذكاء الاصطناعي ====================
+  const renderPage0 = (
+    <div className="space-y-6">
+      {/* Hero Section */}
+      <div className="text-center py-8">
+        <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 mb-4">
+          <Sparkles className="w-10 h-10 text-white" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+          أنشئ منتجك بالذكاء الاصطناعي
+        </h2>
+        <p className="text-gray-500 dark:text-gray-400 max-w-lg mx-auto">
+          اكتب اسم المنتج والمواصفات — والذكاء الاصطناعي هيعبّي كل الخانات نيابة عنك في ثوانٍ
+        </p>
+      </div>
+
+      {/* AI Assistant Panel */}
+      <div className="max-w-2xl mx-auto">
+        <AIAssistantPanel onProductsGenerated={handleAiProductsGenerated} />
+      </div>
+
+      {/* AI Product Variant Selector */}
+      {aiProducts.length > 1 && (
+        <div className="max-w-2xl mx-auto rounded-lg border bg-blue-50 dark:bg-blue-900/20 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="w-4 h-4 text-blue-600" />
+            <h4 className="font-medium text-blue-900 dark:text-blue-100">المنتجات المولّدة — اختار اللي عايزه</h4>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {aiProducts.map((product, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  setSelectedAiProduct(i)
+                  fillFormFromAi(product)
+                  setPage(1)
+                  toast.success(`تم اختيار المنتج ${i + 1} — كمّل باقي البيانات`)
+                }}
+                className={`px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                  selectedAiProduct === i
+                    ? 'bg-blue-600 text-white shadow-lg scale-105'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:shadow'
+                }`}
+              >
+                <div className="font-bold">المنتج {i + 1}</div>
+                <div className="text-xs opacity-80 mt-1">{product.name_ar.slice(0, 40)}</div>
+                <div className="text-xs opacity-60 mt-1">SKU: {product.suggested_sku}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Divider */}
+      {aiProducts.length === 0 && (
+        <div className="max-w-2xl mx-auto space-y-4">
+          {/* Amazon Import Section */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Globe className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              <h4 className="font-medium text-gray-900 dark:text-white">استيراد من Amazon</h4>
+            </div>
+            <div className="flex gap-2">
+              <select
+                value={importType}
+                onChange={e => setImportType(e.target.value)}
+                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+              >
+                <option value="ASIN">ASIN</option>
+                <option value="UPC">UPC</option>
+                <option value="EAN">EAN</option>
+              </select>
+              <input
+                type="text"
+                value={importSearch}
+                onChange={e => setImportSearch(e.target.value)}
+                placeholder="أدخل الرقم..."
+                dir="ltr"
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+              />
+              <button
+                onClick={handleImportFromAmazon}
+                disabled={importing}
+                className="px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 transition-colors text-sm font-medium flex items-center gap-2"
+              >
+                {importing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Globe className="w-4 h-4" />
+                )}
+                استيراد
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">ابحث في Amazon بنفس الحساب — ينزل نفس الصنف بالظبط</p>
+          </div>
+
+          <div className="relative flex items-center py-2">
+            <div className="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
+            <span className="flex-shrink mx-4 text-sm text-gray-400">أو</span>
+            <div className="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
+          </div>
+
+          {/* Skip AI Button */}
+          <div className="text-center">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+              عايز تملأ البيانات بإيدك؟
+            </p>
+            <button
+              onClick={() => setPage(1)}
+              className="px-6 py-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors font-medium"
+            >
+              ← ابدأ بإدخال البيانات يدوياً
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Info Cards */}
+      <div className="max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+        <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+          <div className="text-2xl mb-2">⚡</div>
+          <h4 className="font-bold text-green-900 dark:text-green-100 text-sm">سريع</h4>
+          <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+            توليد منتج كامل في 3 ثوانٍ
+          </p>
+        </div>
+        <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+          <div className="text-2xl mb-2">🎯</div>
+          <h4 className="font-bold text-blue-900 dark:text-blue-100 text-sm">دقيق</h4>
+          <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+            بيانات متوافقة مع معايير Amazon
+          </p>
+        </div>
+        <div className="p-4 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
+          <div className="text-2xl mb-2">🔄</div>
+          <h4 className="font-bold text-purple-900 dark:text-purple-100 text-sm">مرن</h4>
+          <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+            ولّد عدة منتجات بنفس المواصفات
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+
   // ==================== Render Page 1: الحقول الإجبارية ====================
   const renderPage1 = (
     <div className="space-y-6">
+      {/* AI Product Variant Selector (moved from here, but keep if user comes back) */}
+      {aiProducts.length > 1 && (
+        <div className="rounded-lg border bg-blue-50 dark:bg-blue-900/20 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="w-4 h-4 text-blue-600" />
+            <h4 className="font-medium text-blue-900 dark:text-blue-100">المنتجات المولّدة بالذكاء الاصطناعي — غيّر الاختيار</h4>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {aiProducts.map((product, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  setSelectedAiProduct(i)
+                  fillFormFromAi(product)
+                  toast.success(`تم اختيار المنتج ${i + 1}`)
+                }}
+                className={`px-3 py-2 rounded-md text-sm transition-colors ${
+                  selectedAiProduct === i
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                }`}
+              >
+                المنتج {i + 1}: {product.name_ar.slice(0, 30)}{product.name_ar.length > 30 ? '...' : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* الهوية الأساسية */}
       <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
         <h3 className="text-lg font-bold text-blue-700 dark:text-blue-400 mb-4 flex items-center gap-2">
@@ -603,14 +910,14 @@ export default function ProductCreatePage() {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="اسم المنتج (عربي)" required>
+          <Field label="اسم المنتج (عربي)" required hint="الاسم بالعربي — يظهر على صفحة المنتج">
             <TextInput
               value={required.name_ar}
               onChange={v => setRequired(prev => ({ ...prev, name_ar: v }))}
               placeholder="مثال: خلاط كهربائي 500 واط"
             />
           </Field>
-          <Field label="اسم المنتج (English)" required>
+          <Field label="اسم المنتج (English)" required hint="الاسم بالإنجليزي — مطلوب لـ Amazon">
             <TextInput
               value={required.name_en}
               onChange={v => setRequired(prev => ({ ...prev, name_en: v }))}
@@ -619,7 +926,7 @@ export default function ProductCreatePage() {
           </Field>
         </div>
 
-        <Field label="نوع المنتج" required>
+        <Field label="نوع المنتج" required hint="نوع المنتج على Amazon — يحدد القوالب المطلوبة">
           <SelectInput
             value={required.product_type}
             onChange={v => setRequired(prev => ({ ...prev, product_type: v }))}
@@ -627,7 +934,7 @@ export default function ProductCreatePage() {
           />
         </Field>
 
-        <Field label="الباركود" required>
+        <Field label="الباركود" required hint="EAN (13 رقم) أو UPC (12 رقم) — مطلوب من Amazon للتعرف على المنتج">
           <div className="mb-2">
             <RadioGroup
               name="id_type"
@@ -647,21 +954,21 @@ export default function ProductCreatePage() {
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Field label="البراند" required>
+          <Field label="البراند" required hint="اسم العلامة التجارية — لو مش موجود اكتب Generic">
             <TextInput
               value={required.brand}
               onChange={v => setRequired(prev => ({ ...prev, brand: v }))}
               placeholder="Generic"
             />
           </Field>
-          <Field label="الموديل" required>
+          <Field label="الموديل" required hint="رقم الموديل — يظهر في نتائج البحث">
             <TextInput
               value={required.model_number}
               onChange={v => setRequired(prev => ({ ...prev, model_number: v }))}
               placeholder={required.name_en || 'SKU'}
             />
           </Field>
-          <Field label="المصنع" required>
+          <Field label="المصنع" required hint="اسم الشركة المصنعة">
             <TextInput
               value={required.manufacturer}
               onChange={v => setRequired(prev => ({ ...prev, manufacturer: v }))}
@@ -670,7 +977,7 @@ export default function ProductCreatePage() {
           </Field>
         </div>
 
-        <Field label="بلد المنشأ" required>
+        <Field label="بلد المنشأ" required hint="البلد اللي اتصنع فيها المنتج — مثال: CN للصين">
           <SelectInput
             value={required.country_of_origin}
             onChange={v => setRequired(prev => ({ ...prev, country_of_origin: v }))}
@@ -1245,17 +1552,42 @@ export default function ProductCreatePage() {
   return (
     <div className="max-w-4xl mx-auto p-4">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          {isEditMode ? 'تعديل المنتج' : 'إضافة منتج جديد'}
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">
-          {isEditMode ? 'قم بتعديل البيانات المطلوبة' : 'أكمل البيانات لإضافة منتج جديد'}
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              {isEditMode ? 'تعديل المنتج' : 'إضافة منتج جديد'}
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">
+              {isEditMode ? 'قم بتعديل البيانات المطلوبة' : 'أكمل البيانات لإضافة منتج جديد'}
+            </p>
+          </div>
+          {/* Task 5: SEO Improvement Button (Edit Mode Only) */}
+          {isEditMode && (
+            <button
+              onClick={handleImproveWithAI}
+              disabled={improving}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-lg hover:from-violet-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium text-sm shadow-md"
+            >
+              {improving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  جاري التحسين...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  تحسين بالذكاء الاصطناعي
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       <StepIndicator currentPage={page} onNavigate={setPage} />
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+        {page === 0 && renderPage0}
         {page === 1 && renderPage1}
         {page === 2 && renderPage2}
         {page === 3 && renderPage3}
