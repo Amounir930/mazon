@@ -66,6 +66,7 @@ backend/archive/check_session.py
 backend/archive/migrate_columns.py
 
 # Documentation files (GitHub only - keep local)
+docs/
 *.md
 !frontend/README.md
 
