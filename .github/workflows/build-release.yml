@@ -1,0 +1,157 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 3.0.0)'
+        required: true
+        default: '3.0.0'
+
+env:
+  APP_VERSION: ${{ github.event.inputs.version || github.ref_name || '3.0.0' }}
+
+jobs:
+  build-windows:
+    name: Build Windows .exe
+    runs-on: windows-latest
+
+    steps:
+      # 1. Checkout code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Setup Python
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      # 3. Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # 4. Install Playwright
+      - name: Install Playwright Browsers
+        run: playwright install chromium
+        working-directory: backend
+
+      # 5. Install Frontend Dependencies
+      - name: Install Frontend Dependencies
+        run: npm ci
+        working-directory: frontend
+
+      # 6. Build Frontend
+      - name: Build Frontend
+        run: npm run build
+        working-directory: frontend
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+
+      # 7. Install Backend Dependencies
+      - name: Install Backend Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+        working-directory: backend
+
+      # 8. Build .exe with PyInstaller
+      - name: Build CrazyLister.exe
+        run: pyinstaller build.spec --clean
+        working-directory: backend
+
+      # 9. Verify Build
+      - name: Verify Build
+        run: |
+          if (-not (Test-Path "backend\dist\CrazyLister\CrazyLister.exe")) {
+            Write-Error "CrazyLister.exe not found!"
+            exit 1
+          }
+          $size = [math]::Round((Get-Item "backend\dist\CrazyLister\CrazyLister.exe").Length / 1MB, 2)
+          Write-Host "✅ CrazyLister.exe built successfully ($size MB)"
+        shell: pwsh
+
+      # 10. Prepare Release Folder
+      - name: Prepare Release Package
+        run: |
+          $RELEASE_DIR = "releases\CrazyLister-v$env:APP_VERSION"
+          New-Item -ItemType Directory -Force -Path $RELEASE_DIR | Out-Null
+
+          # Copy .exe folder
+          Copy-Item -Recurse -Force "backend\dist\CrazyLister\*" "$RELEASE_DIR\"
+
+          # Copy documentation
+          Copy-Item -Force "README.md" "$RELEASE_DIR\" -ErrorAction SilentlyContinue
+          Copy-Item -Force "QUICKSTART.md" "$RELEASE_DIR\" -ErrorAction SilentlyContinue
+          Copy-Item -Force "backend\.env.example" "$RELEASE_DIR\" -ErrorAction SilentlyContinue
+
+          # Create launcher batch file
+          $BATCH = @"
+          @echo off
+          echo Starting Crazy Lister v$env:APP_VERSION...
+          start "" "CrazyLister.exe"
+          echo If the window doesn't appear, check the logs in %%APPDATA%%\CrazyLister\
+          "@
+          Set-Content -Path "$RELEASE_DIR\StartCrazyLister.bat" -Value $BATCH -Encoding ASCII
+
+          Write-Host "✅ Release package prepared"
+        shell: pwsh
+
+      # 11. Create ZIP Archive
+      - name: Create ZIP Archive
+        run: |
+          $ZIP_NAME = "CrazyLister-v$env:APP_VERSION.zip"
+          Compress-Archive -Path "releases\CrazyLister-v$env:APP_VERSION\*" -DestinationPath "releases\$ZIP_NAME"
+          $SIZE = [math]::Round((Get-Item "releases\$ZIP_NAME").Length / 1MB, 2)
+          Write-Host "✅ ZIP created: $ZIP_NAME ($SIZE MB)"
+        shell: pwsh
+
+      # 12. Upload Build Artifact
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrazyLister-v${{ env.APP_VERSION }}-Windows
+          path: releases/CrazyLister-v${{ env.APP_VERSION }}.zip
+          retention-days: 30
+
+      # 13. Create GitHub Release (if tag push)
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: releases/CrazyLister-v${{ env.APP_VERSION }}.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## 🎉 Crazy Lister v${{ env.APP_VERSION }}
+
+            ### 📥 Download
+            - **Windows**: CrazyLister-v${{ env.APP_VERSION }}.zip
+
+            ### 🚀 Installation
+            1. Extract ZIP to `C:\Program Files\CrazyLister\`
+            2. Run `StartCrazyLister.bat` or `CrazyLister.exe`
+            3. Configure Amazon SP-API credentials in `.env`
+
+            ### 📖 Documentation
+            See `QUICKSTART.md` for detailed setup instructions.
+
+            ### ✨ Changes
+            - Production-ready desktop application
+            - Amazon SP-API integration
+            - AI-powered product generation
+            - Excel import/export
+            - Multi-marketplace support
+
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
