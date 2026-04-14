@@ -39,37 +39,43 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      # 4. Install Playwright
-      - name: Install Playwright Browsers
-        run: playwright install chromium
+      # 4. Install Backend Dependencies (including Playwright)
+      - name: Install Backend Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
         working-directory: backend
 
-      # 5. Install Frontend Dependencies
+      # 5. Install Playwright Browsers
+      - name: Install Playwright Browsers
+        run: python -m playwright install --with-deps chromium
+        working-directory: backend
+
+      # 6. Install Frontend Dependencies
       - name: Install Frontend Dependencies
         run: npm ci
         working-directory: frontend
 
-      # 6. Build Frontend
+      # 7. Build Frontend
       - name: Build Frontend
         run: npm run build
         working-directory: frontend
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
 
-      # 7. Install Backend Dependencies
-      - name: Install Backend Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+      # 8. Install Backend Dependencies for Build
+      - name: Install PyInstaller
+        run: pip install pyinstaller
         working-directory: backend
 
-      # 8. Build .exe with PyInstaller
+      # 9. Build .exe with PyInstaller
       - name: Build CrazyLister.exe
         run: pyinstaller build.spec --clean
         working-directory: backend
+        env:
+          PYTHONIOENCODING: 'utf-8'
 
-      # 9. Verify Build
+      # 10. Verify Build
       - name: Verify Build
         run: |
           if (-not (Test-Path "backend\dist\CrazyLister\CrazyLister.exe")) {
@@ -80,7 +86,7 @@ jobs:
           Write-Host "✅ CrazyLister.exe built successfully ($size MB)"
         shell: pwsh
 
-      # 10. Prepare Release Folder
+      # 11. Prepare Release Folder
       - name: Prepare Release Package
         run: |
           $RELEASE_DIR = "releases\CrazyLister-v$env:APP_VERSION"
@@ -106,7 +112,7 @@ jobs:
           Write-Host "✅ Release package prepared"
         shell: pwsh
 
-      # 11. Create ZIP Archive
+      # 12. Create ZIP Archive
       - name: Create ZIP Archive
         run: |
           $ZIP_NAME = "CrazyLister-v$env:APP_VERSION.zip"
@@ -115,7 +121,7 @@ jobs:
           Write-Host "✅ ZIP created: $ZIP_NAME ($SIZE MB)"
         shell: pwsh
 
-      # 12. Upload Build Artifact
+      # 13. Upload Build Artifact
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -123,7 +129,7 @@ jobs:
           path: releases/CrazyLister-v${{ env.APP_VERSION }}.zip
           retention-days: 30
 
-      # 13. Create GitHub Release (if tag push)
+      # 14. Create GitHub Release (if tag push)
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
