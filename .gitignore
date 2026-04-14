@@ -65,6 +65,14 @@ info/
 backend/archive/check_session.py
 backend/archive/migrate_columns.py
 
+# Documentation files (GitHub only - keep local)
+*.md
+!frontend/README.md
+
+# Text files (GitHub only - keep local)
+*.txt
+!backend/requirements.txt
+
 # Root scripts (local only)
 New-Text-Document.txt
 Valid
