@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { productsApi, listingsApi, amazonApi, authApi, tasksApi, syncApi, bulkApi, exportApi, sellersApi, catalogApi } from './endpoints'
+import { productsApi, listingsApi, amazonApi, authApi, tasksApi, syncApi, bulkApi, exportApi, sellersApi, catalogApi, spApi } from './endpoints'
 import type { ProductListResponse, Listing, SessionStatusResponse, BrowserLoginResponse } from '@/types/api'
 
 // ==================== Product Keys ====================
@@ -431,6 +431,80 @@ export function useDisconnectAmazon() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: authKeys.session })
+    },
+  })
+}
+
+// ==================== SP-API Hooks (Amazon Official) ====================
+
+export const spApiKeys = {
+  listing: (sku: string) => ['sp-api', 'listing', sku] as const,
+  listings: (params?: Record<string, unknown>) => ['sp-api', 'listings', params] as const,
+}
+
+export function useSPApiListing(sku: string) {
+  return useQuery({
+    queryKey: spApiKeys.listing(sku),
+    queryFn: async () => {
+      const { data } = await spApi.getListing(sku)
+      return data
+    },
+    enabled: !!sku,
+    staleTime: 1000 * 60 * 1,
+  })
+}
+
+export function useDeleteListing() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ sellerId, sku }: { sellerId: string; sku: string }) => {
+      const { data } = await spApi.deleteListing(sellerId, sku)
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: spApiKeys.listings() })
+      queryClient.invalidateQueries({ queryKey: listingKeys.lists() })
+    },
+  })
+}
+
+export function useSearchListings(params?: {
+  seller_id?: string
+  skus?: string
+  status?: string
+  page_size?: number
+}) {
+  return useQuery({
+    queryKey: spApiKeys.listings(params),
+    queryFn: async () => {
+      const { data } = await spApi.searchListings(params)
+      return data
+    },
+    staleTime: 1000 * 60 * 1,
+  })
+}
+
+export function usePatchListing() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      sellerId,
+      sku,
+      data,
+    }: {
+      sellerId: string
+      sku: string
+      data: { product_type: string; patches: Array<{ op: string; path: string; value: any }> }
+    }) => {
+      const { data: result } = await spApi.patchListing(sellerId, sku, data)
+      return result
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: spApiKeys.listings() })
+      queryClient.invalidateQueries({ queryKey: spApiKeys.listing(variables.sku) })
+      queryClient.invalidateQueries({ queryKey: listingKeys.lists() })
     },
   })
 }

@@ -118,6 +118,81 @@ export const productsApi = {
     api.post(`/sp-api/submit/${productId}`),
 }
 
+// ==================== SP-API (Amazon Official) ====================
+
+export interface SPApiListingResponse {
+  success: boolean
+  listing_id?: string
+  submission_id?: string
+  status?: string
+  asin?: string
+  errors?: Array<{ message: string; severity: string }>
+  message?: string
+}
+
+export interface SPApiSearchResponse {
+  success: boolean
+  seller_id: string
+  total_results: number
+  items: Array<Record<string, any>>
+  pagination?: { nextToken?: string }
+}
+
+export interface SPApiDeleteResponse {
+  success: boolean
+  status: string
+  message: string
+}
+
+export interface PatchOperation {
+  op: 'replace' | 'add' | 'remove'
+  path: string
+  value: any
+}
+
+export interface SPApiPatchRequest {
+  product_type: string
+  patches: PatchOperation[]
+}
+
+export interface SPApiPatchResponse {
+  success: boolean
+  status: string
+  sku: string
+  errors?: Array<{ message: string; severity: string }>
+  message: string
+}
+
+export const spApi = {
+  // Submit product to Amazon (existing)
+  submit: (productId: string) =>
+    api.post<SPApiListingResponse>(`/sp-api/submit/${productId}`),
+
+  // Get listing status (existing)
+  getListing: (sku: string) =>
+    api.get(`/sp-api/listing/${sku}`),
+
+  // Get product type schema (existing)
+  getSchema: (productType: string) =>
+    api.get(`/sp-api/schema/${productType}`),
+
+  // NEW: Delete listing from Amazon
+  deleteListing: (sellerId: string, sku: string) =>
+    api.delete<SPApiDeleteResponse>(`/sp-api/listing/${sellerId}/${sku}`),
+
+  // NEW: Search listings on Amazon
+  searchListings: (params?: {
+    seller_id?: string
+    skus?: string
+    status?: string
+    page_size?: number
+  }) => api.get<SPApiSearchResponse>('/sp-api/listings', { params }),
+
+  // NEW: Patch listing (partial update)
+  patchListing: (sellerId: string, sku: string, data: SPApiPatchRequest) =>
+    api.patch<SPApiPatchResponse>(`/sp-api/listing/${sellerId}/${sku}`, data),
+}
+
 // ==================== Listings API ====================
 
 export const listingsApi = {

@@ -150,6 +150,8 @@ class SPAPIClient:
                 response = requests.post(url, headers=headers, json=data, params=params, auth=aws_auth, timeout=30)
             elif method == "DELETE":
                 response = requests.delete(url, headers=headers, params=params, auth=aws_auth, timeout=30)
+            elif method == "PATCH":
+                response = requests.patch(url, headers=headers, json=data, params=params, auth=aws_auth, timeout=30)
             else:
                 raise ValueError(f"Unsupported method: {method}")
             
@@ -214,15 +216,108 @@ class SPAPIClient:
     def delete_listing_item(self, seller_id: str, sku: str) -> Dict[str, Any]:
         """
         Delete a listing item.
-        
+
         API: DELETE /listings/2021-08-01/items/{sellerId}/{sku}
         """
         path = f"/listings/2021-08-01/items/{seller_id}/{sku}"
         params = {
             "marketplaceIds": self.marketplace_id,
         }
-        
+
         return self._make_request("DELETE", path, params=params)
+
+    def search_listings_items(
+        self,
+        seller_id: str,
+        skus: list | None = None,
+        status: str | None = None,
+        page_size: int = 10,
+    ) -> Dict[str, Any]:
+        """
+        Search/list all listings for a seller.
+
+        API: GET /listings/2021-08-01/items/{sellerId}
+        Docs: https://developer-docs.amazon.com/sp-api/docs/listings-items-api-v2021-08-01-reference#searchlistingsitems
+
+        Args:
+            seller_id: Amazon Seller ID (Merchant ID)
+            skus: Optional list of SKUs to filter by
+            status: Optional filter — ACTIVE, INCOMPLETE, or INACTIVE
+            page_size: Number of results per page (max 200 per Amazon limits)
+
+        Returns:
+            {
+                "numberOfResults": int,
+                "pagination": {"nextToken": "..."},
+                "items": [...]
+            }
+        """
+        path = f"/listings/2021-08-01/items/{seller_id}"
+        params: Dict[str, Any] = {"marketplaceIds": self.marketplace_id}
+
+        if skus:
+            params["skus"] = ",".join(skus)
+        if status:
+            params["status"] = status  # ACTIVE, INCOMPLETE, INACTIVE
+        if page_size:
+            params["pageSize"] = min(page_size, 200)  # Amazon hard limit
+
+        logger.info(
+            f"Searching listings: seller={seller_id}, skus={skus}, "
+            f"status={status}, page_size={page_size}"
+        )
+
+        return self._make_request("GET", path, params=params)
+
+    def patch_listing_item(
+        self,
+        seller_id: str,
+        sku: str,
+        product_type: str,
+        patches: list,
+        marketplace_ids: list | None = None,
+    ) -> Dict[str, Any]:
+        """
+        Partial update of a listing item.
+
+        API: PATCH /listings/2021-08-01/items/{sellerId}/{sku}
+        Docs: https://developer-docs.amazon.com/sp-api/docs/listings-items-api-v2021-08-01-reference#patchlistingsitem
+
+        Args:
+            seller_id: Amazon Seller ID
+            sku: Product SKU
+            product_type: Amazon product type (REQUIRED by SP-API for PATCH)
+                Example: "HOME_ORGANIZERS_AND_STORAGE"
+            patches: List of patch operations
+                Example: [
+                    {"op": "replace", "path": "/attributes/purchasable_offer/0/our_price/0/schedule/0/value_with_tax", "value": 150},
+                    {"op": "replace", "path": "/attributes/quantity/0/value", "value": 50}
+                ]
+
+        Returns:
+            {
+                "status": "ACCEPTED" | "INVALID",
+                "issues": [...],
+                "sku": "...",
+            }
+
+        ⚠️  CRITICAL: SP-API requires 'productType' in the PATCH body.
+            Without it, Amazon returns 400 Bad Request.
+        """
+        path = f"/listings/2021-08-01/items/{seller_id}/{sku}"
+        params = {
+            "marketplaceIds": marketplace_ids or self.marketplace_id,
+            "issueLocale": "ar_AE",
+        }
+
+        # SP-API requires productType in body alongside patches
+        body = {
+            "productType": product_type,
+            "patches": patches,
+        }
+
+        logger.info(f"Patching listing: SKU={sku}, productType={product_type}, patches={len(patches)}")
+        return self._make_request("PATCH", path, data=body, params=params)
 
     # ============================================================
     # Sellers API (v1)

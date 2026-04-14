@@ -5,9 +5,9 @@ Handles all Amazon SP-API operations through our backend
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from loguru import logger
 
 # Load .env file from backend directory
@@ -22,6 +22,7 @@ from app.models.session import Session as AuthSession
 from app.services.session_store import decrypt_data
 from app.services.sp_api_client import SPAPIClient
 from app.tasks.polling_tasks import poll_listing_status
+from app.api.dependencies import get_sp_api_client, get_seller_id_from_session
 from datetime import datetime
 import json
 
@@ -252,7 +253,10 @@ async def get_product_type_schema(product_type: str):
         ).order_by(AuthSession.created_at.desc()).first()
 
         if not auth_session:
-            raise HTTPException(status_code=400, detail="No active session")
+            raise HTTPException(status_code=401, detail="No active session — please log in to Amazon first")
+
+        if not auth_session.credentials_json:
+            raise HTTPException(status_code=401, detail="Session credentials missing — please reconnect")
 
         credentials = json.loads(decrypt_data(auth_session.credentials_json))
         marketplace_id = auth_session.marketplace_id or "ARBP9OOSHTCHU"
@@ -276,8 +280,170 @@ async def get_product_type_schema(product_type: str):
             "required_attributes": required_attrs,
             "full_schema": schema,
         }
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
         logger.error(f"Get schema error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Schema fetch failed: {str(e)}")
     finally:
         db.close()
+
+
+# ============================================================
+# NEW: Dependency-Injected Endpoints (Phase 1)
+# ============================================================
+
+
+@router.delete("/listing/{seller_id}/{sku}")
+async def delete_listing(
+    seller_id: str,
+    sku: str,
+    client: SPAPIClient = Depends(get_sp_api_client),
+):
+    """
+    Delete a listing from Amazon SP-API.
+
+    API: DELETE /listings/2021-08-01/items/{sellerId}/{sku}
+    Docs: https://developer-docs.amazon.com/sp-api/docs/listings-items-api-v2021-08-01-reference#deletelistingsitem
+    """
+    try:
+        result = client.delete_listing_item(seller_id, sku)
+
+        return {
+            "success": True,
+            "status": result.get("status", "ACCEPTED"),
+            "message": f"Listing deleted: SKU={sku}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete listing error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/listings")
+async def search_listings(
+    seller_id: Optional[str] = None,
+    skus: Optional[str] = None,
+    status: Optional[str] = None,
+    page_size: int = 10,
+    client: SPAPIClient = Depends(get_sp_api_client),
+):
+    """
+    Search all Amazon listings for a seller.
+
+    Query params:
+    - seller_id: Amazon Seller ID (optional — defaults to session seller)
+    - skus: Comma-separated SKUs to filter (optional)
+    - status: ACTIVE, INCOMPLETE, or INACTIVE (optional)
+    - page_size: Number of results (default: 10, max: 200)
+
+    Dependency Injection handles:
+    - Session lookup
+    - Credential decryption
+    - Client initialization
+    """
+    try:
+        # If no seller_id provided, get from session
+        if not seller_id:
+            seller_id_dep = Depends(get_seller_id_from_session)
+            # We can't use Depends inside another function, so we need to
+            # call the dependency manually through the FastAPI dependency system.
+            # For simplicity, let's use a direct session query here as fallback.
+            db = SessionLocal()
+            try:
+                auth_session = db.query(AuthSession).filter(
+                    AuthSession.auth_method == "browser",
+                    AuthSession.is_active == True,
+                ).order_by(AuthSession.created_at.desc()).first()
+
+                if not auth_session or not auth_session.credentials_json:
+                    raise HTTPException(status_code=401, detail="No active session with credentials")
+
+                credentials = json.loads(decrypt_data(auth_session.credentials_json))
+                seller_id = credentials.get("seller_id")
+                if not seller_id:
+                    raise HTTPException(status_code=400, detail="Seller ID not found in session")
+            finally:
+                db.close()
+
+        result = client.search_listings_items(
+            seller_id=seller_id,
+            skus=skus.split(",") if skus else None,
+            status=status,
+            page_size=page_size,
+        )
+
+        items = result.get("items", [])
+        return {
+            "success": True,
+            "seller_id": seller_id,
+            "total_results": len(items),
+            "items": items,
+            "pagination": result.get("pagination", {}),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Search listings error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# PATCH Endpoint (Phase 2 - Ready)
+# ============================================================
+
+
+class PatchListingRequest(BaseModel):
+    """Request body for PATCH listing endpoint"""
+    product_type: str
+    patches: List[dict]
+
+
+@router.patch("/listing/{seller_id}/{sku}")
+async def patch_listing(
+    seller_id: str,
+    sku: str,
+    request: PatchListingRequest,
+    client: SPAPIClient = Depends(get_sp_api_client),
+):
+    """
+    Partial update of a listing (e.g., price or quantity only).
+
+    Patches format:
+    [
+        {"op": "replace", "path": "/attributes/purchasable_offer/0/our_price/0/schedule/0/value_with_tax", "value": 150},
+        {"op": "replace", "path": "/attributes/quantity/0/value", "value": 50}
+    ]
+
+    ⚠️  productType is REQUIRED (per Amazon SP-API spec).
+    """
+    try:
+        if not request.patches:
+            raise HTTPException(status_code=400, detail="patches array is required")
+
+        if not request.product_type:
+            raise HTTPException(status_code=400, detail="productType is required")
+
+        result = client.patch_listing_item(
+            seller_id=seller_id,
+            sku=sku,
+            product_type=request.product_type,
+            patches=request.patches,
+        )
+
+        issues = result.get("issues", [])
+        errors = [i for i in issues if i.get("severity") == "ERROR"]
+
+        return {
+            "success": len(errors) == 0,
+            "status": result.get("status", "UNKNOWN"),
+            "sku": sku,
+            "errors": errors,
+            "message": "Listing updated" if len(errors) == 0 else "Patch failed — see errors",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Patch listing error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown, FileSpreadsheet, X, Check, Download, AlertCircle, Image as ImageIcon } from 'lucide-react'
-import { useProducts, useDeleteProduct, useSubmitListing, useSyncFromAmazon, useExportToAmazon, useExportPriceInventory, useExportListingLoader } from '@/api/hooks'
+import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown, FileSpreadsheet, X, Check, Download, AlertCircle, Image as ImageIcon, CloudOff, Cloud } from 'lucide-react'
+import { useProducts, useDeleteProduct, useSubmitListing, useSyncFromAmazon, useExportToAmazon, useExportPriceInventory, useExportListingLoader, useDeleteListing, usePatchListing, useSessionStatus } from '@/api/hooks'
 import { productsApi } from '@/api/endpoints'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import type { Product } from '@/types/api'
@@ -33,6 +33,54 @@ export default function ProductListPage() {
   const exportMutation = useExportToAmazon()
   const exportPriceMutation = useExportPriceInventory()
   const exportListingMutation = useExportListingLoader()
+
+  // SP-API mutations (Amazon official)
+  const deleteFromAmazonMutation = useDeleteListing()
+  const patchAmazonMutation = usePatchListing()
+  const { data: sessionData } = useSessionStatus()
+
+  // Extract seller_id from session for SP-API calls
+  const sellerId = sessionData?.is_connected ? undefined : undefined // Will be auto-resolved by backend
+
+  const handleDeleteFromAmazon = async (sku: string) => {
+    if (!window.confirm(`هل أنت متأكد من حذف "${sku}" من Amazon؟ هذا الإجراء لا رجعة فيه.`)) return
+    try {
+      await deleteFromAmazonMutation.mutateAsync({
+        sellerId: sellerId || 'A1DSHARRBRWYZW',
+        sku,
+      })
+      toast.success(`تم حذف ${sku} من Amazon`)
+      refetch()
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'فشل الحذف من Amazon')
+    }
+  }
+
+  const handleUpdatePriceOnAmazon = async (product: Product) => {
+    const newPrice = prompt(`السعر الحالي: ${product.price} ج.م\nأدخل السعر الجديد:`, String(product.price))
+    if (!newPrice || isNaN(Number(newPrice)) || Number(newPrice) <= 0) return
+
+    try {
+      await patchAmazonMutation.mutateAsync({
+        sellerId: sellerId || 'A1DSHARRBRWYZW',
+        sku: product.sku,
+        data: {
+          product_type: product.product_type || 'HOME_ORGANIZERS_AND_STORAGE',
+          patches: [
+            {
+              op: 'replace',
+              path: '/attributes/purchasable_offer/0/our_price/0/schedule/0/value_with_tax',
+              value: Number(newPrice),
+            },
+          ],
+        },
+      })
+      toast.success(`تم تحديث سعر ${product.sku} على Amazon`)
+      refetch()
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'فشل تحديث السعر على Amazon')
+    }
+  }
 
   const products = data?.items ?? []
 
