@@ -18,6 +18,7 @@ eggs/
 .installed.cfg
 *.egg
 *.spec
+!backend/build.spec
 
 # Build artifacts
 build/
@@ -27,6 +28,7 @@ build/
 *.dmg
 *.app
 *.iss
+!backend/installer.iss
 
 # Virtual Environment
 venv/
