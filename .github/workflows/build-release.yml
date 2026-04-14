@@ -137,7 +137,6 @@ jobs:
           files: releases/CrazyLister-v${{ env.APP_VERSION }}.zip
           draft: false
           prerelease: false
-          generate_release_notes: true
           body: |
             ## 🎉 Crazy Lister v${{ env.APP_VERSION }}
 
@@ -151,13 +150,5 @@ jobs:
 
             ### 📖 Documentation
             See `QUICKSTART.md` for detailed setup instructions.
-
-            ### ✨ Changes
-            - Production-ready desktop application
-            - Amazon SP-API integration
-            - AI-powered product generation
-            - Excel import/export
-            - Multi-marketplace support
-
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
