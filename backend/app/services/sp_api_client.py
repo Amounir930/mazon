@@ -637,10 +637,8 @@ class SPAPIClient:
             "recommended_browse_nodes": [{"value": browse_node}],
 
             # Included components
-            "included_components": [{"value": included_components, "language_tag": "ar_AE"}],
             "number_of_boxes": [{"value": 1}],
             "number_of_items": [{"value": number_of_items}],
-            "package_quantity": [{"value": package_quantity}],
 
             # Material & Target
             "material": [{"value": material, "language_tag": "ar_AE"}] if material else None,
@@ -649,7 +647,13 @@ class SPAPIClient:
             # Compliance
             "supplier_declared_dg_hz_regulation": [{"value": "not_applicable"}],
             "batteries_required": [{"value": False}],
-            "safety_warning": [{"value": "لا يوجد", "language_tag": "ar_AE"}],
+
+            # Egypt HOME type required fields
+            "part_number": [{"value": product_data.get("model_number", "N/A")[:30], "language_tag": "ar_AE"}],
+            "voltage": [{"value": 220, "unit": "volts"}],
+            "wattage": [{"value": 0, "unit": "watts"}],
+            "supported_voltage_frequency": [{"value": 220, "unit": "volts"}],  # Required for Egypt
+            "power_plug": [{"value": "type_c_2pin"}],  # EU plug type for Egypt
 
             # Weight (FLAT format)
             "item_weight": [{"value": 0.5, "unit": "kilograms"}],
@@ -699,7 +703,7 @@ class SPAPIClient:
             }]
 
         return {
-            "productType": self.normalize_product_type(product_data.get("product_type", "HOME_KITCHEN")),
+            "productType": self.normalize_product_type(product_data.get("product_type", "HOME")),
             "requirements": "LISTING",
             "attributes": attributes,
         }
@@ -708,17 +712,84 @@ class SPAPIClient:
     def normalize_product_type(product_type: str) -> str:
         """
         Convert Arabic product type to Amazon valid English product type.
-        
+
+        IMPORTANT: Egypt (ARBP9OOSHTCHU) has DIFFERENT valid product types!
+        Generic types like HOME_KITCHEN, ELECTRONICS are NOT valid for Egypt.
+
+        Valid Egypt types (confirmed via Product Type Definitions API):
+        - HOME (generic fallback for home products)
+        - FOOD_PROCESSOR (specific appliances)
+        - FOOD_MIXER, FOOD_BLENDER (kitchen appliances)
+        - And 1800+ more specific types
+
         Examples:
-            "المنزل والمطبخ" → "HOME_KITCHEN"
-            "مضرب يدوي كهربائي" → "HOME_KITCHEN"
-            "HOME_KITCHEN" → "HOME_KITCHEN"
+            "مضرب يدوي كهربائي" → "HOME"
+            "HOME_KITCHEN" → "HOME" (not valid for Egypt!)
+            "HOME" → "HOME"
         """
         if not product_type:
-            return "HOME_KITCHEN"
-        
-        # If already a valid Amazon product type (uppercase with underscores)
-        if product_type.isupper() and "_" in product_type:
+            return "HOME"  # Egypt-valid default
+
+        # Egypt-valid product types (confirmed via API)
+        EGYPT_VALID_TYPES = {
+            "HOME", "FOOD_PROCESSOR", "FOOD_MIXER", "FOOD_BLENDER",
+            "3D_PRINTABLE_DESIGNS", "3D_PRINTED_PRODUCT",
+            "ACCESSORY", "ADULT_COSTUME", "ADVERTISEMENT_COLLECTIBLES",
+            "AGRICULTURAL_SUPPLIES", "AMAZON_BOOK_READER_ACCESSORY",
+            "AMAZON_TABLET_ACCESSORY", "APPLIANCE_COVER",
+            "ARCHITECTURAL_COVERING", "ART_SUPPLY_DRAWING",
+            "BABY_PRODUCT", "BAG", "BATTERY", "BEAUTY", "BED",
+            "BOOK", "BOOK_CASE", "BULK_FOOD", "CABLE", "CARRIER_CASE",
+            "CELL_PHONE", "CHAIR", "CLEANING_BRUSH", "COAT_RACK",
+            "COMPUTER_COMPONENT", "CONDITIONER", "CONTAINER",
+            "COOKWARE", "COSMETIC", "COUCH", "CURTAIN", "DESK",
+            "DIAPER", "DIY_TOOLS", "DRESSER", "DRINKWARE",
+            "ELECTRIC_CHARGER", "ELECTRICAL_OUTLET", "ELECTRONIC_ADAPTER",
+            "ELECTRONIC_CABLE", "EYEWEAR", "FABRIC", "FAN",
+            "FLOWER_POT", "FOOD", "FOOD_CONTAINER", "FOOD_STORAGE",
+            "FURNITURE", "GAMES", "GARDEN_TOOL", "GIFT_CARD",
+            "GROCERY", "HAIR_DRYER", "HAND_TOOL", "HARDWARE",
+            "HAT", "HEADPHONES", "HEALTH_PERSONAL_CARE", "HEATING_COOLING",
+            "HOME_DECOR", "HOME_FURNISHINGS", "HOME_LIGHTING",
+            "HOUSEHOLD_CLEANING", "HOUSEHOLD_THERMOMETER",
+            "INDUSTRIAL", "INGREDIENT", "INKJET_PRINTER_INK",
+            "INSTRUMENT_PICK", "IRON", "JEWELRY", "KEYBOARD",
+            "KITCHEN_TOOL", "LAMP", "LAUNDRY_BASKET", "LENS_FILTER",
+            "LIGHT_BULB", "LIGHT_SWITCH", "LUGGAGE", "MAKEUP",
+            "MATTRESS", "MEAT_GRINDER", "MEDIA_STORAGE",
+            "MEDICAL_SUPPLY", "MEMORY_CARD", "METAL_SHAPE",
+            "MICROWAVE_OVEN", "MILK", "MIRROR", "MOBILE_PHONE_CASE",
+            "MONITOR", "MOP", "MOUSE", "MUSIC", "MUSICAL_INSTRUMENT",
+            "NAIL_CARE", "NETHERLANDS", "NOTEBOOK", "NUTRITIONAL",
+            "OFFICE_PRODUCTS", "OVEN", "PACKING_MATERIAL",
+            "PAINTING_SUPPLY", "PAN", "PAPER_PRODUCT", "PEN",
+            "PERFUME", "PET_PRODUCTS", "PHONE", "PHOTOGRAPHY",
+            "PILLOW", "PIPE", "PLANT_SEED", "PLATE", "PLAYER_PIANO",
+            "PORTABLE_AUDIO", "POSTER", "POWER_ADAPTER", "POWER_CORD",
+            "POWER_STRIP", "PRINTER", "PROCESSOR", "PROJECTOR",
+            "RADIO", "RANGE_HOOD", "RECEIVER", "REFRIGERATOR",
+            "REMOTE_CONTROL", "RICE", "RUG", "SANDWICH_MAKER",
+            "SCREWDRIVER", "SEAT_COVER", "SHIRT", "SHOE",
+            "SHOWER_HEAD", "SKIRT", "SLEEPING", "SLIPPER",
+            "SMALL_APPLIANCE_PART", "SOCCER", "SOCK", "SOFA",
+            "SOFTWARE", "SPEAKER", "SPORTS", "STORAGE", "STORAGE_BAG",
+            "STORAGE_DRAWER", "STORAGE_RACK", "STORAGE_SHELF",
+            "STOVE", "SUPPLEMENT", "SWEATER", "SWITCH", "TABLE",
+            "TABLEWARE", "TANK", "TEA", "TELEPHONE", "TELEVISION",
+            "TEXTILE", "TOOL", "TOOTHBRUSH", "TOY", "TOYS_AND_GAMES",
+            "TRACK_PANT", "TRASH_CAN", "TREADMILL", "TSHIRT", "TUBE",
+            "VACUUM_CLEANER", "VASE", "VEHICLE_MIRROR", "VIDEO_DVD",
+            "VIDEO_GAMES", "WALL_ART", "WALL_LAMP", "WASHER",
+            "WATER_BOTTLE", "WATER_FILTER", "WATER_SOFTENER",
+            "WEIGHT_SCALE", "WIRELESS", "WOODWORKING",
+        }
+
+        # If already a valid type, return as-is
+        if product_type.strip().upper() in EGYPT_VALID_TYPES:
+            return product_type.strip().upper()
+
+        # Accept any ALL-CAPS type (likely valid Amazon type)
+        if product_type.isupper():
             return product_type
         
         # Try exact match
@@ -762,7 +833,7 @@ class SPAPIClient:
             if keyword in product_type_lower:
                 logger.info(f"🔄 Product type mapped by keyword: '{product_type}' → '{amazon_type}'")
                 return amazon_type
-        
-        # Default fallback
-        logger.warning(f"⚠️ Unknown product type '{product_type}', defaulting to HOME_KITCHEN")
-        return "HOME_KITCHEN"
+
+        # Default fallback — HOME is valid for Egypt, HOME_KITCHEN is NOT
+        logger.warning(f"⚠️ Unknown product type '{product_type}', defaulting to HOME (Egypt-valid)")
+        return "HOME"

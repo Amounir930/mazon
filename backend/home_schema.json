@@ -1,0 +1,179 @@
+{
+  "metaSchema": {
+    "link": {
+      "resource": "https://selling-partner-definitions-prod-dub.s3.eu-west-1.amazonaws.com/schema/amazon-product-type-definition-meta-schema-v1.json/rZ%252F2Yep0np022S38ZdEiNQ%253D%253D?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEM7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCWV1LXdlc3QtMSJIMEYCIQDC2FFQMbfsDRcqAfPYd2ryiqh5sm8hdD7u6ZnJPnUVVwIhALQ1FnInvMR9oV9d3%2FVoMrfO1HGbs8o3CTQrNHza%2B22xKtIECJf%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQAxoMNTM1Nzg5ODIzODA4Igy1gFUC0t5VgHhgR0MqpgQ5j%2F%2BVwJ634BmxU1AK6gep%2FLehXRhRtVKawyFvKI55l3K8Eud5taQ0%2FLUYCRiC6%2BOkyn5TJD7NSboS7Pm%2FNa%2FJZ%2FjFpdu07b0N3Kfuwq4%2BOI7ExqpQ0Ef%2BoiVTt8YE38AC84LcVWGd4RIMiddmrmcWQdk2%2FSJ9FSkc0an9dQnaB5exn1S9zZI09kz%2B1h739k6pCUH6Lh6dbxBlCT1C1dw43sRkw2n0TcyfwybAnlpFD59KCx3UBnGzEAYyvpNff4YAicCkE54WjlT3NqZ0c%2FHEKWtRp1hepRNd9xonrRZxuVOIA47P1X9jTghIXwQ541%2FhOwFVf52SATQPXdEJbT7I%2F2aeyoa%2FS7IlDphSieHg%2FhFcsE8CbcwiKWVokrRfq%2F%2BNG%2FZopgri6AZpgtdyHWdRs9WFEqG6ziCDIaQuPZPNP%2BoXxReRrCRThjlGE7uKjy5WPNJtp1RssjYgEKGrI4rK21MdURH%2FKSQJJIsmXrgwx1zdqCVNrlvw9wBSIZpX9jCOPtYRH0VGcA3oVAbuTZERBoJNCX50BJ3m0HAd7prTqG5W3nUCGKAhMPKhklHalEZZfxSmpH2ZjNfC47e6KQp5TWY1ky1xVp1ANBSjeDEnPx%2BVYFDx1J2VdGHwFfByLOH8PBem3YaSgTRBiwEXK7ux2IoQ4NqVDcttt%2B03gC4Q7X3Z%2BM9Lo4b2O4dVBhOlXmIMzLzlNDhLI%2BYXMbbLV7YLo1aSlg3DMM7m%2Bs4GOqYBdap0588NNYQr41h%2BUDGSFxePZnh%2FDhqUBrGmOjujBoCjSYy4MZNVfWB3qnb710W6x6LiQ2UJUFftm7rCeR7ENQN9Ocei9bfsQoJjYjj%2BjmN%2BjhasCEsKoEHZzp5iEL9%2BEw8xImBQsS9R7%2BeWEhAzMWwfO3Vajm8e%2FruHBRPRv5%2BW%2Be6VSYioDrjxN%2FGqvrLmVbhv4Yl945u5lYSANV%2BFPDFh%2FqQYyg%3D%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260414T225548Z&X-Amz-SignedHeaders=host&X-Amz-Credential=ASIAXZP4P45AAX2DQQCJ%2F20260414%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Expires=604800&X-Amz-Signature=ce7cb16f44228d59b635aae9c7c36f42c8fa09ca4c936c217021c9f5370626a4",
+      "verb": "GET"
+    },
+    "checksum": "rZ/2Yep0np022S38ZdEiNQ=="
+  },
+  "schema": {
+    "link": {
+      "resource": "https://selling-partner-definitions-prod-dub.s3.eu-west-1.amazonaws.com/schema/HOME.json/Oa7ECYK5ZTUuJ4j3JE7www%253D%253D?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEM7%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCWV1LXdlc3QtMSJIMEYCIQDC2FFQMbfsDRcqAfPYd2ryiqh5sm8hdD7u6ZnJPnUVVwIhALQ1FnInvMR9oV9d3%2FVoMrfO1HGbs8o3CTQrNHza%2B22xKtIECJf%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEQAxoMNTM1Nzg5ODIzODA4Igy1gFUC0t5VgHhgR0MqpgQ5j%2F%2BVwJ634BmxU1AK6gep%2FLehXRhRtVKawyFvKI55l3K8Eud5taQ0%2FLUYCRiC6%2BOkyn5TJD7NSboS7Pm%2FNa%2FJZ%2FjFpdu07b0N3Kfuwq4%2BOI7ExqpQ0Ef%2BoiVTt8YE38AC84LcVWGd4RIMiddmrmcWQdk2%2FSJ9FSkc0an9dQnaB5exn1S9zZI09kz%2B1h739k6pCUH6Lh6dbxBlCT1C1dw43sRkw2n0TcyfwybAnlpFD59KCx3UBnGzEAYyvpNff4YAicCkE54WjlT3NqZ0c%2FHEKWtRp1hepRNd9xonrRZxuVOIA47P1X9jTghIXwQ541%2FhOwFVf52SATQPXdEJbT7I%2F2aeyoa%2FS7IlDphSieHg%2FhFcsE8CbcwiKWVokrRfq%2F%2BNG%2FZopgri6AZpgtdyHWdRs9WFEqG6ziCDIaQuPZPNP%2BoXxReRrCRThjlGE7uKjy5WPNJtp1RssjYgEKGrI4rK21MdURH%2FKSQJJIsmXrgwx1zdqCVNrlvw9wBSIZpX9jCOPtYRH0VGcA3oVAbuTZERBoJNCX50BJ3m0HAd7prTqG5W3nUCGKAhMPKhklHalEZZfxSmpH2ZjNfC47e6KQp5TWY1ky1xVp1ANBSjeDEnPx%2BVYFDx1J2VdGHwFfByLOH8PBem3YaSgTRBiwEXK7ux2IoQ4NqVDcttt%2B03gC4Q7X3Z%2BM9Lo4b2O4dVBhOlXmIMzLzlNDhLI%2BYXMbbLV7YLo1aSlg3DMM7m%2Bs4GOqYBdap0588NNYQr41h%2BUDGSFxePZnh%2FDhqUBrGmOjujBoCjSYy4MZNVfWB3qnb710W6x6LiQ2UJUFftm7rCeR7ENQN9Ocei9bfsQoJjYjj%2BjmN%2BjhasCEsKoEHZzp5iEL9%2BEw8xImBQsS9R7%2BeWEhAzMWwfO3Vajm8e%2FruHBRPRv5%2BW%2Be6VSYioDrjxN%2FGqvrLmVbhv4Yl945u5lYSANV%2BFPDFh%2FqQYyg%3D%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260414T225548Z&X-Amz-SignedHeaders=host&X-Amz-Credential=ASIAXZP4P45AAX2DQQCJ%2F20260414%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Expires=604800&X-Amz-Signature=88dc985347b472c6899674d4bdbad588928fd65255e905239466bb2400488b60",
+      "verb": "GET"
+    },
+    "checksum": "Oa7ECYK5ZTUuJ4j3JE7www=="
+  },
+  "requirements": "LISTING",
+  "requirementsEnforced": "ENFORCED",
+  "propertyGroups": {
+    "offer": {
+      "title": "Offer",
+      "description": "Product Offer",
+      "propertyNames": [
+        "skip_offer",
+        "fulfillment_availability",
+        "map_policy",
+        "purchasable_offer",
+        "condition_type",
+        "condition_note",
+        "list_price",
+        "merchant_release_date",
+        "merchant_shipping_group",
+        "max_order_quantity",
+        "gift_options",
+        "main_offer_image_locator",
+        "other_offer_image_locator_1",
+        "other_offer_image_locator_2",
+        "other_offer_image_locator_3",
+        "other_offer_image_locator_4",
+        "other_offer_image_locator_5",
+        "supplemental_condition_information"
+      ]
+    },
+    "images": {
+      "title": "Images",
+      "description": "Provide media content, such as product images",
+      "propertyNames": [
+        "main_product_image_locator",
+        "other_product_image_locator_1",
+        "other_product_image_locator_2",
+        "other_product_image_locator_3",
+        "other_product_image_locator_4",
+        "other_product_image_locator_5",
+        "other_product_image_locator_6",
+        "other_product_image_locator_7",
+        "other_product_image_locator_8",
+        "swatch_product_image_locator"
+      ]
+    },
+    "shipping": {
+      "title": "Shipping",
+      "description": "Information to determine shipping and storage of your product (e.g., package dimensions, weight, volume)",
+      "propertyNames": [
+        "item_dimensions",
+        "item_package_dimensions",
+        "item_package_weight",
+        "item_display_weight",
+        "number_of_boxes"
+      ]
+    },
+    "variations": {
+      "title": "Variations",
+      "description": "Variations that product will use",
+      "propertyNames": [
+        "parentage_level",
+        "child_parent_sku_relationship",
+        "variation_theme"
+      ]
+    },
+    "safety_and_compliance": {
+      "title": "Safety & Compliance",
+      "description": "Information to indicate product compliance, hazardous materials, and legal and safety warnings (e.g., lithium batteries, choking hazards, Consumer Product Safety Information Act (CPSIA))",
+      "propertyNames": [
+        "country_of_origin",
+        "batteries_required",
+        "batteries_included",
+        "battery",
+        "num_batteries",
+        "number_of_lithium_metal_cells",
+        "number_of_lithium_ion_cells",
+        "lithium_battery",
+        "supplier_declared_dg_hz_regulation",
+        "ghs",
+        "hazmat",
+        "safety_data_sheet_url",
+        "item_weight",
+        "is_this_product_subject_to_buyer_age_restrictions",
+        "dsa_responsible_party_address",
+        "compliance_media",
+        "gpsr_safety_attestation",
+        "gpsr_manufacturer_reference",
+        "ships_globally",
+        "has_less_than_30_percent_state_of_charge",
+        "ghs_chemical_h_code"
+      ]
+    },
+    "product_identity": {
+      "title": "Product Identity",
+      "description": "Information to uniquely identify your product (e.g., UPC, EAN, GTIN, Product Type, Brand)",
+      "propertyNames": [
+        "item_name",
+        "brand",
+        "supplier_declared_has_product_identifier_exemption",
+        "externally_assigned_product_identifier",
+        "merchant_suggested_asin",
+        "recommended_browse_nodes",
+        "model_number",
+        "model_name",
+        "manufacturer"
+      ]
+    },
+    "product_details": {
+      "title": "Product Details",
+      "description": "Information and characteristics to describe the product to support search, browse and detail page content (e.g., bullets, product features, model, style name)",
+      "propertyNames": [
+        "handmade_classification",
+        "product_description",
+        "bullet_point",
+        "generic_keyword",
+        "style",
+        "age_range_description",
+        "material",
+        "number_of_items",
+        "item_package_quantity",
+        "color",
+        "ring",
+        "size",
+        "metal_type",
+        "part_number",
+        "item_shape",
+        "theme",
+        "configuration",
+        "paper_size",
+        "design_name",
+        "capacity",
+        "number_of_hooks",
+        "item_display_dimensions",
+        "occasion",
+        "flavor",
+        "wattage",
+        "voltage",
+        "power_plug_type",
+        "accepted_voltage_frequency",
+        "customer_package_type",
+        "pattern",
+        "item_form",
+        "unit_count",
+        "product_site_launch_date",
+        "league_name",
+        "team_name",
+        "scent",
+        "band",
+        "length_range",
+        "width_range",
+        "number_of_compartments"
+      ]
+    }
+  },
+  "locale": "en_AE",
+  "marketplaceIds": [
+    "ARBP9OOSHTCHU"
+  ],
+  "productType": "HOME",
+  "displayName": "Home",
+  "productTypeVersion": {
+    "version": "UAAAAAAAAAAAAAAAAlYDzt47x2Tbjx5C7ZgXm5Z8j",
+    "latest": true,
+    "releaseCandidate": false
+  }
+}

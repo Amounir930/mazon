@@ -26,6 +26,7 @@ build/
 *.msi
 *.dmg
 *.app
+*.iss
 
 # Virtual Environment
 venv/
@@ -84,3 +85,9 @@ build.py
 start-dev.bat
 *.xlsm
 *.xlsx
+
+# Build scripts (keep in repo for building)
+# backend/build.spec
+# backend/build_release.ps1
+# backend/installer.iss
+# releases/.gitignore

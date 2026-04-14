@@ -10,7 +10,6 @@ import toast from 'react-hot-toast'
 import {
   importExcelFile,
   generateTemplateExcel,
-  SIMPLIFIED_LISTING_COLUMNS,
   type ParsedProduct,
   type ValidationError,
 } from '@/services/excel_import_service'
