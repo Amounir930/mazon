@@ -88,10 +88,18 @@ class SPAPIClient:
         }
         
         response = requests.post(self.LWA_TOKEN_URL, data=payload, timeout=15)
-        
+
         if response.status_code != 200:
-            logger.error(f"LWA token refresh failed: {response.status_code} — {response.text[:200]}")
-            raise Exception(f"LWA token refresh failed: {response.text[:200]}")
+            # Try to parse JSON error response
+            try:
+                error_data = response.json()
+                error_description = error_data.get('error_description', error_data.get('error', 'Unknown error'))
+                error_message = f"LWA Error {response.status_code}: {error_description}"
+            except:
+                error_message = f"LWA Error {response.status_code}: {response.text[:500]}"
+            
+            logger.error(error_message)
+            raise Exception(error_message)
         
         data = response.json()
         self._access_token = data["access_token"]

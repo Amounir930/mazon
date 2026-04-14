@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown, FileSpreadsheet, X, Check, Download, AlertCircle, Image as ImageIcon, CloudOff, Cloud } from 'lucide-react'
 import { useProducts, useDeleteProduct, useSubmitListing, useSyncFromAmazon, useExportToAmazon, useExportPriceInventory, useExportListingLoader, useDeleteListing, usePatchListing } from '@/api/hooks'
@@ -15,6 +16,7 @@ import {
 } from '@/services/excel_import_service'
 
 export default function ProductListPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [showExportMenu, setShowExportMenu] = useState(false)
@@ -414,8 +416,8 @@ export default function ProductListPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">المنتجات</h1>
-          <p className="text-gray-400 mt-1">إدارة كتالوج المنتجات ({data?.total ?? 0})</p>
+          <h1 className="text-2xl font-bold text-text-primary">{t('products.title')}</h1>
+          <p className="text-text-secondary mt-1">{t('products.subtitle')} ({data?.total ?? 0})</p>
         </div>
         <div className="flex items-center gap-3">
           {/* Export Dropdown */}
@@ -425,20 +427,20 @@ export default function ProductListPage() {
               className="flex items-center gap-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold px-4 py-3 rounded-lg transition-colors"
             >
               <FileDown className="w-5 h-5" />
-              تصدير Excel
+              {t('products.exportExcel')}
               <ChevronDown className="w-4 h-4" />
             </button>
             {showExportMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
-                <div className="absolute right-0 mt-2 w-64 bg-[#1a1a2e] border border-gray-700 rounded-lg shadow-xl z-20 overflow-hidden">
+                <div className="absolute right-0 mt-2 w-64 bg-bg-elevated border border-border-medium rounded-xl shadow-xl z-20 overflow-hidden">
                   <button
                     onClick={() => { handleExportPriceInventory(); setShowExportMenu(false) }}
                     disabled={exportPriceMutation.isPending}
                     className="w-full px-4 py-3 text-right text-sm text-white hover:bg-gray-700 transition flex items-center justify-between gap-2 disabled:opacity-50"
                   >
                     {exportPriceMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-                    <span><span className="font-medium">Price & Inventory</span><span className="text-gray-400 text-xs block">تحديث أسعار فقط</span></span>
+                    <span><span className="font-medium">{t('products.priceInventory')}</span><span className="text-text-muted text-xs block">{t('products.priceInventoryDesc')}</span></span>
                   </button>
                   <button
                     onClick={() => { handleExportListingLoader(); setShowExportMenu(false) }}
@@ -446,7 +448,7 @@ export default function ProductListPage() {
                     className="w-full px-4 py-3 text-right text-sm text-white hover:bg-gray-700 transition flex items-center justify-between gap-2 border-t border-gray-700 disabled:opacity-50"
                   >
                     {exportListingMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-                    <span><span className="font-medium">Listing Loader</span><span className="text-gray-400 text-xs block">إضافة عروض لمنتجات موجودة</span></span>
+                    <span><span className="font-medium">{t('products.listingLoader')}</span><span className="text-text-muted text-xs block">{t('products.listingLoaderDesc')}</span></span>
                   </button>
                 </div>
               </>
@@ -514,8 +516,8 @@ export default function ProductListPage() {
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="بحث عن منتج... (اسم، SKU، الفئة)"
-            className="w-full pr-10 pl-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amazon-orange focus:border-amazon-orange"
+            placeholder={t('products.searchPlaceholder')}
+            className="w-full pr-10 pl-4 py-3 border border-border-medium bg-bg-tertiary rounded-xl focus:ring-2 focus:ring-amazon-orange focus:border-amazon-orange text-text-primary placeholder-text-muted"
           />
         </div>
         <button className="flex items-center gap-2 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50">
@@ -524,21 +526,21 @@ export default function ProductListPage() {
       </div>
 
       {/* Products Table */}
-      <div className="bg-[#12121a] rounded-xl border border-gray-800/50 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-[#1a1a2e]">
+      <div className="bg-bg-card rounded-xl border border-border-subtle overflow-hidden">
+        <table className="neon-table">
+          <thead className="bg-bg-elevated">
             <tr>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">الصورة</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">المنتج</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">SKU</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">الفئة</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">السعر</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">الكمية</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">الحالة</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-300">إجراءات</th>
+              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.image')}</th>
+              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.product')}</th>
+              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.sku')}</th>
+              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.category')}</th>
+              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.price')}</th>
+              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.quantity')}</th>
+              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.status')}</th>
+              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.actions')}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-800/50">
+          <tbody>
             {products.map((product: Product) => {
               const isIncomplete = product.status === 'incomplete'
 
@@ -552,7 +554,7 @@ export default function ProductListPage() {
               }
 
               return (
-                <tr key={product.id} className={`hover:bg-[#1a1a2e] transition-colors ${isIncomplete ? 'bg-amber-900/10' : ''}`}>
+                <tr key={product.id} className={`${isIncomplete ? 'bg-neon-yellow/5' : ''}`}>
                   <td className="px-6 py-4">
                     {thumbUrl ? (
                       <img

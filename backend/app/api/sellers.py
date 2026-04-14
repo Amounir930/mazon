@@ -1,6 +1,6 @@
 """
-Seller API Endpoints — Single Client
-Manage Amazon SP-API credentials (one seller only)
+Seller API Endpoints — Multi-Seller Support
+Manage Amazon SP-API credentials and list all sellers
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -10,10 +10,23 @@ from app.models.seller import Seller
 from app.models.session import Session as AuthSession
 from app.schemas.product import MessageResponse
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from loguru import logger
 
 router = APIRouter()
+
+
+class SellerListItem(BaseModel):
+    id: str
+    amazon_seller_id: Optional[str] = None
+    display_name: Optional[str] = None
+    marketplace_id: Optional[str] = None
+    is_connected: bool = False
+
+
+class SellerListResponse(BaseModel):
+    sellers: List[SellerListItem]
+    total: int
 
 
 class SellerInfoResponse(BaseModel):
@@ -125,6 +138,31 @@ async def update_seller_info(
         cookie_count=cookie_count,
         message="Updated successfully",
     )
+
+
+@router.get("/list", response_model=SellerListResponse)
+async def list_sellers(db: Session = Depends(get_db)):
+    """عرض كل Sellers المسجلين في النظام"""
+    sellers = db.query(Seller).order_by(Seller.created_at.desc()).all()
+
+    result = []
+    for s in sellers:
+        # Check browser session
+        browser_session = db.query(AuthSession).filter(
+            AuthSession.auth_method == "browser",
+            AuthSession.is_active == True,
+            AuthSession.is_valid == True,
+        ).first()
+
+        result.append(SellerListItem(
+            id=str(s.id),
+            amazon_seller_id=s.amazon_seller_id,
+            display_name=s.display_name,
+            marketplace_id=s.marketplace_id,
+            is_connected=s.is_connected or (browser_session is not None),
+        ))
+
+    return SellerListResponse(sellers=result, total=len(result))
 
 
 @router.delete("/disconnect", response_model=MessageResponse)

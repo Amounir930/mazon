@@ -182,10 +182,8 @@ async def generate_product(request: AIProductRequest):
             copies=request.copies,
         )
         
-        # Build warnings
-        warnings = []
-        if not result.base_product.ean and not result.base_product.upc:
-            warnings.append("EAN/UPC مطلوب — يرجى إضافته يدوياً قبل الرفع على أمازون")
+        # Build warnings - EAN is now mandatory from AI, no warning needed
+        warnings: list[str] = []
         
         return {
             "base_product": result.base_product.model_dump(),

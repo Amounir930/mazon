@@ -1,9 +1,11 @@
+import { useTranslation } from 'react-i18next'
 import { Loader2, Play, RotateCcw } from 'lucide-react'
 import { useListings } from '@/api/hooks'
-import { StatusBadge } from '@/components/common/StatusBadge'
+import { StatusBadge, NeonButton } from '@/components/common'
 import type { Listing } from '@/types/api'
 
 export default function ListingQueuePage() {
+  const { t } = useTranslation()
   const { data: listings, isLoading } = useListings({})
 
   if (isLoading) {
@@ -16,54 +18,56 @@ export default function ListingQueuePage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">طابور الرفع</h1>
-          <p className="text-gray-600 mt-1">متابعة حالة رفع المنتجات لأمازون ({listings?.length ?? 0})</p>
+          <h1 className="text-2xl font-bold text-text-primary">{t('listingQueue.title')}</h1>
+          <p className="text-text-secondary mt-1">{t('listingQueue.subtitle')} ({listings?.length ?? 0})</p>
         </div>
-        <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 bg-amazon-orange hover:bg-amazon-light text-amazon-dark font-semibold rounded-lg transition-colors">
+        <div className="flex gap-3">
+          <NeonButton variant="amazon" size="sm">
             <Play className="w-4 h-4" />
-            رفع الكل
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+            {t('listingQueue.listAll')}
+          </NeonButton>
+          <NeonButton variant="info" size="sm" styleType="outline">
             <RotateCcw className="w-4 h-4" />
-            تحديث
-          </button>
+            {t('listingQueue.refresh')}
+          </NeonButton>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50">
+      {/* Table */}
+      <div className="neon-card p-0 overflow-hidden">
+        <table className="neon-table">
+          <thead>
             <tr>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">#</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">المنتج</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">الحالة</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">Feed ID</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">الوقت</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-gray-700">إجراء</th>
+              <th>{t('listingQueue.columns.number')}</th>
+              <th>{t('listingQueue.columns.product')}</th>
+              <th>{t('listingQueue.columns.status')}</th>
+              <th>{t('listingQueue.columns.feedId')}</th>
+              <th>{t('listingQueue.columns.time')}</th>
+              <th>{t('listingQueue.columns.action')}</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody>
             {listings?.map((listing: Listing, idx: number) => (
-              <tr key={listing.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-4 text-sm text-gray-600">{idx + 1}</td>
-                <td className="px-6 py-4 text-sm text-gray-800 font-medium">
+              <tr key={listing.id}>
+                <td className="text-text-secondary">{idx + 1}</td>
+                <td className="font-medium text-text-primary">
                   {listing.product_id?.slice(0, 8)}...
                 </td>
-                <td className="px-6 py-4">
+                <td>
                   <StatusBadge status={listing.status} />
                 </td>
-                <td className="px-6 py-4 text-sm font-mono text-gray-600">
+                <td className="font-mono text-text-secondary text-sm">
                   {listing.feed_submission_id || '-'}
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-600">
-                  {listing.created_at ? new Date(listing.created_at).toLocaleTimeString('ar-EG') : '-'}
+                <td className="text-text-secondary text-sm">
+                  {listing.created_at ? new Date(listing.created_at).toLocaleTimeString() : '-'}
                 </td>
-                <td className="px-6 py-4">
+                <td>
                   {listing.status === 'failed' && (
-                    <button className="p-2 text-gray-600 hover:text-amazon-orange hover:bg-orange-50 rounded-lg transition-colors">
+                    <button className="neon-btn neon-btn--warning neon-btn--sm">
                       <RotateCcw className="w-4 h-4" />
                     </button>
                   )}
@@ -74,39 +78,66 @@ export default function ListingQueuePage() {
         </table>
 
         {(!listings || listings.length === 0) && (
-          <div className="text-center py-12 text-gray-500">
-            <p>الطابور فارغ</p>
-            <p className="text-sm text-gray-400 mt-2">أضف منتجات من صفحة المنتجات لبدء الرفع الآلي</p>
+          <div className="neon-empty">
+            <div className="neon-empty__icon">
+              <RotateCcw className="w-12 h-12" />
+            </div>
+            <h3 className="neon-empty__title">{t('listingQueue.emptyTitle')}</h3>
+            <p className="neon-empty__description">{t('listingQueue.emptyDesc')}</p>
           </div>
         )}
       </div>
 
-      {/* Stats */}
+      {/* Stats - Redesigned like the image */}
       {listings && listings.length > 0 && (
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-green-50 rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-green-700">
-              {listings.filter((l: Listing) => l.status === 'success').length}
-            </p>
-            <p className="text-sm text-green-600">نجح</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Order: نجح → في الطابور → قيد المعالجة → فشل (RTL) */}
+          <div className="bg-bg-card rounded-2xl border border-border-subtle p-5 flex items-center justify-between">
+            <div className="text-left">
+              <p className="text-xs text-text-muted mb-1">{t('listingQueue.stats.success')}</p>
+              <p className="text-3xl font-bold text-text-primary">
+                {listings.filter((l: Listing) => l.status === 'success').length}
+              </p>
+            </div>
+            <div className="w-12 h-12 rounded-xl bg-bg-elevated border border-border-subtle flex items-center justify-center">
+              <span className="w-3 h-3 rounded-full bg-neon-cyan"></span>
+            </div>
           </div>
-          <div className="bg-yellow-50 rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-yellow-700">
-              {listings.filter((l: Listing) => l.status === 'queued').length}
-            </p>
-            <p className="text-sm text-yellow-600">في الطابور</p>
+
+          <div className="bg-bg-card rounded-2xl border border-border-subtle p-5 flex items-center justify-between">
+            <div className="text-left">
+              <p className="text-xs text-text-muted mb-1">{t('listingQueue.stats.queued')}</p>
+              <p className="text-3xl font-bold text-text-primary">
+                {listings.filter((l: Listing) => l.status === 'queued').length}
+              </p>
+            </div>
+            <div className="w-12 h-12 rounded-xl bg-bg-elevated border border-border-subtle flex items-center justify-center">
+              <span className="w-3 h-3 rounded-full bg-neon-yellow"></span>
+            </div>
           </div>
-          <div className="bg-blue-50 rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-blue-700">
-              {listings.filter((l: Listing) => l.status === 'processing' || l.status === 'submitted').length}
-            </p>
-            <p className="text-sm text-blue-600">قيد المعالجة</p>
+
+          <div className="bg-bg-card rounded-2xl border border-border-subtle p-5 flex items-center justify-between">
+            <div className="text-left">
+              <p className="text-xs text-text-muted mb-1">{t('listingQueue.stats.processing')}</p>
+              <p className="text-3xl font-bold text-text-primary">
+                {listings.filter((l: Listing) => l.status === 'processing' || l.status === 'submitted').length}
+              </p>
+            </div>
+            <div className="w-12 h-12 rounded-xl bg-bg-elevated border border-border-subtle flex items-center justify-center">
+              <span className="w-3 h-3 rounded-full bg-neon-blue"></span>
+            </div>
           </div>
-          <div className="bg-red-50 rounded-lg p-4 text-center">
-            <p className="text-2xl font-bold text-red-700">
-              {listings.filter((l: Listing) => l.status === 'failed').length}
-            </p>
-            <p className="text-sm text-red-600">فشل</p>
+
+          <div className="bg-bg-card rounded-2xl border border-border-subtle p-5 flex items-center justify-between">
+            <div className="text-left">
+              <p className="text-xs text-text-muted mb-1">{t('listingQueue.stats.failed')}</p>
+              <p className="text-3xl font-bold text-text-primary">
+                {listings.filter((l: Listing) => l.status === 'failed').length}
+              </p>
+            </div>
+            <div className="w-12 h-12 rounded-xl bg-bg-elevated border border-border-subtle flex items-center justify-center">
+              <span className="w-3 h-3 rounded-full bg-neon-red"></span>
+            </div>
           </div>
         </div>
       )}

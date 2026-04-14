@@ -25,11 +25,11 @@ class BaseProductData(BaseModel):
     brand: str = Field(default="Generic", min_length=1, max_length=200)
     manufacturer: str = Field(default="Generic", min_length=1, max_length=200)
     product_type: str = Field(..., min_length=1, max_length=100)
-    price: float = Field(..., gt=0, description="Price in EGP")
-    ean: Optional[str] = Field(default="", max_length=13)
+    price: Optional[float] = Field(default=None, description="Price in EGP - optional, AI leaves empty")
+    ean: str = Field(..., min_length=13, max_length=13, description="EAN barcode - 13 digits, MANDATORY")
     upc: Optional[str] = Field(default="", max_length=12)
-    bullet_points_ar: List[str] = Field(default_factory=list, max_items=5)
-    bullet_points_en: List[str] = Field(default_factory=list, max_items=5)
+    bullet_points_ar: List[str] = Field(default_factory=list, min_items=5, max_items=5)
+    bullet_points_en: List[str] = Field(default_factory=list, min_items=5, max_items=5)
     keywords: List[str] = Field(default_factory=list, max_items=50)
     material: str = Field(default="", max_length=200)
     target_audience: str = Field(default="", max_length=100)
@@ -37,17 +37,19 @@ class BaseProductData(BaseModel):
     fulfillment_channel: str = Field(default="MFN", max_length=20)
     country_of_origin: str = Field(default="CN", max_length=10)
     model_number: str = Field(default="", max_length=100)
+    included_components: str = Field(default="", max_length=200, description="Simple one-word component name")
     estimated_price_egp: Optional[PriceEstimate] = None
 
     @field_validator("ean")
     @classmethod
     def validate_ean(cls, v: str) -> str:
-        """EAN must be 13 digits if provided"""
-        if v and v.strip():
-            digits = v.strip().replace("-", "")
-            if not digits.isdigit() or len(digits) != 13:
-                raise ValueError("EAN must be 13 digits")
-        return v or ""
+        """EAN must be 13 digits - MANDATORY"""
+        if not v or not v.strip():
+            raise ValueError("EAN is MANDATORY - AI must generate 13 digits")
+        digits = v.strip().replace("-", "")
+        if not digits.isdigit() or len(digits) != 13:
+            raise ValueError("EAN must be exactly 13 digits")
+        return v.strip()
 
     @field_validator("upc")
     @classmethod

@@ -1,12 +1,48 @@
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
+/* Neon UI Components - High Performance CSS */
+@import "./assets/styles/theme-utilities.css";
+@import "./assets/styles/neon-buttons.css";
+@import "./assets/styles/neon-cards.css";
+@import "./assets/styles/neon-inputs.css";
+
 @theme {
+  /* Amazon Brand Colors */
   --color-amazon-dark: #131921;
   --color-amazon-orange: #FF9900;
   --color-amazon-blue: #232F3E;
   --color-amazon-light: #FEBD69;
   --color-brand: var(--color-amazon-orange);
+  
+  /* Modern Dark Theme - Gradient System */
+  --color-bg-primary: #0a0a0f;
+  --color-bg-secondary: #0d0d14;
+  --color-bg-tertiary: #12121a;
+  --color-bg-card: #16161f;
+  --color-bg-elevated: #1a1a25;
+  --color-bg-hover: #1f1f2e;
+  
+  /* Border Colors */
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-border-medium: rgba(255, 255, 255, 0.1);
+  --color-border-strong: rgba(255, 255, 255, 0.15);
+  
+  /* Text Colors */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a0a0b0;
+  --color-text-muted: #6b6b7b;
+  
+  /* Neon Accent Colors */
+  --color-neon-blue: #3a86ff;
+  --color-neon-purple: #8338ec;
+  --color-neon-pink: #ff006e;
+  --color-neon-cyan: #06d6a0;
+  --color-neon-yellow: #ffd166;
+  --color-neon-red: #ef476f;
+  --color-neon-orange: #ff6b35;
+  
+  /* Font Families */
   --font-family-arabic: "Cairo", system-ui, sans-serif;
   --font-family-sans: "Inter", system-ui, sans-serif;
 }
@@ -17,22 +53,145 @@
   text-align: right;
 }
 
-/* Custom scrollbar - Dark Mode */
+/* Performance: Containment for complex components */
+.contain-layout {
+  contain: layout style paint;
+}
+
+/* Smooth Scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom Scrollbar - Optimized Dark Theme */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0a0a0f;
+  background: var(--color-bg-primary);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333;
+  background: linear-gradient(180deg, #2a2a3a 0%, #1a1a2a 100%);
   border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: linear-gradient(180deg, #3a3a4a 0%, #2a2a3a 100%);
+}
+
+/* ============================================
+   NEON GLOW EFFECTS (Pure CSS, GPU Accelerated)
+   ============================================ */
+
+/* Base neon glow - no animation for performance */
+.neon-glow {
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+/* Subtle glow for borders */
+.neon-border-glow {
+  box-shadow: 
+    0 0 0 1px currentColor,
+    0 0 8px -2px currentColor;
+}
+
+/* Gradient border animation (GPU only) */
+@keyframes gradient-rotate {
+  0% { --angle: 0deg; }
+  100% { --angle: 360deg; }
+}
+
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.neon-gradient-border {
+  position: relative;
+  background: var(--color-bg-card);
+  border-radius: 50px;
+}
+
+.neon-gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--angle),
+    var(--neon-blue),
+    var(--neon-purple),
+    var(--neon-pink),
+    var(--neon-orange),
+    var(--neon-yellow),
+    var(--neon-cyan),
+    var(--neon-blue)
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: gradient-rotate 4s linear infinite;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.neon-gradient-border:hover::before {
+  opacity: 1;
+}
+
+/* ============================================
+   GLASSMORPHISM UTILITY (Pure CSS)
+   ============================================ */
+
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border-medium);
+}
+
+/* ============================================
+   SUBTLE ANIMATIONS (GPU Accelerated Only)
+   ============================================ */
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Shimmer loading effect */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-tertiary) 25%,
+    var(--color-bg-hover) 50%,
+    var(--color-bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
 }

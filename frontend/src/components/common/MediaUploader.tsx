@@ -21,9 +21,7 @@ export function MediaUploader({ images, onChange }: MediaUploaderProps) {
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'image/*': ['.jpeg', '.jpg', '.png', '.webp']
-    },
+    accept: { 'image/*': ['.jpeg', '.jpg', '.png', '.webp'] },
     maxFiles: 8
   })
 
@@ -37,31 +35,26 @@ export function MediaUploader({ images, onChange }: MediaUploaderProps) {
     <div className="space-y-4">
       <div
         {...getRootProps()}
-        className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors cursor-pointer bg-[#1a1a2e] ${
-          isDragActive ? 'border-amazon-orange bg-amazon-orange/5' : 'border-gray-800 hover:border-amazon-orange'
-        }`}
+        className={`neon-dropzone ${isDragActive ? 'border-amazon-orange bg-amazon-orange/5' : ''}`}
       >
         <input {...getInputProps()} />
-        <ImageIcon className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-        <p className="text-gray-400">
+        <ImageIcon className="w-12 h-12 neon-dropzone__icon" />
+        <p className="text-text-secondary">
           {isDragActive ? 'اترك الصور هنا' : 'اسحب الصور هنا أو انقر للاختيار'}
         </p>
-        <p className="text-sm text-gray-500 mt-2">حتى 8 صور (PNG, JPG, WebP)</p>
+        <p className="text-sm text-text-muted">حتى 8 صور (PNG, JPG, WebP)</p>
       </div>
 
       {images.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mt-6">
           {images.map((img, index) => (
-            <div key={index} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-800">
+            <div key={index} className="relative group aspect-square rounded-xl overflow-hidden border border-border-subtle hover:border-border-medium transition-colors">
               <img src={img} alt={`Upload ${index}`} className="w-full h-full object-cover" />
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  removeImage(index)
-                }}
-                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => { e.stopPropagation(); removeImage(index) }}
+                className="absolute top-2 right-2 p-1.5 bg-neon-red/90 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-neon-red"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3 h-3" />
               </button>
             </div>
           ))}

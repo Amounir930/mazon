@@ -13,13 +13,15 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Package, DollarSign, Image as ImageIcon, Save, Loader2,
   AlertTriangle, CheckCircle, Upload, X, FileSpreadsheet, Eye,
-  Truck, ShoppingCart, Tag, Globe, Sparkles
+  Truck, ShoppingCart, Tag, Globe, Sparkles, Store
 } from 'lucide-react'
 import { useCreateProduct } from '@/api/hooks'
+import { useSellersList } from '@/api/hooks'
 import { productsApi, imagesApi } from '@/api/endpoints'
 import { aiApi } from '@/api/ai'
 import { AIAssistantPanel } from '@/components/ai/AIAssistantPanel'
 import type { AIMergedProduct } from '@/types/ai'
+import { NeonButton } from '@/components/common'
 import {
   PRODUCT_TYPES, BROWSE_NODES, CONDITIONS, FULFILLMENT_CHANNELS,
   ID_TYPES, COUNTRIES, UNIT_TYPES, WEIGHT_UNITS, DIMENSION_UNITS,
@@ -44,7 +46,7 @@ const TextInput = ({
     onChange={e => onChange(e.target.value)}
     placeholder={placeholder}
     disabled={disabled}
-    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+    className="neon-input disabled:opacity-50"
   />
 )
 
@@ -64,7 +66,7 @@ const NumberInput = ({
     placeholder={placeholder}
     min={min}
     step={step}
-    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
+    className="neon-input neon-input--green"
   />
 )
 
@@ -78,7 +80,7 @@ const SelectInput = ({
   <select
     value={value}
     onChange={e => onChange(e.target.value)}
-    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+    className="neon-input neon-select"
   >
     {options.map(opt => (
       <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -95,12 +97,12 @@ const Field = ({
   hint?: string
 }) => (
   <div className="space-y-1">
-    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+    <label className="neon-label neon-label--required">
       {label}
       {isRequired && <span className="text-red-500 mr-1">*</span>}
     </label>
     {children}
-    {hint && <p className="text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
+    {hint && <p className="neon-helper">{hint}</p>}
   </div>
 )
 
@@ -120,9 +122,9 @@ const RadioGroup = ({
           name={name}
           checked={value === opt.value}
           onChange={() => onChange(opt.value)}
-          className="w-4 h-4"
+          className="neon-radio"
         />
-        <span className="text-sm text-gray-700 dark:text-gray-300">{opt.label}</span>
+        <span className="text-sm text-text-secondary">{opt.label}</span>
       </label>
     ))}
   </div>
@@ -137,9 +139,9 @@ const StepIndicator = ({
   currentPage: number
   onNavigate: (page: number) => void
 }) => (
-  <div className="flex items-center justify-center gap-2 mb-6">
+  <div className="flex items-center justify-center gap-2 mb-6 flex-wrap">
     {[
-      { n: 0, label: '🤖 مساعد AI', icon: Sparkles },
+      { n: 0, label: 'مساعد AI', icon: Sparkles },
       { n: 1, label: 'الحقول الإجبارية', icon: Tag },
       { n: 2, label: 'الحقول الاختيارية', icon: ShoppingCart },
       { n: 3, label: 'الصور والإرسال', icon: ImageIcon },
@@ -149,12 +151,12 @@ const StepIndicator = ({
         <button
           key={step.n}
           onClick={() => onNavigate(step.n)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all
             ${currentPage === step.n
-              ? 'bg-blue-600 text-white shadow-lg'
+              ? 'bg-gradient-to-r from-amazon-orange to-amazon-light text-white shadow-lg'
               : currentPage > step.n
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                ? 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20'
+                : 'bg-bg-elevated text-text-muted border border-border-subtle'
             }`}
         >
           {currentPage > step.n ? (
@@ -175,12 +177,26 @@ export default function ProductCreatePage() {
   const navigate = useNavigate()
   const location = useLocation()
   const createMutation = useCreateProduct()
+  const { data: sellersData, isLoading: sellersLoading } = useSellersList()
 
   const editProduct = (location.state as any)?.editProduct as any
   const isEditMode = !!editProduct
 
   const [page, setPage] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+
+  // ==================== Seller Selection ====================
+  const sellers = sellersData?.sellers ?? []
+  const [selectedSellerId, setSelectedSellerId] = useState<string>('')
+
+  // Initialize selectedSellerId once sellers are loaded
+  useEffect(() => {
+    if (sellers.length > 0 && !selectedSellerId) {
+      setSelectedSellerId(
+        editProduct?.seller_id || sellers[0].id
+      )
+    }
+  }, [sellers, editProduct?.seller_id, selectedSellerId])
 
   // ==================== PAGE 1: الحقول الإجبارية ====================
   const [required, setRequired] = useState({
@@ -362,32 +378,64 @@ export default function ProductCreatePage() {
     if (products.length > 0) {
       setSelectedAiProduct(0)
       fillFormFromAi(products[0])
-      // Task 4: Sync listingCopies with AI-generated count
+      // Task 6: Sync listingCopies = AI-generated count (direct)
       setListingCopies(products.length)
+      toast.success(`✅ تم توليد ${products.length} منتج — عدد الإعلانات تم ضبطه لـ ${products.length}`)
     }
   }, [])
 
   const fillFormFromAi = useCallback((product: AIMergedProduct) => {
+    // Fill ALL fields directly from AI - no partial fill
     setRequired(prev => ({
       ...prev,
-      name_ar: product.name_ar || prev.name_ar,
-      name_en: product.name_en || prev.name_en,
-      description_ar: product.description_ar || prev.description_ar,
-      description_en: product.description_en || prev.description_en,
+      // الهوية الأساسية
+      name_ar: product.name_ar,
+      name_en: product.name_en,
+      product_type: product.product_type,
+      id_type: product.ean ? 'EAN' : (product.upc ? 'UPC' : 'EAN'), // EAN إجباري
+      ean: product.ean || '', // الباركود إجباري من AI
+      brand: product.brand,
+      model_number: product.model_number,
+      manufacturer: product.manufacturer,
+      country_of_origin: product.country_of_origin,
+
+      // الوصف والتفاصيل - ملئ مباشر
+      description_ar: product.description_ar,
+      description_en: product.description_en,
       bullet_points: [...product.bullet_points_ar, '', '', '', '', ''].slice(0, 5),
-      brand: product.brand || prev.brand,
-      manufacturer: product.manufacturer || prev.manufacturer,
-      model_number: product.model_number || prev.model_number,
-      product_type: product.product_type || prev.product_type,
-      country_of_origin: product.country_of_origin || prev.country_of_origin,
-      price: product.price ? String(product.price) : prev.price,
-      ean: product.ean || prev.ean,
+      included_components: product.included_components || '', // كلمة واحدة
+      unit_count: String(DEFAULT_VALUES.unit_count),
+      unit_count_type: DEFAULT_VALUES.unit_count_type,
+
+      // التسعير والكمية - AI يتركها فاضي (اختياري)
+      price: product.price ? String(product.price) : '', // فاضي لو null
+      quantity: '0',
+
+      // الشحن والأبعاد
+      condition: product.condition || DEFAULT_VALUES.condition,
+      fulfillment_channel: product.fulfillment_channel || DEFAULT_VALUES.fulfillment_channel,
+      package_length: String(DEFAULT_VALUES.package_length),
+      package_width: String(DEFAULT_VALUES.package_width),
+      package_height: String(DEFAULT_VALUES.package_height),
+      item_weight: String(DEFAULT_VALUES.item_weight),
+      package_weight: String(DEFAULT_VALUES.package_weight),
+      number_of_boxes: String(DEFAULT_VALUES.number_of_boxes),
     }))
+
+    // الحقول الاختيارية
     setOptional(prev => ({
       ...prev,
-      keywords: product.keywords || prev.keywords,
-      material: product.material || prev.material,
-      target_audience: product.target_audience || prev.target_audience,
+      keywords: product.keywords || [],
+      keywordInput: '',
+      material: product.material || '',
+      target_audience: product.target_audience || '',
+      compare_price: '',
+      cost: '',
+      sale_price: '',
+      sale_start_date: '',
+      sale_end_date: '',
+      handling_time: String(DEFAULT_VALUES.handling_time),
+      package_quantity: String(DEFAULT_VALUES.package_quantity),
     }))
   }, [])
 
@@ -436,34 +484,36 @@ export default function ProductCreatePage() {
   const validate = (): { valid: boolean; errors: string[] } => {
     const errors: string[] = []
 
+    // Validate seller selection
+    if (!selectedSellerId) {
+      errors.push('لازم تختار تاجر أولاً')
+    }
+
     // Page 1 - Required fields
     if (required.name_ar.trim().length < VALIDATION_RULES.name_ar.min)
       errors.push('اسم المنتج بالعربي لازم 3 أحرف على الأقل')
     if (required.name_en.trim().length < VALIDATION_RULES.name_en.min)
       errors.push('اسم المنتج بالإنجليزي لازم 3 أحرف على الأقل')
-    // Task 2: Barcode is MANDATORY - no exemption
-    if (required.id_type !== 'EXEMPT') {
-      const idLen = required.id_type === 'UPC' ? 12 : 13
-      if (required.ean.length !== idLen)
-        errors.push(`الباركود لازم يكون ${idLen} رقم`)
-    } else {
-      errors.push('الباركود (EAN أو UPC) مطلوب — لا يمكن الرفع بدونه')
-    }
+    // Task 2: Barcode is MANDATORY - EAN (13 digits) or UPC (12 digits) only
+    const idLen = required.id_type === 'UPC' ? 12 : 13
+    if (!required.ean || required.ean.length !== idLen)
+      errors.push(`الباركود (${required.id_type}) لازم يكون ${idLen} رقم — إجباري`)
     if (!required.brand || required.brand.trim().length < 1)
       errors.push('البراند مطلوب')
     if (!required.manufacturer || required.manufacturer.trim().length < 1)
       errors.push('المصنع مطلوب')
     if (required.model_number.trim().length < 1)
       errors.push('رقم الموديل مطلوب')
-    if (required.description_ar.trim().length < VALIDATION_RULES.description_ar.min)
-      errors.push('الوصف بالعربي لازم 5 أحرف على الأقل')
-    if (required.description_en.trim().length < VALIDATION_RULES.description_en.min)
-      errors.push('الوصف بالإنجليزي لازم 5 أحرف على الأقل')
-    const validBullets = required.bullet_points.filter(bp => bp.trim().length > 0)
-    if (validBullets.length === 0)
-      errors.push('لازم تكتب نقطة بيعية واحدة على الأقل')
-    if (!required.price || parseFloat(required.price) <= 0)
-      errors.push('السعر لازم يكون أكبر من صفر')
+    if (required.description_ar.trim().length < 50)
+      errors.push('الوصف بالعربي لازم يكون وصف كامل - 3 سطور على الأقل (50 حرف كحد أدنى)')
+    if (required.description_en.trim().length < 50)
+      errors.push('الوصف بالإنجليزي لازم يكون وصف كامل - 3 سطور على الأقل (50 حرف كحد أدنى)')
+    // النقاط البيعية - 5 نقاط إجبارية كاملة
+    const validBullets = required.bullet_points.filter(bp => bp.trim().length >= 20)
+    if (validBullets.length < 5)
+      errors.push(`النقاط البيعية لازم تكون 5 نقاط كاملة - كل نقطة جملة مفيدة (${validBullets.length}/5 مكتملة)`)
+    // التسعير والكمية - اختياري (ممنوع إجباري)
+    // No validation on price/quantity - they are optional
     if (!mainImageUrl && !isEditMode)
       errors.push('لازم ترفع صورة رئيسية')
 
@@ -565,12 +615,14 @@ export default function ProductCreatePage() {
 
     return {
       sku: isEditMode ? editProduct.sku : `AUTO-${Date.now()}-${variantIndex}`,
+      seller_id: selectedSellerId || undefined,
       name: `${required.name_en.trim()}${variantSuffix}`,
       name_ar: `${required.name_ar.trim()}${variantSuffix}`,
       name_en: `${required.name_en.trim()}${variantSuffix}`,
       brand: required.brand || DEFAULT_VALUES.brand,
       price: parseFloat(required.price),
       quantity: parseInt(required.quantity),
+      currency: 'EGP', // Default currency
       product_type: required.product_type,
       condition: required.condition,
       fulfillment_channel: required.fulfillment_channel,
@@ -584,8 +636,8 @@ export default function ProductCreatePage() {
       country_of_origin: required.country_of_origin,
       browse_node_id: required.browse_node_id,
       material: optional.material,
-      number_of_items: parseInt(optional.unit_count),
-      unit_count: { value: parseFloat(required.unit_count), type: required.unit_count_type },
+      number_of_items: parseInt(optional.unit_count) || 1, // Default to 1 if empty
+      unit_count: { value: parseFloat(required.unit_count) || 1, type: required.unit_count_type },
       included_components: required.included_components || required.name_en.trim(),
       target_audience: optional.target_audience,
       compare_price: optional.compare_price ? parseFloat(optional.compare_price) : undefined,
@@ -593,13 +645,13 @@ export default function ProductCreatePage() {
       sale_price: optional.sale_price ? parseFloat(optional.sale_price) : undefined,
       sale_start_date: optional.sale_start_date || undefined,
       sale_end_date: optional.sale_end_date || undefined,
-      handling_time: parseInt(optional.handling_time),
-      package_quantity: parseInt(optional.package_quantity),
-      weight: parseFloat(required.item_weight),
+      handling_time: parseInt(optional.handling_time) || 0,
+      package_quantity: parseInt(optional.package_quantity) || 1,
+      weight: parseFloat(required.item_weight) || undefined,
       dimensions: {
-        length: parseFloat(required.package_length),
-        width: parseFloat(required.package_width),
-        height: parseFloat(required.package_height),
+        length: parseFloat(required.package_length) || 0,
+        width: parseFloat(required.package_width) || 0,
+        height: parseFloat(required.package_height) || 0,
         unit: 'centimeters',
       },
       keywords: optional.keywords,
@@ -625,6 +677,15 @@ export default function ProductCreatePage() {
       // EDIT MODE: Update existing product
       if (isEditMode && editProduct?.id) {
         const updatePayload = { ...payloads[0], id: undefined } // Remove id field
+
+        // Check if seller changed
+        const sellerChanged = editProduct.seller_id && editProduct.seller_id !== selectedSellerId
+        if (sellerChanged) {
+          const oldSeller = sellers.find(s => s.id === editProduct.seller_id)
+          const newSeller = sellers.find(s => s.id === selectedSellerId)
+          toast.info(`🔄 جاري نقل المنتج من "${oldSeller?.display_name || 'التاجر القديم'}" إلى "${newSeller?.display_name || 'التاجر الجديد'}"`)
+        }
+
         await productsApi.update(editProduct.id, updatePayload)
         toast.success('✅ تم تحديث المنتج بنجاح!')
         navigate('/products')
@@ -652,10 +713,21 @@ export default function ProductCreatePage() {
 
       navigate('/products')
     } catch (error: any) {
-      // FIX: Proper error message extraction
-      const errorMsg = error?.response?.data?.detail
-        || error?.response?.data?.message
-        || (typeof error?.message === 'string' ? error.message : 'حدث خطأ غير معروف')
+      // FIX: Proper error message extraction for 422 validation errors
+      let errorMsg = 'حدث خطأ غير معروف'
+      const detail = error?.response?.data?.detail
+      
+      if (Array.isArray(detail)) {
+        // FastAPI validation errors (422)
+        errorMsg = detail.map((err: any) => err.msg || err.message).join('\n')
+      } else if (typeof detail === 'string') {
+        errorMsg = detail
+      } else if (error?.response?.data?.message) {
+        errorMsg = error.response.data.message
+      } else if (typeof error?.message === 'string') {
+        errorMsg = error.message
+      }
+      
       toast.error('فشل الحفظ: ' + errorMsg)
       console.error('Save error:', error)
     } finally {
@@ -719,7 +791,7 @@ export default function ProductCreatePage() {
         <h4 className="font-bold text-lg">معاينة البيانات</h4>
         {Object.entries(summary).map(([k, v]) => (
           <div key={k} className="flex justify-between text-sm">
-            <span className="text-gray-400">{k}:</span>
+            <span className="text-text-muted">{k}:</span>
             <span className="font-mono">{String(v)}</span>
           </div>
         ))}
@@ -735,25 +807,28 @@ export default function ProductCreatePage() {
         <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 mb-4">
           <Sparkles className="w-10 h-10 text-white" />
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+        <h2 className="text-2xl font-bold text-text-primary mb-2">
           أنشئ منتجك بالذكاء الاصطناعي
         </h2>
-        <p className="text-gray-500 dark:text-gray-400 max-w-lg mx-auto">
+        <p className="text-text-muted max-w-lg mx-auto">
           اكتب اسم المنتج والمواصفات — والذكاء الاصطناعي هيعبّي كل الخانات نيابة عنك في ثوانٍ
         </p>
       </div>
 
       {/* AI Assistant Panel */}
       <div className="max-w-2xl mx-auto">
-        <AIAssistantPanel onProductsGenerated={handleAiProductsGenerated} />
+        <AIAssistantPanel
+          onProductsGenerated={handleAiProductsGenerated}
+          onCopiesChange={setListingCopies}
+        />
       </div>
 
       {/* AI Product Variant Selector */}
       {aiProducts.length > 1 && (
-        <div className="max-w-2xl mx-auto rounded-lg border bg-blue-50 dark:bg-blue-900/20 p-4">
+        <div className="max-w-2xl mx-auto rounded-xl neon-card neon-card--accent neon-card--blue p-4">
           <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-4 h-4 text-blue-600" />
-            <h4 className="font-medium text-blue-900 dark:text-blue-100">المنتجات المولّدة — اختار اللي عايزه</h4>
+            <Sparkles className="w-4 h-4 text-neon-blue" />
+            <h4 className="font-medium text-text-primary">المنتجات المولّدة — اختار اللي عايزه</h4>
           </div>
           <div className="flex gap-2 flex-wrap">
             {aiProducts.map((product, i) => (
@@ -765,10 +840,10 @@ export default function ProductCreatePage() {
                   setPage(1)
                   toast.success(`تم اختيار المنتج ${i + 1} — كمّل باقي البيانات`)
                 }}
-                className={`px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                className={`px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                   selectedAiProduct === i
-                    ? 'bg-blue-600 text-white shadow-lg scale-105'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:shadow'
+                    ? 'bg-amazon-orange text-white shadow-lg scale-105'
+                    : 'bg-bg-elevated text-text-secondary border border-border-subtle hover:border-amazon-orange/50 hover:shadow'
                 }`}
               >
                 <div className="font-bold">المنتج {i + 1}</div>
@@ -784,16 +859,16 @@ export default function ProductCreatePage() {
       {aiProducts.length === 0 && (
         <div className="max-w-2xl mx-auto space-y-4">
           {/* Amazon Import Section */}
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4">
+          <div className="rounded-xl neon-card p-4">
             <div className="flex items-center gap-2 mb-3">
-              <Globe className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-              <h4 className="font-medium text-gray-900 dark:text-white">استيراد من Amazon</h4>
+              <Globe className="w-5 h-5 text-text-muted" />
+              <h4 className="font-medium text-text-primary">استيراد من Amazon</h4>
             </div>
             <div className="flex gap-2">
               <select
                 value={importType}
                 onChange={e => setImportType(e.target.value)}
-                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                className="neon-input neon-select px-3 py-2 text-sm"
               >
                 <option value="ASIN">ASIN</option>
                 <option value="UPC">UPC</option>
@@ -805,65 +880,54 @@ export default function ProductCreatePage() {
                 onChange={e => setImportSearch(e.target.value)}
                 placeholder="أدخل الرقم..."
                 dir="ltr"
-                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                className="neon-input flex-1 text-sm"
               />
-              <button
-                onClick={handleImportFromAmazon}
-                disabled={importing}
-                className="px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 transition-colors text-sm font-medium flex items-center gap-2"
-              >
-                {importing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Globe className="w-4 h-4" />
-                )}
+              <NeonButton variant="info" size="sm" onClick={handleImportFromAmazon} isLoading={importing}>
+                <Globe className="w-4 h-4" />
                 استيراد
-              </button>
+              </NeonButton>
             </div>
-            <p className="text-xs text-gray-400 mt-2">ابحث في Amazon بنفس الحساب — ينزل نفس الصنف بالظبط</p>
+            <p className="text-xs text-text-muted mt-2">ابحث في Amazon بنفس الحساب — ينزل نفس الصنف بالظبط</p>
           </div>
 
           <div className="relative flex items-center py-2">
-            <div className="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
-            <span className="flex-shrink mx-4 text-sm text-gray-400">أو</span>
-            <div className="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
+            <div className="flex-grow border-t border-border-subtle"></div>
+            <span className="flex-shrink mx-4 text-sm text-text-muted">أو</span>
+            <div className="flex-grow border-t border-border-subtle"></div>
           </div>
 
           {/* Skip AI Button */}
           <div className="text-center">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+            <p className="text-sm text-text-secondary mb-3">
               عايز تملأ البيانات بإيدك؟
             </p>
-            <button
-              onClick={() => setPage(1)}
-              className="px-6 py-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors font-medium"
-            >
+            <NeonButton variant="primary" styleType="outline" onClick={() => setPage(1)}>
               ← ابدأ بإدخال البيانات يدوياً
-            </button>
+            </NeonButton>
           </div>
         </div>
       )}
 
       {/* Info Cards */}
       <div className="max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
-        <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+        <div className="p-4 rounded-xl neon-card neon-card--accent neon-card--green">
           <div className="text-2xl mb-2">⚡</div>
-          <h4 className="font-bold text-green-900 dark:text-green-100 text-sm">سريع</h4>
-          <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+          <h4 className="font-bold text-text-primary text-sm">سريع</h4>
+          <p className="text-xs text-text-secondary mt-1">
             توليد منتج كامل في 3 ثوانٍ
           </p>
         </div>
-        <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+        <div className="p-4 rounded-xl neon-card neon-card--accent neon-card--blue">
           <div className="text-2xl mb-2">🎯</div>
-          <h4 className="font-bold text-blue-900 dark:text-blue-100 text-sm">دقيق</h4>
-          <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+          <h4 className="font-bold text-text-primary text-sm">دقيق</h4>
+          <p className="text-xs text-text-secondary mt-1">
             بيانات متوافقة مع معايير Amazon
           </p>
         </div>
-        <div className="p-4 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
+        <div className="p-4 rounded-xl neon-card neon-card--accent neon-card--pink">
           <div className="text-2xl mb-2">🔄</div>
-          <h4 className="font-bold text-purple-900 dark:text-purple-100 text-sm">مرن</h4>
-          <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+          <h4 className="font-bold text-text-primary text-sm">مرن</h4>
+          <p className="text-xs text-text-secondary mt-1">
             ولّد عدة منتجات بنفس المواصفات
           </p>
         </div>
@@ -876,10 +940,10 @@ export default function ProductCreatePage() {
     <div className="space-y-6">
       {/* AI Product Variant Selector (moved from here, but keep if user comes back) */}
       {aiProducts.length > 1 && (
-        <div className="rounded-lg border bg-blue-50 dark:bg-blue-900/20 p-4">
+        <div className="rounded-xl neon-card neon-card--accent neon-card--blue p-4">
           <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-4 h-4 text-blue-600" />
-            <h4 className="font-medium text-blue-900 dark:text-blue-100">المنتجات المولّدة بالذكاء الاصطناعي — غيّر الاختيار</h4>
+            <Sparkles className="w-4 h-4 text-neon-blue" />
+            <h4 className="font-medium text-text-primary">المنتجات المولّدة بالذكاء الاصطناعي — غيّر الاختيار</h4>
           </div>
           <div className="flex gap-2 flex-wrap">
             {aiProducts.map((product, i) => (
@@ -890,10 +954,10 @@ export default function ProductCreatePage() {
                   fillFormFromAi(product)
                   toast.success(`تم اختيار المنتج ${i + 1}`)
                 }}
-                className={`px-3 py-2 rounded-md text-sm transition-colors ${
+                className={`px-3 py-2 rounded-xl text-sm transition-colors ${
                   selectedAiProduct === i
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                    ? 'bg-amazon-orange text-white shadow-lg'
+                    : 'bg-bg-elevated text-text-secondary border border-border-subtle hover:border-amazon-orange/50'
                 }`}
               >
                 المنتج {i + 1}: {product.name_ar.slice(0, 30)}{product.name_ar.length > 30 ? '...' : ''}
@@ -904,8 +968,8 @@ export default function ProductCreatePage() {
       )}
 
       {/* الهوية الأساسية */}
-      <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-        <h3 className="text-lg font-bold text-blue-700 dark:text-blue-400 mb-4 flex items-center gap-2">
+      <div className="p-4 neon-card neon-card--accent neon-card--blue">
+        <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
           <Tag className="w-5 h-5" /> الهوية الأساسية
         </h3>
 
@@ -934,23 +998,21 @@ export default function ProductCreatePage() {
           />
         </Field>
 
-        <Field label="الباركود" required hint="EAN (13 رقم) أو UPC (12 رقم) — مطلوب من Amazon للتعرف على المنتج">
+        <Field label="الباركود" required hint="EAN (13 رقم) أو UPC (12 رقم) — إجباري من Amazon للتعرف على المنتج">
           <div className="mb-2">
             <RadioGroup
               name="id_type"
-              options={ID_TYPES.filter(t => ['EAN', 'UPC', 'EXEMPT'].includes(t.value)) as any}
+              options={ID_TYPES.filter(t => ['EAN', 'UPC'].includes(t.value)) as any}
               value={required.id_type}
               onChange={v => setRequired(prev => ({ ...prev, id_type: v }))}
             />
           </div>
-          {required.id_type !== 'EXEMPT' && (
-            <TextInput
-              value={required.ean}
-              onChange={v => setRequired(prev => ({ ...prev, ean: v.replace(/\D/g, '').slice(0, required.id_type === 'UPC' ? 12 : 13) }))}
-              placeholder={required.id_type === 'UPC' ? '12 رقم' : '13 رقم'}
-              type="text"
-            />
-          )}
+          <TextInput
+            value={required.ean}
+            onChange={v => setRequired(prev => ({ ...prev, ean: v.replace(/\D/g, '').slice(0, required.id_type === 'UPC' ? 12 : 13) }))}
+            placeholder={required.id_type === 'UPC' ? 'أدخل 12 رقم' : 'أدخل 13 رقم'}
+            type="text"
+          />
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -987,36 +1049,36 @@ export default function ProductCreatePage() {
       </div>
 
       {/* الوصف والتفاصيل */}
-      <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-        <h3 className="text-lg font-bold text-green-700 dark:text-green-400 mb-4 flex items-center gap-2">
+      <div className="p-4 neon-card neon-card--accent neon-card--green">
+        <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
           <FileSpreadsheet className="w-5 h-5" /> الوصف والتفاصيل
         </h3>
 
-        <Field label="الوصف (عربي)" required>
+        <Field label="الوصف (عربي)" required hint="وصف تفصيلي شامل - 3 سطور على الأقل يشرح مميزات المنتج واستخداماته">
           <textarea
             value={required.description_ar}
             onChange={e => setRequired(prev => ({ ...prev, description_ar: e.target.value }))}
-            placeholder="وصف تفصيلي للمنتج بالعربية..."
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 resize-none"
+            placeholder="مثال: هذا الخلاط الكهربائي بقوة 500 واط يأتي مع 5 سرعات مختلفة لتناسب جميع احتياجاتك في المطبخ. مصنوع من مواد عالية الجودة تضمن له المتانة والاستخدام الطويل. مثالي لخلط العجين، تحضير العصائر، وفرم المكونات المختلفة بسهولة تامة."
+            rows={4}
+            className="neon-input neon-textarea resize-none"
           />
         </Field>
 
-        <Field label="الوصف (English)" required>
+        <Field label="الوصف (English)" required hint="Comprehensive product description - at least 3 lines describing features and benefits">
           <textarea
             value={required.description_en}
             onChange={e => setRequired(prev => ({ ...prev, description_en: e.target.value }))}
-            placeholder="Detailed product description in English..."
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 resize-none"
+            placeholder="Example: This 500W electric hand mixer comes with 5 different speed settings to handle all your kitchen needs. Made from premium quality materials that ensure durability and long-lasting performance. Perfect for mixing dough, preparing smoothies, and chopping ingredients with ease."
+            rows={4}
+            className="neon-input neon-textarea resize-none"
           />
         </Field>
 
-        <Field label="النقاط البيعية (5 نقاط)" required>
-          <div className="space-y-2">
+        <Field label="النقاط البيعية (5 نقاط)" required hint="5 نقاط بيعية كاملة - كل نقطة سطر كامل يشرح ميزة أو فائدة مهمة للمشتري">
+          <div className="space-y-3">
             {required.bullet_points.map((bp, i) => (
               <div key={i} className="flex gap-2">
-                <span className="flex-shrink-0 w-6 h-8 flex items-center justify-center bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-sm font-bold rounded">
+                <span className="flex-shrink-0 w-8 h-10 flex items-center justify-center bg-amazon-orange/20 text-amazon-orange text-sm font-bold rounded-xl">
                   {i + 1}
                 </span>
                 <input
@@ -1027,8 +1089,8 @@ export default function ProductCreatePage() {
                     newBp[i] = e.target.value
                     setRequired(prev => ({ ...prev, bullet_points: newBp }))
                   }}
-                  placeholder={`نقطة بيعية ${i + 1}...`}
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
+                  placeholder={`النقطة البيعية ${i + 1} - اكتب جملة كاملة تشرح ميزة مهمة...`}
+                  className="neon-input flex-1"
                 />
               </div>
             ))}
@@ -1044,7 +1106,7 @@ export default function ProductCreatePage() {
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="المكونات المرفقة" required>
+          <Field label="المكونات المرفقة" hint="مثال: 1x المنتج، 1x دليل الاستخدام">
             <TextInput
               value={required.included_components}
               onChange={v => setRequired(prev => ({ ...prev, included_components: v }))}
@@ -1071,8 +1133,8 @@ export default function ProductCreatePage() {
       </div>
 
       {/* التسعير والكمية */}
-      <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-        <h3 className="text-lg font-bold text-amber-700 dark:text-amber-400 mb-4 flex items-center gap-2">
+      <div className="p-4 neon-card neon-card--accent neon-card--orange">
+        <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
           <DollarSign className="w-5 h-5" /> التسعير والكمية
         </h3>
 
@@ -1086,7 +1148,7 @@ export default function ProductCreatePage() {
                 min="0.01"
                 step="0.01"
               />
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">ج.م</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">ج.م</span>
             </div>
           </Field>
           <Field label="الكمية" required>
@@ -1101,8 +1163,8 @@ export default function ProductCreatePage() {
       </div>
 
       {/* الشحن والأبعاد */}
-      <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
-        <h3 className="text-lg font-bold text-purple-700 dark:text-purple-400 mb-4 flex items-center gap-2">
+      <div className="p-4 neon-card neon-card--accent neon-card--pink">
+        <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
           <Truck className="w-5 h-5" /> الشحن والأبعاد
         </h3>
 
@@ -1125,7 +1187,7 @@ export default function ProductCreatePage() {
         </div>
 
         <div className="mt-4">
-          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">أبعاد الباكج (سم) *</h4>
+          <h4 className="text-sm font-semibold text-text-secondary mb-2">أبعاد الباكج (سم) *</h4>
           <div className="grid grid-cols-3 gap-3">
             <Field label="الطول">
               <NumberInput
@@ -1158,7 +1220,7 @@ export default function ProductCreatePage() {
         </div>
 
         <div className="mt-4">
-          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">الأوزان (كجم) *</h4>
+          <h4 className="text-sm font-semibold text-text-secondary mb-2">الأوزان (كجم) *</h4>
           <div className="grid grid-cols-2 gap-3">
             <Field label="وزن المنتج">
               <NumberInput
@@ -1193,12 +1255,9 @@ export default function ProductCreatePage() {
         </div>
       </div>
 
-      <button
-        onClick={() => setPage(2)}
-        className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-bold"
-      >
+      <NeonButton variant="primary" fullWidth onClick={() => setPage(2)}>
         التالي: الحقول الاختيارية ←
-      </button>
+      </NeonButton>
     </div>
   )
 
@@ -1206,8 +1265,8 @@ export default function ProductCreatePage() {
   const renderPage2 = (
     <div className="space-y-6">
       {/* الكلمات المفتاحية */}
-      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+      <div className="neon-card p-4">
+        <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
           <Tag className="w-5 h-5" /> الكلمات المفتاحية
         </h3>
 
@@ -1230,7 +1289,7 @@ export default function ProductCreatePage() {
                 }
               }}
               placeholder="اكتب كلمة واضغط Enter..."
-              className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500"
+              className="neon-input flex-1"
             />
           </div>
           {optional.keywords.length > 0 && (
@@ -1238,7 +1297,7 @@ export default function ProductCreatePage() {
               {optional.keywords.map((kw, i) => (
                 <span
                   key={i}
-                  className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full text-sm flex items-center gap-1"
+                  className="px-2 py-1 bg-neon-blue/10 text-neon-blue rounded-xl text-sm flex items-center gap-1"
                 >
                   {kw}
                   <button
@@ -1258,8 +1317,8 @@ export default function ProductCreatePage() {
       </div>
 
       {/* تفاصيل إضافية */}
-      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+      <div className="neon-card p-4">
+        <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
           <Package className="w-5 h-5" /> تفاصيل إضافية
         </h3>
 
@@ -1301,8 +1360,8 @@ export default function ProductCreatePage() {
       </div>
 
       {/* التسعير الإضافي */}
-      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+      <div className="neon-card p-4">
+        <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
           <DollarSign className="w-5 h-5" /> تسعير إضافي
         </h3>
 
@@ -1316,7 +1375,7 @@ export default function ProductCreatePage() {
                 min="0.01"
                 step="0.01"
               />
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">ج.م</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">ج.م</span>
             </div>
           </Field>
           <Field label="التكلفة" hint="تكلفة الشراء">
@@ -1328,13 +1387,13 @@ export default function ProductCreatePage() {
                 min="0"
                 step="0.01"
               />
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">ج.م</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">ج.م</span>
             </div>
           </Field>
         </div>
 
-        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-          <h4 className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-3">تخفيض (اختياري)</h4>
+        <div className="mt-4 p-3 neon-card neon-card--accent neon-card--yellow">
+          <h4 className="text-sm font-semibold text-text-primary mb-3">تخفيض (اختياري)</h4>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Field label="سعر التخفيض">
               <NumberInput
@@ -1350,7 +1409,7 @@ export default function ProductCreatePage() {
                 type="date"
                 value={optional.sale_start_date}
                 onChange={e => setOptional(prev => ({ ...prev, sale_start_date: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                className="neon-input"
               />
             </Field>
             <Field label="إلى تاريخ">
@@ -1358,7 +1417,7 @@ export default function ProductCreatePage() {
                 type="date"
                 value={optional.sale_end_date}
                 onChange={e => setOptional(prev => ({ ...prev, sale_end_date: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                className="neon-input"
               />
             </Field>
           </div>
@@ -1368,13 +1427,13 @@ export default function ProductCreatePage() {
       <div className="flex gap-3">
         <button
           onClick={() => setPage(1)}
-          className="px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+          className="neon-btn neon-btn--primary neon-btn--sm"
         >
           → السابق
         </button>
         <button
           onClick={() => setPage(3)}
-          className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 font-bold"
+          className="flex-1 neon-btn neon-btn--primary font-bold"
         >
           التالي: الصور والإرسال ←
         </button>
@@ -1386,8 +1445,8 @@ export default function ProductCreatePage() {
   const renderPage3 = (
     <div className="space-y-6">
       {/* الصورة الرئيسية */}
-      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+      <div className="neon-card p-4">
+        <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
           <ImageIcon className="w-5 h-5" /> الصورة الرئيسية
         </h3>
 
@@ -1411,7 +1470,7 @@ export default function ProductCreatePage() {
                 setMainImageUrl('')
                 setMainImagePreview('')
               }}
-              className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600"
+              className="absolute top-2 right-2 p-2 bg-neon-red text-white rounded-full hover:bg-neon-red/80 transition-all opacity-0 group-hover:opacity-100"
             >
               <X className="w-4 h-4" />
             </button>
@@ -1420,16 +1479,16 @@ export default function ProductCreatePage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadingImages}
-            className="w-full h-48 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex flex-col items-center justify-center gap-3 hover:border-blue-500 transition-colors"
+            className="neon-dropzone"
           >
             {uploadingImages ? (
-              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+              <Loader2 className="w-8 h-8 animate-spin text-amazon-orange" />
             ) : (
               <>
-                <Upload className="w-8 h-8 text-gray-400" />
+                <Upload className="w-8 h-8 text-text-muted" />
                 <div className="text-center">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">اضغط لاختيار صورة</p>
-                  <p className="text-xs text-gray-500">1000×1000 بكسل على الأقل</p>
+                  <p className="text-sm font-medium text-text-secondary">اضغط لاختيار صورة</p>
+                  <p className="text-xs text-text-muted">1000×1000 بكسل على الأقل</p>
                 </div>
               </>
             )}
@@ -1438,8 +1497,8 @@ export default function ProductCreatePage() {
       </div>
 
       {/* صور إضافية */}
-      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+      <div className="neon-card p-4">
+        <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
           <ImageIcon className="w-5 h-5" /> صور إضافية ({extraImageUrls.length}/8)
         </h3>
 
@@ -1480,7 +1539,7 @@ export default function ProductCreatePage() {
                     disabled={uploadingImages}
                     className="w-full h-full border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center hover:border-blue-500 transition-colors"
                   >
-                    <Upload className="w-6 h-6 text-gray-400" />
+                    <Upload className="w-6 h-6 text-text-muted" />
                   </button>
                 )}
               </div>
@@ -1490,58 +1549,61 @@ export default function ProductCreatePage() {
       </div>
 
       {/* عدد الإعلانات */}
-      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        <h3 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
-          <Package className="w-5 h-5" /> عدد الإعلانات
+      <div className="neon-card p-4">
+        <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+          <Package className="w-5 h-5" /> 🔢 عدد العروض / الإعلانات
         </h3>
 
-        <Field label="عدد النسخ المراد إنشاؤها" hint="1-50 نسخة">
+        <Field label="عدد النسخ المراد إنشاؤها" hint={`🔗 هذا الرقم يساوي عدد العروض = عدد الإعلانات = ${aiProducts.length > 0 ? aiProducts.length + ' (من AI)' : '1'}`}>
           <NumberInput
             value={String(listingCopies)}
-            onChange={v => setListingCopies(Math.min(50, Math.max(1, parseInt(v) || 1)))}
+            onChange={v => {
+              const newVal = Math.min(50, Math.max(1, parseInt(v) || 1))
+              setListingCopies(newVal)
+              // Warn if mismatch with AI products
+              if (aiProducts.length > 0 && newVal !== aiProducts.length) {
+                toast.warning(`⚠️ عدد النسخ (${newVal}) مش يساوي عدد منتجات AI (${aiProducts.length})`)
+              }
+            }}
             placeholder="1"
             min="1"
           />
         </Field>
+
+        {/* Match indicator */}
+        {aiProducts.length > 0 && (
+          <div className={`mt-3 p-2 rounded-xl text-sm flex items-center gap-2 ${
+            listingCopies === aiProducts.length
+              ? 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20'
+              : 'bg-neon-red/10 text-neon-red border border-neon-red/20'
+          }`}>
+            {listingCopies === aiProducts.length ? (
+              <>✅ متطابق: {listingCopies} نسخة = {aiProducts.length} منتج AI</>
+            ) : (
+              <>⚠️ غير متطابق: {listingCopies} نسخة ≠ {aiProducts.length} منتج AI</>
+            )}
+          </div>
+        )}
       </div>
 
       {/* الأزرار */}
       <div className="flex flex-col gap-3">
-        <button
-          onClick={handlePreview}
-          className="w-full px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 flex items-center justify-center gap-2 font-bold"
-        >
+        <NeonButton variant="warning" fullWidth onClick={handlePreview}>
           <Eye className="w-5 h-5" /> معاينة البيانات
-        </button>
+        </NeonButton>
 
-        <button
-          onClick={handleSave}
-          disabled={submitting}
-          className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2 font-bold"
-        >
-          {submitting ? (
-            <><Loader2 className="w-5 h-5 animate-spin" /> جاري الحفظ...</>
-          ) : (
-            <><Save className="w-5 h-5" /> حفظ في المخزون</>
-          )}
-        </button>
+        <NeonButton variant="success" fullWidth isLoading={submitting} onClick={handleSave}>
+          <Save className="w-5 h-5" /> حفظ في المخزون
+        </NeonButton>
 
-        <button
-          onClick={handleSubmitToAmazon}
-          disabled={submitting}
-          className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 font-bold"
-        >
-          {submitting ? (
-            <><Loader2 className="w-5 h-5 animate-spin" /> جاري الإرسال...</>
-          ) : (
-            <><Globe className="w-5 h-5" /> حفظ وإرسال لـ Amazon</>
-          )}
-        </button>
+        <NeonButton variant="amazon" fullWidth isLoading={submitting} onClick={handleSubmitToAmazon}>
+          <Globe className="w-5 h-5" /> حفظ وإرسال لـ Amazon
+        </NeonButton>
       </div>
 
       <button
         onClick={() => setPage(2)}
-        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+        className="neon-btn neon-btn--primary neon-btn--sm w-full"
       >
         → السابق
       </button>
@@ -1550,14 +1612,14 @@ export default function ProductCreatePage() {
 
   // ==================== Main Render ====================
   return (
-    <div className="max-w-4xl mx-auto p-4">
+    <div className="max-w-4xl mx-auto p-4 space-y-6">
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            <h1 className="text-2xl font-bold text-text-primary">
               {isEditMode ? 'تعديل المنتج' : 'إضافة منتج جديد'}
             </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-text-secondary mt-1">
               {isEditMode ? 'قم بتعديل البيانات المطلوبة' : 'أكمل البيانات لإضافة منتج جديد'}
             </p>
           </div>
@@ -1566,18 +1628,12 @@ export default function ProductCreatePage() {
             <button
               onClick={handleImproveWithAI}
               disabled={improving}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-lg hover:from-violet-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium text-sm shadow-md"
+              className="neon-btn neon-btn--primary neon-btn--sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {improving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  جاري التحسين...
-                </>
+                <><Loader2 className="w-4 h-4 animate-spin" /> جاري التحسين...</>
               ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  تحسين بالذكاء الاصطناعي
-                </>
+                <><Sparkles className="w-4 h-4" /> تحسين بالذكاء الاصطناعي</>
               )}
             </button>
           )}
@@ -1586,7 +1642,39 @@ export default function ProductCreatePage() {
 
       <StepIndicator currentPage={page} onNavigate={setPage} />
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      {/* Seller Selector - ظاهر دائماً */}
+      {sellers.length > 0 && (
+        <div className="mb-4 p-3 neon-card neon-card--accent neon-card--blue">
+          <label className="block text-sm font-medium text-text-primary mb-2 flex items-center gap-2">
+            <Store className="w-4 h-4" />
+            {isEditMode ? 'التاجر الحالي (يمكن تغييره)' : 'اختر الحساب / المتجر'}
+          </label>
+          <select
+            value={selectedSellerId}
+            onChange={e => {
+              setSelectedSellerId(e.target.value)
+              const seller = sellers.find(s => s.id === e.target.value)
+              toast.success(`تم اختيار: ${seller?.display_name || seller?.amazon_seller_id || 'التاجر'}`)
+            }}
+            className="neon-input neon-select"
+          >
+            {sellers.map(seller => (
+              <option key={seller.id} value={seller.id}>
+                {seller.display_name || seller.amazon_seller_id || seller.id}
+                {seller.is_connected ? ' ✅' : ' ❌'}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-text-muted mt-1">
+            {isEditMode
+              ? `⚠️ تغيير التاجر هينقل المنتج من "${sellers.find(s => s.id === editProduct?.seller_id)?.display_name || 'غير محدد'}" إلى "${sellers.find(s => s.id === selectedSellerId)?.display_name || 'غير محدد'}"`
+              : `سيتم إنشاء المنتج تحت حساب: ${sellers.find(s => s.id === selectedSellerId)?.display_name || 'غير محدد'}`
+            }
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-6">
         {page === 0 && renderPage0}
         {page === 1 && renderPage1}
         {page === 2 && renderPage2}

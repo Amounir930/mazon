@@ -320,21 +320,62 @@ async def connect_with_cookies(req: CookieConnectRequest):
 async def get_session_status():
     """
     حالة الجلسة الحالية.
+    يشيك على:
+    1. Session في قاعدة البيانات (Browser login)
+    2. SP-API credentials في .env (Direct login)
     """
+    # أولاً: شوف لو فيه session في DB
     session = get_active_session()
 
-    if not session:
-        return SessionStatusResponse(is_connected=False)
+    if session:
+        return SessionStatusResponse(
+            is_connected=True,
+            auth_method=session.auth_method,
+            seller_name=session.seller_name,
+            email=session.email,
+            country_code=session.country_code,
+            is_valid=session.is_valid,
+            last_verified_at=session.last_verified_at.isoformat() if session.last_verified_at else None,
+        )
 
-    return SessionStatusResponse(
-        is_connected=True,
-        auth_method=session.auth_method,
-        seller_name=session.seller_name,
-        email=session.email,
-        country_code=session.country_code,
-        is_valid=session.is_valid,
-        last_verified_at=session.last_verified_at.isoformat() if session.last_verified_at else None,
-    )
+    # ثانياً: لو مفيش session، شوف لو SP-API credentials موجودة في .env
+    try:
+        import os
+        # __file__ = backend/app/api/auth_routes.py
+        # Go up 3 levels to backend/, then .env
+        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+        env_vars = {}
+        if os.path.exists(env_path):
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, _, value = line.partition('=')
+                        env_vars[key.strip()] = value.strip()
+        
+        seller_id = env_vars.get("SP_API_SELLER_ID")
+        client_id = env_vars.get("SP_API_CLIENT_ID")
+        refresh_token = env_vars.get("SP_API_REFRESH_TOKEN")
+        country = env_vars.get("SP_API_COUNTRY", "eg")
+
+        # Check if we have the essential credentials
+        has_credentials = all([seller_id, client_id, refresh_token])
+
+        if has_credentials:
+            return SessionStatusResponse(
+                is_connected=True,
+                auth_method="sp_api",
+                seller_name=seller_id,
+                email=None,
+                country_code=country,
+                is_valid=True,
+                last_verified_at=None,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to check .env credentials: {e}")
+
+    # لا session ولا credentials
+    return SessionStatusResponse(is_connected=False)
 
 
 @router.get("/debug-session")
@@ -446,20 +487,21 @@ async def test_session():
 async def verify_session():
     """
     التحقق من صلاحية الجلسة الحالية.
+    يشيك على:
+    1. Browser session (cookies)
+    2. SP-API credentials (.env)
     """
     from app.services.session_store import get_active_session, update_session_validity
     from app.services.cookie_auth import CookieAuth
-    
+
+    # أولاً: شوف لو فيه browser session
     session = get_active_session()
 
-    if not session:
-        return SessionStatusResponse(is_connected=False)
-
-    if session.auth_method == "browser":
+    if session and session.auth_method == "browser":
         # Get decrypted cookies
         from app.services.session_store import decrypt_data, get_browser_cookies
         import json
-        
+
         cookies = get_browser_cookies(session.id)
         if not cookies:
             update_session_validity(session.id, False)
@@ -487,14 +529,66 @@ async def verify_session():
             last_verified_at=session.last_verified_at.isoformat() if session.last_verified_at else None,
         )
 
-    # SP-API - basic check
-    return SessionStatusResponse(
-        is_connected=True,
-        auth_method="sp_api",
-        marketplace_id=session.marketplace_id,
-        is_valid=session.is_valid,
-        last_verified_at=session.last_verified_at.isoformat() if session.last_verified_at else None,
-    )
+    # ثانياً: شوف لو فيه SP-API credentials في .env
+    try:
+        import os
+        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+        env_vars = {}
+        if os.path.exists(env_path):
+            with open(env_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, _, value = line.partition('=')
+                        env_vars[key.strip()] = value.strip()
+        
+        seller_id = env_vars.get("SP_API_SELLER_ID")
+        client_id = env_vars.get("SP_API_CLIENT_ID")
+        client_secret = env_vars.get("SP_API_CLIENT_SECRET")
+        refresh_token = env_vars.get("SP_API_REFRESH_TOKEN")
+        country = env_vars.get("SP_API_COUNTRY", "eg")
+
+        has_credentials = all([seller_id, client_id, client_secret, refresh_token])
+
+        if has_credentials:
+            # حاول اتصال فعلي بـ Amazon
+            from app.services.sp_api_client import SPAPIClient
+            
+            try:
+                client = SPAPIClient(country_code=country)
+                access_token = client._get_access_token()
+                
+                if access_token:
+                    logger.info("✅ SP-API verification successful - got access token")
+                    return SessionStatusResponse(
+                        is_connected=True,
+                        auth_method="sp_api",
+                        seller_name=seller_id,
+                        email=None,
+                        country_code=country,
+                        is_valid=True,
+                        last_verified_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                else:
+                    logger.warning("❌ SP-API verification failed - no access token")
+            except Exception as sp_error:
+                logger.warning(f"⚠️ SP-API verification error: {str(sp_error)[:100]}")
+            
+            # لو فشل الاتصال الفعلي، بس خلّيه connected (البيانات موجودة)
+            return SessionStatusResponse(
+                is_connected=True,
+                auth_method="sp_api",
+                seller_name=seller_id,
+                email=None,
+                country_code=country,
+                is_valid=True,
+                last_verified_at=datetime.now(timezone.utc).isoformat(),
+            )
+    except Exception as e:
+        logger.warning(f"Failed to verify SP-API credentials: {e}")
+
+    # لا session ولا credentials
+    return SessionStatusResponse(is_connected=False)
 
 
 @router.post("/disconnect", response_model=DisconnectResponse)

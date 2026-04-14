@@ -68,6 +68,16 @@ class AIProductAssistant:
         
         # Validate with Pydantic
         try:
+            # FIX: AI sometimes generates >5 or <5 bullet points — ensure exactly 5
+            if 'base_product' in raw_result:
+                bp = raw_result['base_product']
+                for key in ['bullet_points_ar', 'bullet_points_en']:
+                    if key in bp:
+                        items = bp[key][:5]  # Truncate to 5
+                        while len(items) < 5:  # Pad if less than 5
+                            items.append("")
+                        bp[key] = items
+
             result = AIProductResponse(**raw_result)
             logger.info(
                 f"✅ Generated {len(result.variants)} variant(s) — "
@@ -84,6 +94,19 @@ class AIProductAssistant:
         base_prompt = """
 أنت مساعد ذكاء اصطناعي متخصص في تحسين قوائم المنتجات على Amazon.
 مهمتك: توليد بيانات منتج كاملة من وصف مختصر.
+
+⚠️ قواعد إجبارية:
+1. الباركود EAN: إجباري - ولّد رقم EAN صحيح من 13 رقم في كل مرة
+   - استخدم صيغة: ابدأ بـ 628 أو 629 (مصر) أو 690 (الصين) ثم 10 أرقام عشوائية
+   - مثال: 6281234567890
+2. التسعير والكمية: اتركها فارغة (null) - المستخدم يملأها بنفسه
+3. المكونات المرفقة: اكتب كلمة واحدة فقط (مثال: "خلاط" أو "جهاز")
+4. الوصف (عربي + إنجليزي): لازم يكون وصف شامل - 3 سطور كاملة على الأقل
+   - يشرح المميزات + الاستخدامات + الفوائد
+   - مثال عربي: "هذا الخلاط الكهربائي بقوة 500 واط يأتي مع 5 سرعات مختلفة لتناسب جميع احتياجاتك في المطبخ. مصنوع من مواد عالية الجودة تضمن له المتانة والاستخدام الطويل. مثالي لخلط العجين، تحضير العصائر، وفرم المكونات المختلفة بسهولة تامة."
+5. النقاط البيعية (5 نقاط): إجباري - كل نقطة سطر كامل يشرح ميزة مهمة
+   - كل نقطة 20 حرف على الأقل
+   - تركز على الفوائد للمشتري
 
 معايير Amazon:
 - اسم المنتج: max 200 حرف، يتضمن العلامة + الموديل + المواصفات الأساسية
@@ -136,9 +159,14 @@ class AIProductAssistant:
 {variants_instruction}
 
 التنسيق المطلوب (JSON فقط):
-{{"base_product": {{"brand": "اسم البراند", "manufacturer": "اسم المصنع", "product_type": "نوع المنتج", "price": 350, "ean": "", "upc": "", "bullet_points_ar": ["نقطة 1", "نقطة 2", "نقطة 3", "نقطة 4", "نقطة 5"], "bullet_points_en": ["Point 1", "Point 2", "Point 3", "Point 4", "Point 5"], "keywords": ["كلمة1", "كلمة2"], "material": "المادة", "target_audience": "الفئة", "condition": "New", "fulfillment_channel": "MFN", "country_of_origin": "CN", "model_number": "MOD-001"}}, "variants": [{{"variant_number": 1, "name_ar": "الاسم بالعربي", "name_en": "English Name", "description_ar": "الوصف بالعربي", "description_en": "English Description", "suggested_sku": "SKU-001"}}]}}
+{{"base_product": {{"brand": "اسم البراند", "manufacturer": "اسم المصنع", "product_type": "نوع المنتج", "price": null, "ean": "6281234567890", "upc": "", "bullet_points_ar": ["نقطة بيعية كاملة 1 - سطر يشرح ميزة مهمة", "نقطة بيعية كاملة 2 - سطر يشرح فائدة", "نقطة بيعية كاملة 3 - سطر يشرح ميزة", "نقطة بيعية كاملة 4 - سطر يشرح فائدة", "نقطة بيعية كاملة 5 - سطر يشرح ميزة"], "bullet_points_en": ["Full selling point 1 - line describing feature", "Full selling point 2 - line describing benefit", "Full selling point 3 - line describing feature", "Full selling point 4 - line describing benefit", "Full selling point 5 - line describing feature"], "keywords": ["كلمة1", "كلمة2"], "material": "المادة", "target_audience": "الفئة", "condition": "New", "fulfillment_channel": "MFN", "country_of_origin": "CN", "model_number": "MOD-001", "included_components": "كلمة واحدة"}}, "variants": [{{"variant_number": 1, "name_ar": "الاسم بالعربي", "name_en": "English Name", "description_ar": "وصف شامل 3 سطور - يشرح المميزات والاستخدامات والفوائد بشكل تفصيلي. هذا المنتج مصنوع من مواد عالية الجودة. مثالي للاستخدام اليومي.", "description_en": "Full 3-line description describing features, benefits and uses in detail. Made from high quality materials. Perfect for daily use.", "suggested_sku": "SKU-001"}}]}}
 
 قواعد مهمة:
+- الباركود EAN: إجباري - ولّد 13 رقم صحيح (مثال: 628xxxxxxxxx)
+- التسعير (price): اتركه null - لا تكتب رقم
+- المكونات المرفقة (included_components): كلمة واحدة فقط
+- الوصف: 3 سطور كاملة على الأقل
+- النقاط البيعية: 5 نقاط كاملة - كل نقطة 20 حرف على الأقل
 - استبدل القيم الافتراضية ببيانات حقيقية مناسبة للمنتج
 - أخرج JSON فقط بدون أي نص إضافي
 - لا تضيف ```json أو ``` في البداية أو النهاية

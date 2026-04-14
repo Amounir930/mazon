@@ -15,8 +15,8 @@ export interface BaseProductData {
   brand: string
   manufacturer: string
   product_type: string
-  price: number
-  ean: string
+  price: number | null  // اختياري - AI يتركه null
+  ean: string  // إجباري - 13 رقم
   upc: string
   bullet_points_ar: string[]
   bullet_points_en: string[]
@@ -27,6 +27,7 @@ export interface BaseProductData {
   fulfillment_channel: string
   country_of_origin: string
   model_number: string
+  included_components: string  // كلمة واحدة
   estimated_price_egp: PriceEstimate | null
 }
 
@@ -67,8 +68,8 @@ export interface AIMergedProduct {
   brand: string
   manufacturer: string
   product_type: string
-  price: number
-  ean: string
+  price: number | null  // اختياري
+  ean: string  // إجباري - 13 رقم
   upc: string
   bullet_points_ar: string[]
   bullet_points_en: string[]
@@ -79,6 +80,7 @@ export interface AIMergedProduct {
   fulfillment_channel: string
   country_of_origin: string
   model_number: string
+  included_components: string  // كلمة واحدة
   // From variant
   name_ar: string
   name_en: string

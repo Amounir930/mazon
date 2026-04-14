@@ -58,7 +58,6 @@ export const ID_TYPES = [
   { value: 'EAN', label: 'EAN (13 رقم)' },
   { value: 'UPC', label: 'UPC (12 رقم)' },
   { value: 'ASIN', label: 'ASIN (Amazon)' },
-  { value: 'EXEMPT', label: 'معفي من الباركود (GTIN Exempt)' },
 ] as const
 
 // ==================== Countries ====================
@@ -133,15 +132,15 @@ export const DEFAULT_VALUES = {
 export const VALIDATION_RULES = {
   name_ar: { min: 3, max: 500, required: true },
   name_en: { min: 3, max: 500, required: true },
-  description_ar: { min: 5, max: 2000, required: true },
-  description_en: { min: 5, max: 2000, required: true },
+  description_ar: { min: 50, max: 2000, required: true },
+  description_en: { min: 50, max: 2000, required: true },
   ean: { exact: 13, required: true },
   upc: { exact: 12, required: true },
-  price: { min: 0.01, required: true },
-  quantity: { min: 0, required: true },
+  price: { min: 0.01, required: false }, // اختياري
+  quantity: { min: 0, required: false },  // اختياري
   brand: { min: 1, max: 200, required: true },
   model_number: { min: 1, max: 100, required: true },
   manufacturer: { min: 1, max: 200, required: true },
-  bullet_points: { count: 5, min: 10, max: 500 },
+  bullet_points: { count: 5, min: 20, max: 500, required: true }, // 5 نقاط إجبارية
   images: { main: { required: true, min_size: 1000 }, extra: { max: 8 } },
 } as const

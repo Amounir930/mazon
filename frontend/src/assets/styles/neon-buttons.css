@@ -1,0 +1,304 @@
+/* ============================================
+   NEON BUTTONS - High Performance
+   Pure CSS, GPU accelerated, zero JS overhead
+   ============================================ */
+
+/* Base Button Styles */
+.neon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.75rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 
+    0 4px 15px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  /* Performance: GPU acceleration */
+  will-change: transform;
+}
+
+.neon-btn:active {
+  transform: scale(0.98);
+}
+
+/* Inner glow effect */
+.neon-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at var(--x, 50%) var(--y, 50%),
+    rgba(255, 255, 255, 0.15) 0%,
+    transparent 60%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.neon-btn:hover::before {
+  opacity: 1;
+}
+
+/* Neon border effect */
+.neon-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(90deg, var(--neon-start), var(--neon-end));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.neon-btn:hover::after {
+  opacity: 1;
+}
+
+/* Hover lift effect */
+.neon-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 8px 25px var(--shadow-color),
+    0 0 20px var(--glow-color);
+}
+
+/* ============================================
+   BUTTON VARIANTS
+   ============================================ */
+
+/* Primary - Blue/Purple */
+.neon-btn--primary {
+  --neon-start: #3a86ff;
+  --neon-end: #8338ec;
+  --shadow-color: rgba(58, 134, 255, 0.3);
+  --glow-color: rgba(131, 56, 236, 0.2);
+}
+
+/* Success - Green/Cyan */
+.neon-btn--success {
+  --neon-start: #06d6a0;
+  --neon-end: #00b4d8;
+  --shadow-color: rgba(6, 214, 160, 0.3);
+  --glow-color: rgba(0, 180, 216, 0.2);
+}
+
+/* Warning - Yellow/Orange */
+.neon-btn--warning {
+  --neon-start: #ffd166;
+  --neon-end: #ff6b35;
+  --shadow-color: rgba(255, 209, 102, 0.3);
+  --glow-color: rgba(255, 107, 53, 0.2);
+}
+
+/* Danger - Red/Pink */
+.neon-btn--danger {
+  --neon-start: #ef476f;
+  --neon-end: #ff006e;
+  --shadow-color: rgba(239, 71, 111, 0.3);
+  --glow-color: rgba(255, 0, 110, 0.2);
+}
+
+/* Info - Cyan/Blue */
+.neon-btn--info {
+  --neon-start: #00b4d8;
+  --neon-end: #3a86ff;
+  --shadow-color: rgba(0, 180, 216, 0.3);
+  --glow-color: rgba(58, 134, 255, 0.2);
+}
+
+/* Amazon - Orange brand */
+.neon-btn--amazon {
+  --neon-start: #FF9900;
+  --neon-end: #FEBD69;
+  --shadow-color: rgba(255, 153, 0, 0.3);
+  --glow-color: rgba(254, 189, 105, 0.2);
+}
+
+/* Rainbow - Animated gradient */
+.neon-btn--rainbow {
+  --neon-start: #3a86ff;
+  --neon-end: #ff006e;
+  --shadow-color: rgba(131, 56, 236, 0.3);
+  --glow-color: rgba(58, 134, 255, 0.2);
+}
+
+.neon-btn--rainbow::after {
+  background: linear-gradient(
+    90deg,
+    #3a86ff,
+    #8338ec,
+    #ff006e,
+    #ff6b35,
+    #ffd166,
+    #06d6a0,
+    #00b4d8,
+    #3a86ff
+  );
+  background-size: 200% 100%;
+  animation: rainbow-slide 3s linear infinite;
+}
+
+@keyframes rainbow-slide {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+/* ============================================
+   BUTTON SIZES
+   ============================================ */
+
+.neon-btn--sm {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.85rem;
+}
+
+.neon-btn--lg {
+  padding: 1rem 2.5rem;
+  font-size: 1.1rem;
+}
+
+.neon-btn--xl {
+  padding: 1.25rem 3rem;
+  font-size: 1.25rem;
+}
+
+/* ============================================
+   BUTTON STATES
+   ============================================ */
+
+/* Disabled */
+.neon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.neon-btn:disabled:hover {
+  transform: none;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.neon-btn:disabled::before,
+.neon-btn:disabled::after {
+  opacity: 0;
+}
+
+/* Loading state */
+.neon-btn--loading {
+  color: transparent;
+  pointer-events: none;
+}
+
+.neon-btn--loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  inset: auto;
+  padding: 0;
+  background: none;
+  -webkit-mask: none;
+  mask: none;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   OUTLINE VARIANT (Subtle)
+   ============================================ */
+
+.neon-btn--outline {
+  background: transparent;
+  box-shadow: none;
+  border: 2px solid var(--neon-start);
+}
+
+.neon-btn--outline::after {
+  display: none;
+}
+
+.neon-btn--outline:hover {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 0 20px var(--glow-color);
+}
+
+/* ============================================
+   GHOST VARIANT (Minimal)
+   ============================================ */
+
+.neon-btn--ghost {
+  background: transparent;
+  box-shadow: none;
+}
+
+.neon-btn--ghost::after {
+  opacity: 0.3;
+}
+
+.neon-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+}
+
+/* ============================================
+   ICON BUTTON (Square)
+   ============================================ */
+
+.neon-btn--icon {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 12px;
+}
+
+.neon-btn--icon.neon-btn--sm {
+  width: 36px;
+  height: 36px;
+}
+
+.neon-btn--icon.neon-btn--lg {
+  width: 52px;
+  height: 52px;
+}
+
+/* ============================================
+   FULL WIDTH
+   ============================================ */
+
+.neon-btn--full {
+  width: 100%;
+}
+
+/* ============================================
+   MOUSE FOLLOW EFFECT (Optional - JS needed)
+   ============================================ */
+
+/* Enable with: class="neon-btn neon-btn--track-mouse" */
+.neon-btn--track-mouse {
+  --x: 50%;
+  --y: 50%;
+}

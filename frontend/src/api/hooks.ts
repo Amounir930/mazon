@@ -194,6 +194,17 @@ export function useSellerInfo() {
   })
 }
 
+export function useSellersList() {
+  return useQuery({
+    queryKey: ['sellers', 'list'],
+    queryFn: async () => {
+      const { data } = await sellersApi.list()
+      return data
+    },
+    staleTime: 1000 * 60 * 2,
+  })
+}
+
 export function useSubmitMultiListing() {
   const queryClient = useQueryClient()
 

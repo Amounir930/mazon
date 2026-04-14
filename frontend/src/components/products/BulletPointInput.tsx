@@ -21,16 +21,8 @@ export function BulletPointInput({
 
   const addBullet = () => {
     const trimmed = newBullet.trim()
-    if (!trimmed) {
-      toast.error('يرجى إدخال نص الميزة')
-      return
-    }
-
-    if (bulletPoints.length >= maxPoints) {
-      toast.error(`الحد الأقصى ${maxPoints} نقاط`)
-      return
-    }
-
+    if (!trimmed) { toast.error('يرجى إدخال نص الميزة'); return }
+    if (bulletPoints.length >= maxPoints) { toast.error(`الحد الأقصى ${maxPoints} نقاط`); return }
     onChange([...bulletPoints, trimmed])
     setNewBullet('')
     toast.success('تم إضافة الميزة بنجاح')
@@ -43,10 +35,7 @@ export function BulletPointInput({
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      addBullet()
-    }
+    if (e.key === 'Enter') { e.preventDefault(); addBullet() }
   }
 
   return (
@@ -54,8 +43,8 @@ export function BulletPointInput({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Check className="w-5 h-5 text-amazon-orange" />
-          <span className="text-white font-semibold">{label}</span>
-          <span className="text-xs text-gray-500">({bulletPoints.length}/{maxPoints})</span>
+          <span className="text-text-primary font-semibold">{label}</span>
+          <span className="text-xs text-text-muted">({bulletPoints.length}/{maxPoints})</span>
         </div>
       </div>
 
@@ -67,16 +56,15 @@ export function BulletPointInput({
           onChange={(e) => setNewBullet(e.target.value)}
           onKeyDown={handleKeyPress}
           placeholder={placeholder || 'أضف ميزة جديدة...'}
-          className="flex-1 px-4 py-3 bg-[#0a0a0f] border border-gray-800 rounded-lg text-white focus:ring-2 focus:ring-amazon-orange outline-none transition-all"
+          className="neon-input flex-1"
           disabled={bulletPoints.length >= maxPoints}
         />
         <button
           onClick={addBullet}
           disabled={bulletPoints.length >= maxPoints || !newBullet.trim()}
-          className="flex items-center gap-2 px-4 py-3 bg-amazon-orange hover:bg-amazon-light text-amazon-dark font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="neon-btn neon-btn--amazon disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Plus className="w-5 h-5" />
-          إضافة
+          <Plus className="w-5 h-5" /> إضافة
         </button>
       </div>
 
@@ -86,15 +74,15 @@ export function BulletPointInput({
           {bulletPoints.map((bullet, index) => (
             <li
               key={index}
-              className="bg-[#1a1a2e] p-4 rounded-xl border border-gray-800 flex items-start gap-3 group hover:border-gray-700 transition-colors"
+              className="bg-bg-elevated/50 p-4 rounded-xl border border-border-subtle flex items-start gap-3 group hover:border-border-medium transition-colors"
             >
               <div className="flex-shrink-0 w-6 h-6 bg-amazon-orange/20 text-amazon-orange rounded-full flex items-center justify-center text-sm font-bold">
                 {index + 1}
               </div>
-              <p className="flex-1 text-white text-sm leading-relaxed">{bullet}</p>
+              <p className="flex-1 text-text-primary text-sm leading-relaxed">{bullet}</p>
               <button
                 onClick={() => removeBullet(index)}
-                className="flex-shrink-0 p-1 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors opacity-0 group-hover:opacity-100"
+                className="flex-shrink-0 p-1 text-text-muted hover:text-neon-red hover:bg-neon-red/10 rounded transition-colors opacity-0 group-hover:opacity-100"
                 title="إزالة"
               >
                 <X className="w-4 h-4" />
@@ -105,12 +93,12 @@ export function BulletPointInput({
       )}
 
       {bulletPoints.length === 0 && (
-        <div className="text-center py-8 text-gray-500 text-sm">
+        <div className="text-center py-8 text-text-muted text-sm">
           لم يتم إضافة أي ميزات بعد. استخدم الحقل أعلاه لإضافة أول ميزة.
         </div>
       )}
 
-      <div className="text-xs text-gray-500 text-center">
+      <div className="text-xs text-text-muted text-center">
         الحد الأقصى: {maxPoints} نقاط | يُنصح بكتابة ميزات واضحة ومختصرة
       </div>
     </div>

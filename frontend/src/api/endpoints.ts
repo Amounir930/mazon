@@ -81,6 +81,9 @@ export const authApi = {
 export const sellersApi = {
   info: () =>
     api.get('/sellers/info'),
+
+  list: () =>
+    api.get<{ sellers: Array<{ id: string; amazon_seller_id?: string; display_name?: string; marketplace_id?: string; is_connected: boolean }>; total: number }>('/sellers/list'),
 }
 
 // ==================== Catalog Search API ====================
