@@ -271,83 +271,13 @@ async def sync_orders_cookie(
 ):
     """
     Sync orders using cookie-based authentication.
-    Uses active browser session cookies to fetch orders from Amazon Seller Central.
-    
-    Request: POST /api/v1/sync/orders?email=user@email.com&days=30
-    Response: {
-        "success": true,
-        "synced": 50,
-        "total": 50,
-        "orders": [...]
-    }
+    DEPRECATED: CookieScraper removed (Amazon ToS violation).
+    Use SP-API instead.
     """
-    try:
-        from app.services.cookie_scraper import CookieScraper
-
-        scraper = CookieScraper()
-        
-        # Sync orders via cookies
-        result = await scraper.sync_orders(email, days=days)
-        scraper.close()
-
-        if not result.get("success"):
-            return {
-                "success": False,
-                "error": result.get("error", "Failed to sync orders"),
-                "orders": [],
-                "synced": 0,
-                "total": 0,
-            }
-
-        # Store synced orders in local database
-        orders = result.get("orders", [])
-        synced_count = 0
-
-        for item in orders:
-            order_id = item.get("amazon_order_id", "")
-            if not order_id:
-                continue
-
-            # Check if order already exists
-            existing = db.query(Order).filter(Order.amazon_order_id == order_id).first()
-            if existing:
-                # Update existing order
-                existing.order_status = item.get("status", existing.order_status)
-                existing.total = item.get("total", existing.total)
-                existing.buyer_name = item.get("buyer_name", existing.buyer_name)
-                existing.last_update_date = datetime.now(timezone.utc)
-            else:
-                # Create new order
-                order = Order(
-                    seller_id=None,  # Will be linked later
-                    amazon_order_id=order_id,
-                    order_status=item.get("status", "Unknown"),
-                    total=item.get("total", 0),
-                    buyer_name=item.get("buyer_name", ""),
-                    purchase_date=datetime.now(timezone.utc),  # Will be parsed from actual date
-                    items=json.dumps(item.get("items", [])),
-                    source="cookie",
-                )
-                db.add(order)
-                synced_count += 1
-
-        db.commit()
-
-        logger.info(f"Cookie sync: {synced_count} orders synced for {email}")
-
-        return {
-            "success": True,
-            "synced": synced_count,
-            "total": result.get("total", 0),
-            "orders": orders[:10],  # Return first 10 for preview
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Cookie-based orders sync failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+    raise HTTPException(
+        status_code=410,
+        detail="Cookie-based scraping has been removed. Use SP-API endpoints instead."
+    )
 
 
 @router.post("/inventory")
@@ -357,88 +287,13 @@ async def sync_inventory_cookie(
 ):
     """
     Sync inventory using cookie-based authentication.
-    Uses active browser session cookies to fetch inventory from Amazon Seller Central.
-    
-    Request: POST /api/v1/sync/inventory?email=user@email.com
-    Response: {
-        "success": true,
-        "synced": 100,
-        "total": 100,
-        "inventory": [...]
-    }
+    DEPRECATED: CookieScraper removed (Amazon ToS violation).
+    Use SP-API instead.
     """
-    try:
-        from app.services.cookie_scraper import CookieScraper
-
-        scraper = CookieScraper()
-        
-        # Sync inventory via cookies
-        result = await scraper.sync_inventory(email)
-        scraper.close()
-
-        if not result.get("success"):
-            return {
-                "success": False,
-                "error": result.get("error", "Failed to sync inventory"),
-                "inventory": [],
-                "synced": 0,
-                "total": 0,
-            }
-
-        # Store synced inventory in local database
-        inventory_items = result.get("inventory", [])
-        synced_count = 0
-
-        for item in inventory_items:
-            item_sku = item.get("sku", "")
-            if not item_sku:
-                continue
-
-            # Check if inventory record already exists
-            existing = db.query(Inventory).filter(Inventory.sku == item_sku).first()
-            if existing:
-                # Update existing inventory
-                existing.available = item.get("available", existing.available)
-                existing.reserved = item.get("reserved", existing.reserved)
-                existing.inbound = item.get("inbound", existing.inbound)
-                existing.fba = item.get("fba", existing.fba)
-                existing.fbm = item.get("fbm", existing.fbm)
-                existing.synced_at = datetime.now(timezone.utc)
-            else:
-                # Create new inventory record
-                inv = Inventory(
-                    seller_id=None,  # Will be linked later
-                    sku=item_sku,
-                    asin=item.get("asin", ""),
-                    product_name=item.get("name", ""),
-                    available=item.get("available", 0),
-                    reserved=item.get("reserved", 0),
-                    inbound=item.get("inbound", 0),
-                    fba=item.get("fba", False),
-                    fbm=item.get("fbm", True),
-                    fulfillment_channel=item.get("fulfillment", "MFN"),
-                    source="cookie",
-                )
-                db.add(inv)
-                synced_count += 1
-
-        db.commit()
-
-        logger.info(f"Cookie sync: {synced_count} inventory items synced for {email}")
-
-        return {
-            "success": True,
-            "synced": synced_count,
-            "total": result.get("total", 0),
-            "inventory": inventory_items[:10],  # Return first 10 for preview
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Cookie-based inventory sync failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+    raise HTTPException(
+        status_code=410,
+        detail="Cookie-based scraping has been removed. Use SP-API endpoints instead."
+    )
 
 
 # ============================================================
@@ -450,86 +305,14 @@ async def pull_products_from_amazon(
     db: Session = Depends(get_db),
 ):
     """
-    سحب المنتجات من Amazon Seller Central → يوريك إيه اللي موجود.
-    مش بيحفظ في الـ DB — بس بيطبع البيانات عشان نعرف الحقول المطلوبة.
-
-    Request: POST /api/v1/sync/pull
+    سحب المنتجات من Amazon Seller Central.
+    DEPRECATED: CookieScraper removed (Amazon ToS violation).
+    Use SP-API endpoints instead.
     """
-    try:
-        from app.services.sync_engine import AmazonProductSyncEngine, get_active_session
-        from app.services.cookie_scraper import CookieScraper
-        import asyncio
-
-        # Get active session cookies
-        cookies, country = get_active_session()
-        if not cookies:
-            raise HTTPException(
-                status_code=401,
-                detail="لا يوجد جلسة نشطة - يرجى تسجيل الدخول أولاً"
-            )
-
-        logger.info(f"Pulling products from Amazon: {len(cookies)} cookies, country={country}")
-
-        # Method 1: Try CookieScraper (Playwright DOM extraction)
-        scraper = CookieScraper()
-        try:
-            # Get email from session
-            active_session = db.query(AuthSession).filter(
-                AuthSession.auth_method == "browser",
-                AuthSession.is_active == True,
-            ).first()
-            email = active_session.email if active_session else "amazon_eg"
-
-            result = await scraper.sync_products(email)
-            scraper.close()
-
-            if result.get("success") and result.get("products"):
-                products = result["products"]
-                logger.info(f"✅ CookieScraper pulled {len(products)} products")
-                # Print first 3 products for analysis
-                for i, p in enumerate(products[:3]):
-                    logger.info(f"  Product {i+1}: {json.dumps(p, ensure_ascii=False)[:300]}")
-                return {
-                    "success": True,
-                    "method": "CookieScraper (Playwright)",
-                    "total": len(products),
-                    "preview": products[:5],  # First 5 for analysis
-                    "fields": list(products[0].keys()) if products else [],
-                }
-            else:
-                logger.warning(f"CookieScraper returned: {result}")
-        except Exception as e:
-            logger.error(f"CookieScraper failed: {e}")
-            scraper.close()
-
-        # Method 2: Try sync_engine (CSV download)
-        try:
-            sync_engine = AmazonProductSyncEngine(cookies=cookies, country_code=country)
-            result = sync_engine.sync_products()
-            if result.get("success"):
-                logger.info(f"✅ SyncEngine pulled {result.get('total', 0)} products")
-                return {
-                    "success": True,
-                    "method": "SyncEngine (CSV)",
-                    "total": result.get("total", 0),
-                    "message": result.get("message", ""),
-                }
-            else:
-                logger.warning(f"SyncEngine returned: {result}")
-        except Exception as e:
-            logger.error(f"SyncEngine failed: {e}")
-
-        return {
-            "success": False,
-            "error": "All pull methods failed",
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Product pull failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to pull: {str(e)}")
+    raise HTTPException(
+        status_code=410,
+        detail="Cookie-based scraping has been removed. Use SP-API endpoints instead."
+    )
 
 
 @router.get("/products/legacy")

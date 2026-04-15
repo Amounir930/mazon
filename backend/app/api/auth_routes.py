@@ -744,18 +744,12 @@ async def get_supported_countries():
 async def sync_products(email: str):
     """
     Sync المنتجات من Amazon باستخدام cookies.
+    DEPRECATED: CookieScraper removed (Amazon ToS violation).
     """
-    try:
-        from app.services.cookie_scraper import CookieScraper
-        
-        scraper = CookieScraper()
-        result = await scraper.sync_products(email)
-        scraper.close()
-        
-        return result
-    except Exception as e:
-        logger.error(f"Failed to sync products: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(
+        status_code=410,
+        detail="Cookie-based scraping has been removed. Use SP-API endpoints instead."
+    )
 
 
 @router.get("/sync/orders")

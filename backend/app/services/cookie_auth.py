@@ -224,16 +224,12 @@ class CookieAuth:
     ) -> Dict[str, Any]:
         """
         Sync products from Amazon Seller Central.
-        Delegates to CookieScraper (Playwright DOM extraction).
+        DEPRECATED: CookieScraper removed (Amazon ToS violation).
+        Use SP-API instead.
         """
-        from app.services.cookie_scraper import CookieScraper
-
-        scraper = CookieScraper()
-        try:
-            result = await scraper.sync_products(email)
-            return result
-        finally:
-            await scraper.close()
+        raise NotImplementedError(
+            "Cookie-based scraping has been removed. Use SP-API for product sync."
+        )
 
     @staticmethod
     async def sync_orders(
@@ -243,16 +239,12 @@ class CookieAuth:
     ) -> Dict[str, Any]:
         """
         Sync orders from Amazon Seller Central.
-        Delegates to CookieScraper (Playwright DOM extraction).
+        DEPRECATED: CookieScraper removed (Amazon ToS violation).
+        Use SP-API instead.
         """
-        from app.services.cookie_scraper import CookieScraper
-
-        scraper = CookieScraper()
-        try:
-            result = await scraper.sync_orders(email, days=days)
-            return result
-        finally:
-            await scraper.close()
+        raise NotImplementedError(
+            "Cookie-based scraping has been removed. Use SP-API for order sync."
+        )
 
     @staticmethod
     def disconnect(email: str) -> bool:
