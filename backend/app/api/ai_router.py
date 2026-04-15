@@ -3,7 +3,8 @@ AI Product Generation API Router
 ==================================
 Async endpoints for AI-powered product generation + Amazon catalog import.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 from typing import Optional
 from loguru import logger
@@ -144,29 +145,10 @@ async def get_learned_fields(product_id: str):
 async def generate_product(request: AIProductRequest):
     """
     POST /api/v1/ai/generate-product
-    
-    Generate N product variants using Qwen AI (Base + Delta Pattern).
-    
-    Request Body:
-    {
-        "name": "خلاط كهربائي 300 واط",
-        "specs": "5 سرعات، ستانلس ستيل، سهل التنظيف",
-        "copies": 3,
-        "brand": "Generic"
-    }
-    
-    Response:
-    {
-        "base_product": { brand, price, bullets, keywords, ... },
-        "variants": [
-            { name_ar, name_en, description_ar, description_en, sku },
-            ...
-        ],
-        "count": 3,
-        "warnings": ["EAN/UPC required — please add manually"],
-        "metadata": { "model": "qwen-max", "tokens_saved": "84%" }
-    }
     """
+    # DEBUG: Log request for troubleshooting
+    logger.info(f"📥 AI generate request: name='{request.name}' (len={len(request.name)}), specs='{request.specs[:50]}...' (len={len(request.specs)}), copies={request.copies}")
+
     # Validate copies range
     if request.copies < 1 or request.copies > 10:
         raise HTTPException(

@@ -600,7 +600,7 @@ class SPAPIClient:
         manufacturer = (product_data.get("manufacturer") or brand).strip() or brand
         bullet_points = product_data.get("bullet_points", [])
         browse_node = product_data.get("browse_node_id", "21863799031")
-        included_components = product_data.get("included_components", name)
+        included_components = product_data.get("included_components") or product_data.get("name") or "منتج"
         color = product_data.get("color", "متعدد")  # DEFAULT: Multi (required by Amazon)
 
         # Map condition
@@ -630,6 +630,9 @@ class SPAPIClient:
             "manufacturer": [{"value": manufacturer, "language_tag": "ar_AE"}],
             "model_name": [{"value": model_number, "language_tag": "ar_AE"}],
             "model_number": [{"value": model_number, "language_tag": "ar_AE"}],
+
+            # Included components — REQUIRED by Amazon
+            "included_components": [{"value": str(included_components)[:200], "language_tag": "ar_AE"}],
 
             # Condition & Origin
             "condition_type": [{"value": condition_value}],

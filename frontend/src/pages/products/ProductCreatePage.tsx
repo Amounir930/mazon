@@ -445,13 +445,38 @@ export default function ProductCreatePage() {
   const handleImproveWithAI = useCallback(async () => {
     setImproving(true)
     try {
-      const nameToImprove = required.name_ar || required.name_en || ''
-      const descToImprove = required.description_ar || required.description_en || ''
-      const specs = `${descToImprove} | ${required.bullet_points.filter(Boolean).join(' | ')}`
+      const nameToImprove = required.name_ar.trim() || required.name_en.trim() || ''
+      const descToImprove = required.description_ar.trim() || required.description_en.trim() || ''
+      const bullets = required.bullet_points.filter(bp => bp.trim().length > 0).join(' | ')
+      
+      // FIX: Build specs properly — ensure min_length=5 for backend
+      let specs = ''
+      if (descToImprove && bullets) {
+        specs = `${descToImprove} | ${bullets}`
+      } else if (descToImprove) {
+        specs = descToImprove
+      } else if (bullets) {
+        specs = bullets
+      } else {
+        // Fallback: use product_type or name as specs
+        specs = required.product_type || nameToImprove
+      }
+
+      // FIX: Ensure name meets backend min_length=2 requirement
+      if (nameToImprove.length < 2) {
+        toast.error('اكتب اسم المنتج الأول عشان الـ AI يقدر يحسنه')
+        setImproving(false)
+        return
+      }
+
+      // FIX: Ensure specs meets backend min_length=5 requirement
+      if (specs.length < 5) {
+        specs = `منتج ${nameToImprove}`
+      }
 
       const result = await aiApi.generateProduct({
         name: nameToImprove,
-        specs: specs || 'منتج عام',
+        specs: specs,
         copies: 1,
       })
 
@@ -474,7 +499,27 @@ export default function ProductCreatePage() {
         toast.success('تم تحسين البيانات بالذكاء الاصطناعي!')
       }
     } catch (e: any) {
-      toast.error('فشل التحسين: ' + String(e?.response?.data?.detail || e?.message || 'فشل التحسين'))
+      // FIX: Properly extract error message from FastAPI 422 response
+      let errorMsg = 'فشل التحسين'
+      const detail = e?.response?.data?.detail
+
+      if (Array.isArray(detail)) {
+        // FastAPI validation errors (422) — new format: [{field, message}, ...]
+        errorMsg = detail.map((err: any) => {
+          const field = err.field || err.loc?.join('.') || ''
+          const msg = err.message || err.msg || err.message || ''
+          return `${field}: ${msg}`
+        }).join('\n')
+      } else if (typeof detail === 'string') {
+        errorMsg = detail
+      } else if (typeof detail === 'object' && detail !== null) {
+        errorMsg = JSON.stringify(detail, null, 2)
+      } else if (typeof e?.message === 'string') {
+        errorMsg = e.message
+      }
+
+      toast.error('فشل التحسين: ' + errorMsg)
+      console.error('AI Improve error:', e)
     } finally {
       setImproving(false)
     }

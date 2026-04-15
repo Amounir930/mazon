@@ -154,7 +154,8 @@ async def submit_listing_task(product_id: str) -> dict:
             "ean": product.ean or "",
             "bullet_points": _parse_json_field(product.bullet_points),
             "browse_node_id": product.browse_node_id or "21863799031",
-            "included_components": product.name or "",
+            # FIX: included_components must have a value — fallback to name or SKU
+            "included_components": product.name or product.sku or "منتج",
             "merchant_suggested_asin": (product.attributes or {}).get("asin", "") if isinstance(product.attributes, dict) else "",
         }
 
@@ -236,8 +237,10 @@ async def submit_listing_task(product_id: str) -> dict:
 
             # === AI LEARNING FEEDBACK: Store rejection errors in product's optimized_data ===
             try:
+                import json as _json
+                import re
+
                 if product.optimized_data:
-                    import json as _json
                     opt_data = _json.loads(product.optimized_data) if isinstance(product.optimized_data, str) else product.optimized_data
                 else:
                     opt_data = {}
@@ -256,7 +259,6 @@ async def submit_listing_task(product_id: str) -> dict:
                 for msg in error_messages:
                     # Amazon errors like: "'عدد العناصر' مطلوب لكنه مفقود."
                     # Extract field name between quotes
-                    import re
                     match = re.search(r"'([^']+)' مطلوب", msg)
                     if match:
                         missing_fields.append(match.group(1))

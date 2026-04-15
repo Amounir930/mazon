@@ -123,7 +123,34 @@ export default function ProductListPage() {
   const handleList = async (id: string) => {
     try {
       await listMutation.mutateAsync(id)
-      toast.success('تم إرسال طلب الرفع للأمازون')
+      toast.success('تم إرسال طلب الرفع للأمازون — جاري المعالجة...')
+
+      // FIX: Poll for listing status and notify user of rejection
+      const pollStatus = async () => {
+        try {
+          const res = await fetch('/api/v1/listings?status=failed')
+          const data = await res.json()
+
+          // Check if any listing for this product failed in the last 30 seconds
+          const recentFailures = (data || []).filter((l: any) => {
+            if (!l.completed_at || !l.error_message) return false
+            const completedTime = new Date(l.completed_at).getTime()
+            return Date.now() - completedTime < 30000 // last 30 seconds
+          })
+
+          if (recentFailures.length > 0) {
+            const error = recentFailures[0].error_message
+            toast.error(`❌ رفض أمازون: ${error}`, { duration: 15000 })
+            refetch()
+          }
+        } catch (e) {
+          console.warn('Polling error:', e)
+        }
+      }
+
+      // Poll after 5 and 10 seconds
+      setTimeout(pollStatus, 5000)
+      setTimeout(pollStatus, 10000)
     } catch {
       toast.error('فشل في إرسال طلب الرفع')
     }

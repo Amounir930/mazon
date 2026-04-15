@@ -5,9 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 import asyncio
+import json
 
 from app.database import get_db
 from app.models.listing import Listing
+from app.models.product import Product
 from app.tasks.task_manager import task_manager
 from app.tasks.listing_tasks import submit_listing_task, retry_listing_task
 from loguru import logger
@@ -32,6 +34,16 @@ async def list_listings(
             val = item.get(field)
             if val and hasattr(val, 'isoformat'):
                 item[field] = val.isoformat()
+
+        # FIX: Include product name and image for frontend display
+        product = db.query(Product).filter(Product.id == l.product_id).first()
+        if product:
+            item['product_name'] = product.name
+            item['product_images'] = json.loads(product.images) if product.images else []
+        else:
+            item['product_name'] = None
+            item['product_images'] = []
+
         result.append(item)
     return result
 

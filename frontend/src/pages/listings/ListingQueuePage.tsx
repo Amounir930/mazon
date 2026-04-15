@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Loader2, Play, RotateCcw, AlertCircle, CheckCircle, Info } from 'lucide-react'
+import { Loader2, Play, RotateCcw, AlertCircle, CheckCircle, Info, Image as ImageIcon } from 'lucide-react'
 import { useListings, useRetryListing } from '@/api/hooks'
 import { StatusBadge, NeonButton } from '@/components/common'
 import type { Listing } from '@/types/api'
@@ -193,31 +193,60 @@ export default function ListingQueuePage() {
         <table className="neon-table">
           <thead>
             <tr>
-              <th>{t('listingQueue.columns.number')}</th>
-              <th>{t('listingQueue.columns.product')}</th>
-              <th>{t('listingQueue.columns.status')}</th>
-              <th>{t('listingQueue.columns.error')}</th>
-              <th>{t('listingQueue.columns.feedId')}</th>
-              <th>{t('listingQueue.columns.time')}</th>
-              <th>{t('listingQueue.columns.action')}</th>
+              <th className="text-right">{t('listingQueue.columns.number')}</th>
+              <th className="text-left">{t('listingQueue.columns.product')}</th>
+              <th className="text-right">{t('listingQueue.columns.status')}</th>
+              <th className="text-right">{t('listingQueue.columns.error')}</th>
+              <th className="text-right">{t('listingQueue.columns.feedId')}</th>
+              <th className="text-right">{t('listingQueue.columns.time')}</th>
+              <th className="text-right">{t('listingQueue.columns.action')}</th>
             </tr>
           </thead>
           <tbody>
-            {allListings.map((listing: Listing, idx: number) => (
+            {allListings.map((listing: Listing, idx: number) => {
+              // Build thumbnail URL
+              const images = (listing as any).product_images || []
+              const thumbUrl = images.length > 0
+                ? images[0].startsWith('http')
+                  ? images[0]
+                  : images[0].startsWith('/api/')
+                    ? images[0]
+                    : `/api/v1/images/static/${images[0]}`
+                : ''
+
+              return (
               <tr key={listing.id} className={listing.status === 'failed' ? 'bg-neon-red/5' : ''}>
-                <td className="text-text-secondary">{idx + 1}</td>
-                <td className="font-medium text-text-primary">
-                  <div>
-                    <div>{listing.product_id?.slice(0, 20) || '...'}</div>
-                    {listing.amazon_asin && (
-                      <div className="text-xs text-text-muted font-mono">ASIN: {listing.amazon_asin}</div>
+                <td className="text-text-secondary text-sm text-right">{idx + 1}</td>
+                <td className="text-left">
+                  <div className="flex items-center gap-3">
+                    {/* Product Image */}
+                    {thumbUrl ? (
+                      <img
+                        src={thumbUrl}
+                        alt={(listing as any).product_name || ''}
+                        className="w-10 h-10 rounded-lg object-cover border border-border-subtle flex-shrink-0"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-bg-elevated border border-border-subtle flex items-center justify-center flex-shrink-0">
+                        <ImageIcon className="w-5 h-5 text-text-muted" />
+                      </div>
                     )}
+                    {/* Product Name */}
+                    <div className="min-w-0">
+                      <div className="font-medium text-text-primary text-sm truncate" title={(listing as any).product_name || ''}>
+                        {(listing as any).product_name || listing.product_id?.slice(0, 20) || '...'}
+                      </div>
+                      {listing.amazon_asin && (
+                        <div className="text-xs text-text-muted font-mono">ASIN: {listing.amazon_asin}</div>
+                      )}
+                    </div>
                   </div>
                 </td>
-                <td>
+                <td className="text-right">
                   <StatusBadge status={listing.status} error={listing.error_message} />
                 </td>
-                <td className="max-w-xs">
+                <td className="text-right max-w-xs">
                   {listing.error_message ? (
                     <div className="text-xs text-neon-red" title={listing.error_message}>
                       {listing.error_message.slice(0, 50)}...
@@ -226,13 +255,13 @@ export default function ListingQueuePage() {
                     <span className="text-xs text-text-muted">-</span>
                   )}
                 </td>
-                <td className="font-mono text-text-secondary text-sm">
+                <td className="font-mono text-text-secondary text-sm text-right">
                   {listing.feed_submission_id || listing.sp_api_submission_id || '-'}
                 </td>
-                <td className="text-text-secondary text-sm">
+                <td className="text-text-secondary text-sm text-right">
                   {listing.created_at ? new Date(listing.created_at).toLocaleTimeString('ar-EG') : '-'}
                 </td>
-                <td>
+                <td className="text-right">
                   {listing.status === 'failed' && (
                     <button
                       className="neon-btn neon-btn--warning neon-btn--sm"
