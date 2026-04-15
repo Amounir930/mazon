@@ -215,72 +215,77 @@ export default function ListingQueuePage() {
                 : ''
 
               return (
-              <tr key={listing.id} className={listing.status === 'failed' ? 'bg-neon-red/5' : ''}>
-                <td className="text-text-secondary text-sm text-right">{idx + 1}</td>
-                <td className="text-left">
-                  <div className="flex items-center gap-3">
-                    {/* Product Image */}
-                    {thumbUrl ? (
-                      <img
-                        src={thumbUrl}
-                        alt={(listing as any).product_name || ''}
-                        className="w-10 h-10 rounded-lg object-cover border border-border-subtle flex-shrink-0"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-bg-elevated border border-border-subtle flex items-center justify-center flex-shrink-0">
-                        <ImageIcon className="w-5 h-5 text-text-muted" />
-                      </div>
-                    )}
-                    {/* Product Name */}
-                    <div className="min-w-0">
-                      <div className="font-medium text-text-primary text-sm truncate" title={(listing as any).product_name || ''}>
-                        {(listing as any).product_name || listing.product_id?.slice(0, 20) || '...'}
-                      </div>
-                      {listing.amazon_asin && (
-                        <div className="text-xs text-text-muted font-mono">ASIN: {listing.amazon_asin}</div>
+                <tr key={listing.id} className={listing.status === 'failed' ? 'bg-neon-red/5' : ''}>
+                  <td className="text-text-secondary text-sm text-right">{idx + 1}</td>
+                  <td className="text-left">
+                    <div className="flex items-center gap-3">
+                      {/* Product Image */}
+                      {thumbUrl ? (
+                        <img
+                          src={thumbUrl}
+                          alt={(listing as any).product_name || ''}
+                          className="w-10 h-10 rounded-lg object-cover border border-border-subtle flex-shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-bg-elevated border border-border-subtle flex items-center justify-center flex-shrink-0">
+                          <ImageIcon className="w-5 h-5 text-text-muted" />
+                        </div>
                       )}
+                      {/* Product Name */}
+                      <div className="min-w-0">
+                        <div className="font-medium text-text-primary text-sm truncate" title={(listing as any).product_name || ''}>
+                          {(() => {
+                            const fullName = (listing as any).product_name || listing.product_id?.slice(0, 20) || '...'
+                            const words = fullName.split(' ')
+                            return words.length > 4 ? words.slice(0, 4).join(' ') + '...' : fullName
+                          })()}
+                        </div>
+                        {listing.amazon_asin && (
+                          <div className="text-xs text-text-muted font-mono">ASIN: {listing.amazon_asin}</div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="text-right">
-                  <StatusBadge status={listing.status} error={listing.error_message} />
-                </td>
-                <td className="text-right max-w-xs">
-                  {listing.error_message ? (
-                    <div className="text-xs text-neon-red" title={listing.error_message}>
-                      {listing.error_message.slice(0, 50)}...
-                    </div>
-                  ) : (
-                    <span className="text-xs text-text-muted">-</span>
-                  )}
-                </td>
-                <td className="font-mono text-text-secondary text-sm text-right">
-                  {listing.feed_submission_id || listing.sp_api_submission_id || '-'}
-                </td>
-                <td className="text-text-secondary text-sm text-right">
-                  {listing.created_at ? new Date(listing.created_at).toLocaleTimeString('ar-EG') : '-'}
-                </td>
-                <td className="text-right">
-                  {listing.status === 'failed' && (
-                    <button
-                      className="neon-btn neon-btn--warning neon-btn--sm"
-                      onClick={() => handleRetry(listing.id!)}
-                      disabled={retryMutation.isPending}
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                      إعادة محاولة
-                    </button>
-                  )}
-                  {listing.status === 'success' && (
-                    <span className="text-xs text-neon-cyan flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" />
-                      تم
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="text-right">
+                    <StatusBadge status={listing.status} error={listing.error_message} />
+                  </td>
+                  <td className="text-right max-w-xs">
+                    {listing.error_message ? (
+                      <div className="text-xs text-neon-red" title={listing.error_message}>
+                        {listing.error_message.slice(0, 50)}...
+                      </div>
+                    ) : (
+                      <span className="text-xs text-text-muted">-</span>
+                    )}
+                  </td>
+                  <td className="font-mono text-text-secondary text-sm text-right">
+                    {listing.feed_submission_id || listing.sp_api_submission_id || '-'}
+                  </td>
+                  <td className="text-text-secondary text-sm text-right">
+                    {listing.created_at ? new Date(listing.created_at).toLocaleTimeString('ar-EG') : '-'}
+                  </td>
+                  <td className="text-right">
+                    {listing.status === 'failed' && (
+                      <button
+                        className="neon-btn neon-btn--warning neon-btn--sm"
+                        onClick={() => handleRetry(listing.id!)}
+                        disabled={retryMutation.isPending}
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        إعادة محاولة
+                      </button>
+                    )}
+                    {listing.status === 'success' && (
+                      <span className="text-xs text-neon-cyan flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" />
+                        تم
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
 
