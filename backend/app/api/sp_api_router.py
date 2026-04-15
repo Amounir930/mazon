@@ -602,6 +602,11 @@ async def debug_listing(
     if ext_id:
         extracted["ean"] = ext_id[0].get("value") if ext_id[0].get("type") == "ean" else None
         extracted["upc"] = ext_id[0].get("value") if ext_id[0].get("type") == "upc" else None
+    
+    # Check for GTIN exemption
+    gtin_exempt = attrs.get("supplier_declared_has_product_identifier_exemption", [])
+    if gtin_exempt and len(gtin_exempt) > 0:
+        extracted["has_product_identifier"] = gtin_exempt[0].get("value", False)
 
     return {
         "sku": sku,
@@ -967,6 +972,11 @@ async def import_products_from_amazon(
                                 ean = id_val
                             elif id_type == "upc":
                                 upc = id_val
+                        
+                        # === GTIN Exemption ===
+                        gtin_exempt = attrs.get("supplier_declared_has_product_identifier_exemption", [])
+                        if gtin_exempt and len(gtin_exempt) > 0:
+                            has_product_identifier = gtin_exempt[0].get("value", False)
 
                         # === ALL IMAGES (main + 5 other) ===
                         # Amazon returns media_location: "https://..." NOT value: "image_id"
@@ -1081,6 +1091,8 @@ async def import_products_from_amazon(
                         existing.ean = ean
                     if upc:
                         existing.upc = upc
+                    if 'has_product_identifier' in dir():
+                        existing.has_product_identifier = has_product_identifier
                     if images_list:
                         existing.images = json.dumps(images_list)
                     elif main_image and (not existing.images or existing.images == "[]"):
@@ -1117,6 +1129,7 @@ async def import_products_from_amazon(
                     country_of_origin=country_of_origin if full_sync else "",
                     ean=ean if full_sync else "",
                     upc=upc if full_sync else "",
+                    has_product_identifier=has_product_identifier if full_sync and 'has_product_identifier' in dir() else False,
                     material=material if full_sync else "",
                     status="published" if "DISCOVERABLE" in status_list else "draft",
                     attributes=json.dumps(extra_attrs if full_sync and extra_attrs else {

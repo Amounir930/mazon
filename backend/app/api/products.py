@@ -29,6 +29,11 @@ def product_to_dict(product: Product) -> dict:
                 d[field] = json.loads(val)
             except Exception:
                 d[field] = [] if field not in ('dimensions', 'attributes', 'optimized_data', 'unit_count') else {}
+
+    # GTIN exemption flag
+    if 'has_product_identifier' not in d:
+        d['has_product_identifier'] = False
+
     # Convert Decimal to float for JSON serialization
     for field in ['price', 'compare_price', 'cost', 'weight', 'sale_price']:
         if d.get(field) is not None:
@@ -168,6 +173,7 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
         attributes=json.dumps(data.attributes or {}),
         upc=data.upc or "",
         ean=data.ean or "",
+        has_product_identifier=data.has_product_identifier if hasattr(data, 'has_product_identifier') else False,
         condition=data.condition or "New",
         fulfillment_channel=data.fulfillment_channel or "MFN",
         handling_time=data.handling_time or 0,
@@ -257,6 +263,8 @@ async def update_product(product_id: str, data: ProductUpdate, db: Session = Dep
     for field, value in update_data.items():
         if field in json_fields and value is not None:
             setattr(product, field, json.dumps(value))
+        elif field == 'has_product_identifier':
+            setattr(product, field, bool(value))
         else:
             setattr(product, field, value)
 

@@ -214,6 +214,12 @@ def run_migrations(engine) -> None:
         if "sessions" in existing_tables:
             _add_column_if_missing(conn, "sessions", "csrf_token", "VARCHAR(500)")
 
+        # ==========================================
+        # Migration 13: Add has_product_identifier to products
+        # ==========================================
+        if "products" in existing_tables:
+            _add_column_if_missing(conn, "products", "has_product_identifier", "BOOLEAN DEFAULT FALSE")
+
         conn.commit()
 
     logger.info("Database migration completed successfully")

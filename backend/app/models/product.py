@@ -30,6 +30,7 @@ class Product(Base):
     # Identifiers
     upc = Column(String(50))
     ean = Column(String(50))
+    has_product_identifier = Column(Boolean, default=False)  # GTIN exemption: "لا يحتوي على رقم منتج"
 
     # Content
     description = Column(Text)

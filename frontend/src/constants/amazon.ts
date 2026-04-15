@@ -9,9 +9,9 @@
 
 export const PRODUCT_TYPES = [
   { value: 'HOME_ORGANIZERS_AND_STORAGE', label: 'أدوات تنظيم وتخزين المنزل' },
+  { value: 'HOME_KITCHEN', label: 'المنزل والمطبخ' },
   { value: 'BABY_PRODUCT', label: 'منتجات أطفال' },
   { value: 'APPAREL', label: 'ملابس وأزياء' },
-  { value: 'HOME_KITCHEN', label: 'المنزل والمطبخ' },
   { value: 'ELECTRONICS', label: 'إلكترونيات' },
   { value: 'TOYS_AND_GAMES', label: 'ألعاب وألعاب' },
   { value: 'BEAUTY', label: 'العناية الشخصية والجمال' },

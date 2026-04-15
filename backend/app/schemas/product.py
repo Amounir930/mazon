@@ -53,6 +53,7 @@ class ProductCreate(BaseModel):
     # Amazon-specific fields
     upc: Optional[str] = Field(None, max_length=50, description="UPC barcode (12 digits)")
     ean: Optional[str] = Field(None, max_length=50, description="EAN barcode (13 digits)")
+    has_product_identifier: Optional[bool] = Field(default=False, description="GTIN exemption: product does not have a product identifier")
     condition: str = Field(default="New", max_length=20)
     fulfillment_channel: str = Field(default="MFN", max_length=20)
     handling_time: int = Field(default=0, ge=0)
@@ -132,6 +133,7 @@ class ProductUpdate(BaseModel):
     attributes: Optional[dict[str, Any]] = None
     upc: Optional[str] = Field(None, max_length=50)
     ean: Optional[str] = Field(None, max_length=50)
+    has_product_identifier: Optional[bool] = Field(None, description="GTIN exemption flag")
     condition: Optional[str] = Field(None, max_length=20)
     fulfillment_channel: Optional[str] = Field(None, max_length=20)
     handling_time: Optional[int] = Field(None, ge=0)
@@ -185,6 +187,7 @@ class ProductResponse(BaseModel):
     # Amazon-specific fields
     upc: Optional[str] = None
     ean: Optional[str] = None
+    has_product_identifier: bool = False
     condition: str = "New"
     fulfillment_channel: str = "MFN"
     handling_time: int = 0

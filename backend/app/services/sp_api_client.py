@@ -32,28 +32,65 @@ from app.config import Settings
 
 # Amazon SP-API valid product types mapping (Arabic -> English)
 ARABIC_TO_AMAZON_PRODUCT_TYPE = {
+    # ====== أدوات تنظيم المنزل والمطبخ ======
+    "أدوات تنظيم المنزل": "HOME_ORGANIZERS_AND_STORAGE",
+    "أدوات تنظيم": "HOME_ORGANIZERS_AND_STORAGE",
+    "أدوات تنظيم وتخزين": "HOME_ORGANIZERS_AND_STORAGE",
     "أدوات تنظيم وتخزين المنزل": "HOME_ORGANIZERS_AND_STORAGE",
-    "منتجات أطفال": "BABY_PRODUCT",
-    "ملابس وأزياء": "APPAREL",
-    "المنزل والمطبخ": "HOME_KITCHEN",
-    "إلكترونيات": "ELECTRONICS",
-    "ألعاب وألعاب": "TOYS_AND_GAMES",
-    "العناية الشخصية والجمال": "BEAUTY",
-    "الرياضة والسلع الرياضية": "SPORTING_GOODS",
-    "مستلزمات المكتبة والأدوات المكتبية": "OFFICE_PRODUCTS",
-    "مستلزمات الحيوانات الأليفة": "PET_PRODUCTS",
-    # Common Arabic product types that might be auto-generated
+    "تنظيم": "HOME_ORGANIZERS_AND_STORAGE",
+    "تنظيم المنزل": "HOME_ORGANIZERS_AND_STORAGE",
+    "تخزين": "HOME_ORGANIZERS_AND_STORAGE",
+    "تخزين المنزل": "HOME_ORGANIZERS_AND_STORAGE",
     "أدوات المطبخ": "HOME_KITCHEN",
     "أدوات منزلية": "HOME_KITCHEN",
     "مطبخ": "HOME_KITCHEN",
+    "المنزل والمطبخ": "HOME_KITCHEN",
+    "منزل": "HOME_KITCHEN",
+    "أدوات": "HOME_KITCHEN",
+    # ====== إلكترونيات ======
     "إلكترونيات": "ELECTRONICS",
+    "إلكتروني": "ELECTRONICS",
+    "جهاز": "ELECTRONICS",
+    "كهربائي": "ELECTRONICS",
+    "تلفاز": "ELECTRONICS",
+    "تلفزيون": "ELECTRONICS",
+    "ذكي": "ELECTRONICS",
+    "سمارت": "ELECTRONICS",
+    "كمبيوتر": "ELECTRONICS",
+    "لابتوب": "ELECTRONICS",
+    "موبايل": "ELECTRONICS",
+    "هاتف": "ELECTRONICS",
+    # ====== أطفال ======
     "أطفال": "BABY_PRODUCT",
+    "طفل": "BABY_PRODUCT",
+    "منتجات أطفال": "BABY_PRODUCT",
+    # ====== ملابس ======
     "ملابس": "APPAREL",
+    "أزياء": "APPAREL",
+    "ملابس وأزياء": "APPAREL",
+    "زي": "APPAREL",
+    # ====== ألعاب ======
     "ألعاب": "TOYS_AND_GAMES",
+    "لعبة": "TOYS_AND_GAMES",
+    "ألعاب وألعاب": "TOYS_AND_GAMES",
+    # ====== عناية ======
     "جمال": "BEAUTY",
+    "عناية": "BEAUTY",
+    "العناية الشخصية": "BEAUTY",
+    "العناية الشخصية والجمال": "BEAUTY",
+    # ====== رياضة ======
     "رياضة": "SPORTING_GOODS",
+    "رياضي": "SPORTING_GOODS",
+    "الرياضة والسلع الرياضية": "SPORTING_GOODS",
+    # ====== مكتب ======
     "مكتب": "OFFICE_PRODUCTS",
+    "أدوات مكتبية": "OFFICE_PRODUCTS",
+    "مستلزمات المكتب": "OFFICE_PRODUCTS",
+    "مستلزمات المكتبة والأدوات المكتبية": "OFFICE_PRODUCTS",
+    # ====== حيوانات ======
+    "حيوان": "PET_PRODUCTS",
     "حيوانات": "PET_PRODUCTS",
+    "مستلزمات الحيوانات الأليفة": "PET_PRODUCTS",
 }
 
 
@@ -515,6 +552,112 @@ class SPAPIClient:
         return self._make_request("GET", path, params=params)
 
     # ============================================================
+    # Helpers: Upload images directly to Amazon
+    # ============================================================
+
+    def get_upload_destinations(self, resource: str, marketplace_ids: list | None = None) -> Dict[str, Any]:
+        """
+        Get pre-signed S3 URLs to upload images directly to Amazon.
+
+        API: POST /uploads/2020-11-01/uploadItems/{resource}
+        Docs: https://developer-docs.amazon.com/sp-api/docs/uploads-api-reference
+
+        Args:
+            resource: The resource type — "listingItem" for product images
+            marketplace_ids: List of marketplace IDs
+
+        Returns:
+            {
+                "uploadDestinations": [
+                    {
+                        "uploadDestinationId": "...",
+                        "url": "https://s3.amazonaws.com/...?AWSAccessKeyId=...",
+                    }
+                ]
+            }
+        """
+        path = f"/uploads/2020-11-01/uploadItems/{resource}"
+        params: Dict[str, Any] = {
+            "marketplaceIds": ",".join(marketplace_ids or [self.marketplace_id]),
+        }
+
+        logger.info(f"Getting upload destinations for resource: {resource}")
+        return self._make_request("POST", path, params=params)
+
+    def upload_image_to_amazon(self, image_path: str) -> Dict[str, Any]:
+        """
+        Upload an image directly to Amazon's S3 bucket.
+
+        Flow:
+        1. Get pre-signed URL from Amazon
+        2. Upload image file to Amazon's S3
+        3. Return the image ID for use in listings
+
+        Args:
+            image_path: Local file path to the image
+
+        Returns:
+            {
+                "success": bool,
+                "image_id": str,  # Use in listing payload
+                "error": str (if failed)
+            }
+        """
+        import os
+        if not os.path.exists(image_path):
+            return {"success": False, "error": f"File not found: {image_path}"}
+
+        # Step 1: Get pre-signed URL
+        dest_response = self.get_upload_destinations("listingItem")
+
+        if "errors" in dest_response:
+            return {"success": False, "error": f"Amazon returned error: {dest_response}"}
+
+        upload_destinations = dest_response.get("uploadDestinations", [])
+        if not upload_destinations:
+            return {"success": False, "error": "No upload destinations returned"}
+
+        # Step 2: Upload to Amazon's S3
+        upload_url = upload_destinations[0].get("url", "")
+        upload_destination_id = upload_destinations[0].get("uploadDestinationId", "")
+
+        if not upload_url or not upload_destination_id:
+            return {"success": False, "error": "Missing upload URL or ID"}
+
+        try:
+            # Read the file
+            with open(image_path, "rb") as f:
+                file_content = f.read()
+
+            # Get content type
+            import mimetypes
+            content_type, _ = mimetypes.guess_type(image_path)
+            if not content_type:
+                content_type = "image/jpeg"
+
+            # Upload to Amazon's pre-signed URL
+            response = requests.put(
+                upload_url,
+                data=file_content,
+                headers={"Content-Type": content_type},
+                timeout=60,
+            )
+
+            if response.status_code >= 200 and response.status_code < 300:
+                logger.info(f"✅ Image uploaded to Amazon: {upload_destination_id}")
+                return {
+                    "success": True,
+                    "image_id": upload_destination_id,
+                    "destination_id": upload_destination_id,
+                }
+            else:
+                return {"success": False, "error": f"Upload failed: {response.status_code} {response.text[:500]}"}
+
+        except Exception as e:
+            logger.error(f"Failed to upload image to Amazon: {e}")
+            return {"success": False, "error": str(e)}
+
+    # ============================================================
     # Helper: Build product data from our format to SP-API format
     # ============================================================
 
@@ -677,21 +820,47 @@ class SPAPIClient:
                 "our_price": [{"schedule": [{"value_with_tax": price}]}],
                 "currency": "EGP",
             }],
+
+            # === FULFILLMENT (CRITICAL: Must be present or Amazon shows shipping selection page) ===
+            "fulfillment_availability": [{
+                "fulfillment_channel_code": "DEFAULT",  # MFN = Merchant Fulfilled
+                "quantity": quantity,
+            }],
         }
+
+        # === IMAGES — Accept any HTTPS URL ===
+        # Amazon will attempt to fetch the image from the provided URL.
+        # Best practice: Use Amazon S3 URLs (from Uploads API), but public HTTPS URLs may work.
+        images = product_data.get("images") or []
+        for idx, img_ref in enumerate(images[:9]):
+            if img_ref.startswith("https://"):
+                if idx == 0:
+                    attributes["main_product_image_locator"] = [{"media_location": img_ref}]
+                else:
+                    attributes[f"other_product_image_locator_{idx}"] = [{"media_location": img_ref}]
+                logger.info(f"📸 Image {idx}: {img_ref[:60]}")
+            else:
+                logger.warning(f"⚠️ Image {idx} skipped (not HTTPS): {img_ref[:50]}")
 
         # Remove None values
         attributes = {k: v for k, v in attributes.items() if v is not None}
-        
-        # EAN/UPC — ONLY if we have a real barcode (NO fake "000000000000"!)
-        if ean:
-            attributes["externally_assigned_product_identifier"] = [{
-                "value": {"type": "ean", "value": ean}
-            }]
-        elif upc:
-            attributes["externally_assigned_product_identifier"] = [{
-                "value": {"type": "upc", "value": upc}
-            }]
-        # If no barcode — omit the field entirely (GTIN exemption handled by Amazon)
+
+        # === BARCODE / GTIN EXEMPTION (CRITICAL: fixes "أدخل رقم المنتج" error) ===
+        has_product_identifier = product_data.get("has_product_identifier", False)
+        logger.info(f"📦 GTIN Exemption flag: {has_product_identifier}, EAN: {ean}, UPC: {upc}")
+
+        if has_product_identifier:
+            # Product has NO barcode — declare exemption
+            attributes["supplier_declared_has_product_identifier_exemption"] = [{"value": True}]
+            logger.info("✅ GTIN Exemption: No barcode required")
+        elif ean and len(ean) == 13 and ean.isdigit():
+            attributes["externally_assigned_product_identifier"] = [{"value": {"type": "ean", "value": ean}}]
+        elif upc and len(upc) == 12 and upc.isdigit():
+            attributes["externally_assigned_product_identifier"] = [{"value": {"type": "upc", "value": upc}}]
+        else:
+            # No barcode AND no exemption — default to exemption to prevent rejection
+            logger.warning("⚠️ No valid barcode found — auto-enabling GTIN exemption")
+            attributes["supplier_declared_has_product_identifier_exemption"] = [{"value": True}]
 
         # Merchant suggested ASIN — use SKU as fallback (max 10 chars!)
         merchant_asin = product_data.get("merchant_suggested_asin", "")
@@ -729,11 +898,13 @@ class SPAPIClient:
             "مضرب يدوي كهربائي" → "HOME"
             "HOME_KITCHEN" → "HOME" (not valid for Egypt!)
             "HOME" → "HOME"
+            "أدوات تنظيم المنزل" → "HOME"
         """
         if not product_type:
-            return "HOME"  # Egypt-valid default
-
-        # Egypt-valid product types (confirmed via API)
+            return "HOME_ORGANIZERS_AND_STORAGE"  # Default: أدوات تنظيم المنزل
+        
+        # First check if it's already a valid English product type
+        # (don't modify valid ones)
         EGYPT_VALID_TYPES = {
             "HOME", "FOOD_PROCESSOR", "FOOD_MIXER", "FOOD_BLENDER",
             "3D_PRINTABLE_DESIGNS", "3D_PRINTED_PRODUCT",
@@ -837,6 +1008,6 @@ class SPAPIClient:
                 logger.info(f"🔄 Product type mapped by keyword: '{product_type}' → '{amazon_type}'")
                 return amazon_type
 
-        # Default fallback — HOME is valid for Egypt, HOME_KITCHEN is NOT
-        logger.warning(f"⚠️ Unknown product type '{product_type}', defaulting to HOME (Egypt-valid)")
-        return "HOME"
+        # Default fallback — HOME_ORGANIZERS_AND_STORAGE is valid for Egypt
+        logger.warning(f"⚠️ Unknown product type '{product_type}', defaulting to HOME_ORGANIZERS_AND_STORAGE")
+        return "HOME_ORGANIZERS_AND_STORAGE"

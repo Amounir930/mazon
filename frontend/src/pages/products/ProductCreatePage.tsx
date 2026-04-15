@@ -206,6 +206,7 @@ export default function ProductCreatePage() {
     product_type: DEFAULT_VALUES.product_type,
     id_type: DEFAULT_VALUES.id_type as string,
     ean: '',
+    has_product_identifier: false, // GTIN exemption checkbox
     brand: DEFAULT_VALUES.brand,
     model_number: '',
     manufacturer: DEFAULT_VALUES.brand,
@@ -224,9 +225,8 @@ export default function ProductCreatePage() {
     price: '',
     quantity: '0',
 
-    // Tab 4: الشحن والأبعاد
+    // Tab 4: الشحن والأبعاد (MFN ثابت)
     condition: DEFAULT_VALUES.condition,
-    fulfillment_channel: DEFAULT_VALUES.fulfillment_channel,
     package_length: String(DEFAULT_VALUES.package_length),
     package_width: String(DEFAULT_VALUES.package_width),
     package_height: String(DEFAULT_VALUES.package_height),
@@ -327,6 +327,7 @@ export default function ProductCreatePage() {
         product_type: editProduct.product_type || DEFAULT_VALUES.product_type,
         id_type: editProduct.ean ? 'EAN' : editProduct.upc ? 'UPC' : DEFAULT_VALUES.id_type,
         ean: editProduct.ean || editProduct.upc || '',
+        has_product_identifier: editProduct.has_product_identifier || false,
         brand: editProduct.brand || DEFAULT_VALUES.brand,
         model_number: editProduct.model_number || '',
         manufacturer: editProduct.manufacturer || DEFAULT_VALUES.brand,
@@ -394,6 +395,7 @@ export default function ProductCreatePage() {
       product_type: product.product_type,
       id_type: product.ean ? 'EAN' : (product.upc ? 'UPC' : 'EAN'), // EAN إجباري
       ean: product.ean || '', // الباركود إجباري من AI
+      has_product_identifier: false, // AI always generates barcodes
       brand: product.brand,
       model_number: product.model_number,
       manufacturer: product.manufacturer,
@@ -540,9 +542,19 @@ export default function ProductCreatePage() {
     if (required.name_en.trim().length < VALIDATION_RULES.name_en.min)
       errors.push('اسم المنتج بالإنجليزي لازم 3 أحرف على الأقل')
     // Task 2: Barcode is MANDATORY - EAN (13 digits) or UPC (12 digits) only
-    const idLen = required.id_type === 'UPC' ? 12 : 13
-    if (!required.ean || required.ean.length !== idLen)
-      errors.push(`الباركود (${required.id_type}) لازم يكون ${idLen} رقم — إجباري`)
+    // UNLESS "has_product_identifier" is checked (GTIN exemption)
+    if (!required.has_product_identifier) {
+      const idLen = required.id_type === 'UPC' ? 12 : 13
+      if (!required.ean || required.ean.length !== idLen)
+        errors.push(`الباركود (${required.id_type}) لازم يكون ${idLen} رقم — إجباري`)
+    } else {
+      // GTIN exemption: product doesn't have a product identifier
+      if (required.ean && required.ean.trim()) {
+        const idLen = required.id_type === 'UPC' ? 12 : 13
+        if (required.ean.length !== idLen)
+          errors.push(`الباركود (${required.id_type}) لازم يكون ${idLen} رقم لو هتدخله`)
+      }
+    }
     if (!required.brand || required.brand.trim().length < 1)
       errors.push('البراند مطلوب')
     if (!required.manufacturer || required.manufacturer.trim().length < 1)
@@ -587,6 +599,52 @@ export default function ProductCreatePage() {
       setUploadingImages(false)
     }
   }, [])
+
+  // ==================== Upload Images to GitHub ====================
+  const [uploadingToGitHub, setUploadingToGitHub] = useState(false)
+
+  const handleUploadToGitHub = useCallback(async () => {
+    const allFiles = [mainImagePreview, ...extraImagePreviews].filter(Boolean)
+    if (allFiles.length === 0) {
+      toast.error('لازم ترفع صور الأول')
+      return
+    }
+
+    setUploadingToGitHub(true)
+    let successCount = 0
+    let githubUrls: string[] = []
+
+    for (let i = 0; i < allFiles.length; i++) {
+      const previewUrl = allFiles[i]
+      try {
+        // Convert preview URL to File
+        const response = await fetch(previewUrl)
+        const blob = await response.blob()
+        const file = new File([blob], `image_${i}.jpg`, { type: blob.type })
+
+        const res = await imagesApi.uploadToGitHub(file)
+        if (res.data.success) {
+          githubUrls.push(res.data.github_url)
+          successCount++
+        }
+      } catch (err: any) {
+        toast.error(`فشل رفع صورة ${i + 1}: ${err?.response?.data?.error || err.message}`)
+      }
+    }
+
+    setUploadingToGitHub(false)
+
+    if (successCount > 0) {
+      // Update image URLs with GitHub URLs
+      if (githubUrls.length > 0) {
+        setMainImageUrl(githubUrls[0])
+        setExtraImageUrls(githubUrls.slice(1))
+      }
+      toast.success(`✅ تم رفع ${successCount} صورة على GitHub`)
+    } else {
+      toast.error('فشل رفع جميع الصور على GitHub')
+    }
+  }, [mainImagePreview, extraImagePreviews])
 
   const handleExtraImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -672,9 +730,10 @@ export default function ProductCreatePage() {
       currency: 'EGP', // Default currency
       product_type: required.product_type,
       condition: required.condition,
-      fulfillment_channel: required.fulfillment_channel,
-      ean: required.id_type === 'EAN' ? required.ean : '',
-      upc: required.id_type === 'UPC' ? required.ean : '',
+      fulfillment_channel: 'MFN', // ثابت - الشحن على البائع
+      ean: required.id_type === 'EAN' && !required.has_product_identifier ? required.ean : '',
+      upc: required.id_type === 'UPC' && !required.has_product_identifier ? required.ean : '',
+      has_product_identifier: required.has_product_identifier,
       description: required.description_en.trim(),
       description_ar: required.description_ar.trim(),
       bullet_points: required.bullet_points.filter(bp => bp.trim().length > 0),
@@ -1097,21 +1156,36 @@ export default function ProductCreatePage() {
           />
         </Field>
 
-        <Field label="الباركود" required hint="EAN (13 رقم) أو UPC (12 رقم) — إجباري من Amazon للتعرف على المنتج">
-          <div className="mb-2">
-            <RadioGroup
-              name="id_type"
-              options={ID_TYPES.filter(t => ['EAN', 'UPC'].includes(t.value)) as any}
-              value={required.id_type}
-              onChange={v => setRequired(prev => ({ ...prev, id_type: v }))}
+        <Field label="الباركود" required={!required.has_product_identifier} hint="EAN (13 رقم) أو UPC (12 رقم) — إجباري من Amazon للتعرف على المنتج">
+          {/* GTIN Exemption Checkbox */}
+          <label className="flex items-center gap-2 mb-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={required.has_product_identifier}
+              onChange={e => setRequired(prev => ({ ...prev, has_product_identifier: e.target.checked }))}
+              className="w-4 h-4 rounded accent-blue-500"
+            />
+            <span className="text-sm text-text-secondary group-hover:text-text-primary transition-colors">
+              ✅ هذا المنتج لا يحتوي على رقم منتج (معفى من الباركود)
+            </span>
+          </label>
+
+          <div className={`transition-opacity ${required.has_product_identifier ? 'opacity-50 pointer-events-none' : ''}`}>
+            <div className="mb-2">
+              <RadioGroup
+                name="id_type"
+                options={ID_TYPES.filter(t => ['EAN', 'UPC'].includes(t.value)) as any}
+                value={required.id_type}
+                onChange={v => setRequired(prev => ({ ...prev, id_type: v }))}
+              />
+            </div>
+            <TextInput
+              value={required.ean}
+              onChange={v => setRequired(prev => ({ ...prev, ean: v.replace(/\D/g, '').slice(0, required.id_type === 'UPC' ? 12 : 13) }))}
+              placeholder={required.id_type === 'UPC' ? 'أدخل 12 رقم' : 'أدخل 13 رقم'}
+              type="text"
             />
           </div>
-          <TextInput
-            value={required.ean}
-            onChange={v => setRequired(prev => ({ ...prev, ean: v.replace(/\D/g, '').slice(0, required.id_type === 'UPC' ? 12 : 13) }))}
-            placeholder={required.id_type === 'UPC' ? 'أدخل 12 رقم' : 'أدخل 13 رقم'}
-            type="text"
-          />
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1275,13 +1349,12 @@ export default function ProductCreatePage() {
               options={CONDITIONS as any}
             />
           </Field>
-          <Field label="قناة الشحن" required>
-            <RadioGroup
-              name="fulfillment"
-              options={FULFILLMENT_CHANNELS as any}
-              value={required.fulfillment_channel}
-              onChange={v => setRequired(prev => ({ ...prev, fulfillment_channel: v }))}
-            />
+          {/* قناة الشحن ثابتة - MFN (الشحن على البائع) */}
+          <Field label="قناة الشحن" hint="ثابت: الشحن على البائع (MFN)">
+            <div className="neon-input bg-bg-tertiary opacity-75 cursor-not-allowed select-none">
+              📦 الشحن على البائع (MFN)
+            </div>
+            <input type="hidden" value="MFN" />
           </Field>
         </div>
 
@@ -1681,6 +1754,35 @@ export default function ProductCreatePage() {
             ) : (
               <>⚠️ غير متطابق: {listingCopies} نسخة ≠ {aiProducts.length} منتج AI</>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* 📤 حفظ الصور على GitHub */}
+      <div className="neon-card p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-text-primary flex items-center gap-2">
+              <Globe className="w-5 h-5 text-neon-cyan" /> حفظ الصور على GitHub
+            </h3>
+            <p className="text-sm text-text-secondary mt-1">
+              ارفع الصور على GitHub عشان Amazon يقدر يشوفها
+            </p>
+          </div>
+          <NeonButton
+            variant="info"
+            size="sm"
+            onClick={handleUploadToGitHub}
+            isLoading={uploadingToGitHub}
+            disabled={uploadingToGitHub || (!mainImagePreview && extraImagePreviews.length === 0)}
+          >
+            <Upload className="w-4 h-4" />
+            {uploadingToGitHub ? 'جاري الرفع...' : '📤 حفظ على GitHub'}
+          </NeonButton>
+        </div>
+        {mainImageUrl && mainImageUrl.includes('raw.githubusercontent.com') && (
+          <div className="mt-3 p-2 rounded-xl text-sm bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20">
+            ✅ الصور محفوظة على GitHub وجاهزة للإرسال لـ Amazon
           </div>
         )}
       </div>

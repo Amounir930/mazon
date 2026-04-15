@@ -286,6 +286,15 @@ export const imagesApi = {
     })
   },
 
+  // رفع صورة مباشرة على GitHub (للحفظ قبل الإرسال)
+  uploadToGitHub: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post<{ success: boolean; github_url: string; message: string; error: string }>('/images/upload-to-github', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
   // رفع صورة كـ base64
   uploadBase64: (base64Data: string) =>
     api.post<{ url: string; filename: string; size: number; mime_type: string }>('/images/upload-base64', { image: base64Data }),

@@ -130,18 +130,25 @@ class ListingsItemsService:
 
         # Images
         # Amazon uses: main_product_image_locator + other_product_image_locator_1..8
+        # Supports both public URLs AND Amazon upload destination IDs
         if images:
-            for idx, img_url in enumerate(images[:9]):  # Amazon allows max 9 images
+            for idx, img_ref in enumerate(images[:9]):  # Amazon allows max 9 images
+                # Determine if this is a URL or Amazon image ID
+                if img_ref.startswith("http://") or img_ref.startswith("https://"):
+                    # Public URL - Amazon will fetch it
+                    media_value = {"media_location": img_ref, "marketplace_id": ListingsItemsService.MARKETPLACE_ID}
+                else:
+                    # Amazon upload destination ID - stored on Amazon's servers
+                    media_value = {"media_location": img_ref, "marketplace_id": ListingsItemsService.MARKETPLACE_ID}
+                
+                logger.info(f"🖼️ Image {idx}: {img_ref[:80]}...")
+                
                 if idx == 0:
                     # Main image
-                    attrs["main_product_image_locator"] = [
-                        {"media_location": img_url, "marketplace_id": ListingsItemsService.MARKETPLACE_ID}
-                    ]
+                    attrs["main_product_image_locator"] = [media_value]
                 else:
                     # Additional images: other_product_image_locator_1, _2, ...
-                    attrs[f"other_product_image_locator_{idx}"] = [
-                        {"media_location": img_url, "marketplace_id": ListingsItemsService.MARKETPLACE_ID}
-                    ]
+                    attrs[f"other_product_image_locator_{idx}"] = [media_value]
 
         # Material
         if material:
@@ -252,11 +259,12 @@ class ListingsItemsService:
             ]
 
         # Fulfillment & Quantity — uses fulfillment_availability
-        fulfillment_channel_code = "DEFAULT"  # MFN (Merchant Fulfilled Network)
-        # If AFN (Amazon Fulfilled / FBA), this would be different
+        # CRITICAL: Must be properly formatted for Amazon to accept it
+        # MFN (Merchant Fulfilled Network) = DEFAULT
+        # AFN (Amazon Fulfilled / FBA) = AMAZON_NA (or similar)
         attrs["fulfillment_availability"] = [
             {
-                "fulfillment_channel_code": fulfillment_channel_code,
+                "fulfillment_channel_code": "DEFAULT",
                 "quantity": quantity,
                 "marketplace_id": ListingsItemsService.MARKETPLACE_ID
             }

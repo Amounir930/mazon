@@ -122,10 +122,8 @@ class ValidationService:
         if condition is None or condition not in valid_conditions:
             result.add_error("condition", f"Condition is required and must be one of: {', '.join(valid_conditions[:5])}...")
 
-        # Fulfillment Channel (required by Amazon)
-        valid_fulfillment = ["MFN", "AFN"]
-        if fulfillment_channel is None or fulfillment_channel not in valid_fulfillment:
-            result.add_error("fulfillment_channel", f"Fulfillment channel is required and must be one of: {', '.join(valid_fulfillment)}")
+        # Fulfillment Channel - FIXED to MFN (Merchant Fulfilled Network)
+        # No validation needed since it's always "MFN"
 
         # UPC/EAN validation
         if upc is not None and upc.strip():

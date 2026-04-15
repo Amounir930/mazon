@@ -21,8 +21,29 @@ router = APIRouter()
 IMAGES_DIR = Path(__file__).parent.parent.parent.parent / "Data" / "images"
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
-# Base URL للصور (هتتغير حسب الـ deployment)
+# Base URL للصور — public URL full path for Amazon
+# في التطوير المحلي نستخدم relative path
+# في الإنتاج نستخدم public domain (مثال: https://yourdomain.com/images/)
+PUBLIC_DOMAIN = os.getenv("PUBLIC_DOMAIN", "")  # مثال: "https://yourdomain.com"
 BASE_URL = "/api/v1/images"
+
+
+def _get_public_url(filename: str) -> str:
+    """
+    بناء public URL كامل للصورة
+    
+    - لو PUBLIC_DOMAIN مضبوط: نستخدم domain خارجي (لـ Amazon)
+    - لو مش مضبوط: نستخدم relative path (للتطوير المحلي)
+    """
+    relative_path = f"{BASE_URL}/static/{filename}"
+    
+    if PUBLIC_DOMAIN and PUBLIC_DOMAIN.strip():
+        # Production: full URL for Amazon
+        domain = PUBLIC_DOMAIN.rstrip("/")
+        return f"{domain}{relative_path}"
+    
+    # Development: relative path
+    return relative_path
 
 
 # ==================== Static Files Serving ====================
@@ -124,9 +145,12 @@ async def upload_image(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="Failed to save image")
     
     logger.info(f"Image uploaded: {filename} ({len(content)} bytes)")
-    
+
+    public_url = _get_public_url(filename)
+    logger.info(f"Public URL: {public_url}")
+
     return ImageUploadResponse(
-        url=f"{BASE_URL}/static/{filename}",
+        url=public_url,
         filename=filename,
         size=len(content),
         mime_type=file.content_type,
@@ -176,9 +200,12 @@ async def upload_image_base64(data: dict):
         raise HTTPException(status_code=500, detail="Failed to save image")
     
     logger.info(f"Image uploaded (base64): {filename} ({len(image_bytes)} bytes)")
-    
+
+    public_url = _get_public_url(filename)
+    logger.info(f"Public URL: {public_url}")
+
     return ImageUploadResponse(
-        url=f"{BASE_URL}/static/{filename}",
+        url=public_url,
         filename=filename,
         size=len(image_bytes),
         mime_type=mime_type,
@@ -214,8 +241,90 @@ async def list_images():
             stat = file_path.stat()
             images.append({
                 "filename": file_path.name,
-                "url": f"{BASE_URL}/static/{file_path.name}",
+                "url": _get_public_url(file_path.name),
                 "size": stat.st_size,
                 "created_at": stat.st_ctime,
             })
     return {"images": images, "total": len(images)}
+
+
+@router.post("/upload-to-amazon")
+async def upload_image_to_amazon(file: UploadFile = File(...)):
+    """
+    رفع صورة مباشرة إلى Amazon S3 (بدون سيرفر خارجي)
+    
+    Flow:
+    1. حفظ الصورة محلياً
+    2. إرسالها لـ Amazon عبر Uploads API
+    3. إرجاع Amazon image ID
+    
+    Response: {
+        "success": true,
+        "local_url": "/api/v1/images/static/xxx.jpg",
+        "amazon_image_id": "upload-destination-id",
+        "message": "تم رفع الصورة مباشرة إلى Amazon"
+    }
+    """
+    from app.services.sp_api_client import SPAPIClient
+    
+    # Validate file type
+    allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/bmp']
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type. Allowed: {', '.join(allowed_types)}"
+        )
+
+    # Validate file size (max 10MB)
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size must be less than 10MB")
+
+    # Save locally first
+    ext = _get_extension(file.content_type)
+    filename = f"{uuid.uuid4().hex}{ext}"
+    file_path = IMAGES_DIR / filename
+    
+    try:
+        with open(file_path, 'wb') as f:
+            f.write(content)
+    except Exception as e:
+        logger.error(f"Failed to save image locally: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save image")
+
+    local_url = _get_public_url(filename)
+    
+    # Upload to Amazon
+    try:
+        client = SPAPIClient()
+        upload_result = client.upload_image_to_amazon(str(file_path))
+        
+        if upload_result.get("success"):
+            logger.info(f"✅ Image uploaded to Amazon: {upload_result['image_id']}")
+            return {
+                "success": True,
+                "local_url": local_url,
+                "local_filename": filename,
+                "amazon_image_id": upload_result["image_id"],
+                "message": "تم رفع الصورة مباشرة إلى Amazon",
+            }
+        else:
+            # Amazon upload failed but local save succeeded
+            error_msg = upload_result.get("error", "Unknown error")
+            logger.warning(f"Amazon upload failed: {error_msg}")
+            return {
+                "success": False,
+                "local_url": local_url,
+                "local_filename": filename,
+                "error": error_msg,
+                "message": "تم حفظ الصورة محلياً لكن فشل الرفع لـ Amazon",
+            }
+    except Exception as e:
+        logger.error(f"Failed to upload to Amazon: {e}")
+        return {
+            "success": False,
+            "local_url": local_url,
+            "local_filename": filename,
+            "error": str(e),
+            "message": "تم حفظ الصورة محلياً لكن فشل الاتصال بـ Amazon",
+        }
