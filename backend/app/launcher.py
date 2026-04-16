@@ -212,9 +212,10 @@ def main():
     file_url = f"file:///{os.path.abspath(frontend_path).replace(chr(92), '/')}"
 
     # Prepare window parameters
+    # Load from backend HTTP server (NOT file://) to avoid CORS and fetch() issues
     window_params = {
         "title": "Crazy Lister v3.0",
-        "url": file_url,
+        "url": BACKEND_URL,  # http://127.0.0.1:8765 — backend serves the frontend
         "width": 1280,
         "height": 850,
         "min_size": (900, 600),

@@ -48,11 +48,22 @@ app.add_middleware(
 # Include API routes
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
-# Mount static files for images (Data/images)
+# Mount static files for uploaded images (Data/images)
 # __file__ = backend/app/main.py → parent.parent.parent = amazon/
 images_dir = Path(__file__).parent.parent.parent / "Data" / "images"
 images_dir.mkdir(parents=True, exist_ok=True)
 app.mount(f"{settings.API_V1_PREFIX}/images/static", StaticFiles(directory=str(images_dir)), name="images")
+
+# Mount frontend static files (React build) — must come AFTER API routes
+# Supports both dev (sibling frontend/dist) and frozen .exe (_MEIPASS/frontend/dist)
+import os, sys as _sys
+_base = Path(_sys._MEIPASS) if getattr(_sys, 'frozen', False) else Path(__file__).parent.parent.parent
+_frontend_dist = _base / "frontend" / "dist"
+if _frontend_dist.exists():
+    app.mount("/assets", StaticFiles(directory=str(_frontend_dist / "assets")), name="frontend-assets")
+    logger.info(f"Frontend static assets mounted from: {_frontend_dist}")
+else:
+    logger.warning(f"Frontend dist not found at: {_frontend_dist} — UI may not load")
 
 # Register local documentation routes (DISABLED - missing static dir)
 # register_docs_routes(app)
@@ -129,12 +140,31 @@ async def debug_tables():
 
 @app.get("/", tags=["root"])
 async def root():
-    """Root endpoint"""
-    return {
-        "message": "Welcome to Crazy Lister v3.0",
-        "docs": "/docs",
-        "health": "/health",
-    }
+    """Serve the React frontend index.html"""
+    from fastapi.responses import FileResponse
+    import sys as _sys
+    _base = Path(_sys._MEIPASS) if getattr(_sys, 'frozen', False) else Path(__file__).parent.parent.parent
+    index = _base / "frontend" / "dist" / "index.html"
+    if index.exists():
+        return FileResponse(str(index), media_type="text/html")
+    return {"message": "Frontend not built. Run 'npm run build' in frontend/.", "docs": "/docs"}
+
+
+@app.get("/{full_path:path}", tags=["spa"])
+async def spa_fallback(full_path: str):
+    """SPA catch-all — return index.html for all non-API routes (React Router)"""
+    # Skip API, docs, health, static paths
+    if full_path.startswith(("api/", "docs", "redoc", "openapi", "health", "debug")):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404)
+    from fastapi.responses import FileResponse
+    import sys as _sys
+    _base = Path(_sys._MEIPASS) if getattr(_sys, 'frozen', False) else Path(__file__).parent.parent.parent
+    index = _base / "frontend" / "dist" / "index.html"
+    if index.exists():
+        return FileResponse(str(index), media_type="text/html")
+    from fastapi import HTTPException
+    raise HTTPException(status_code=404, detail="Frontend not built")
 
 
 if __name__ == "__main__":
