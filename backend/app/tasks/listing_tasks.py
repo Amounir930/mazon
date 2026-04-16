@@ -167,167 +167,23 @@ async def submit_listing_task(product_id: str) -> dict:
             product_data["quantity"] = 1
             logger.warning(f"⚠️ Quantity was 0, set to 1 for {product.sku}")
 
-        # === AUTO-UPLOAD IMAGES TO AMAZON ===
-        # Strategy: 1) Try Amazon Uploads API, 2) Fallback to ImgBB (free image hosting)
+        # === IMAGES: Use URLs directly (already uploaded to GitHub via frontend) ===
+        # Images should already be GitHub Raw URLs from the frontend upload button
         local_images = product_data.get("images", [])
         amazon_image_urls = []
 
         if local_images:
-            logger.info(f"📸 Found {len(local_images)} image(s) — preparing for Amazon...")
-            client_upload = SPAPIClient(marketplace_id=marketplace_id, country_code=country_code)
-
+            logger.info(f"📸 Found {len(local_images)} image(s) — validating URLs...")
             for idx, img_ref in enumerate(local_images):
-                # Already an Amazon S3 URL
-                if "amazonaws.com" in img_ref or "m.media-amazon.com" in img_ref:
+                # Accept any HTTPS URL (GitHub Raw, Cloudinary, Amazon, etc.)
+                if img_ref.startswith("https://"):
                     amazon_image_urls.append(img_ref)
-                    logger.info(f"✅ Image {idx}: Already Amazon URL")
-                    continue
+                    logger.info(f"✅ Image {idx + 1}: {img_ref[:80]}")
+                else:
+                    logger.warning(f"⚠️ Image {idx + 1} skipped (not HTTPS): {img_ref[:50]}")
 
-                # Local file — try Uploads API first
-                if img_ref.startswith("/api/v1/images/static/"):
-                    filename = img_ref.split("/")[-1]
-                    from pathlib import Path
-                    images_dir = Path(__file__).parent.parent.parent.parent / "Data" / "images"
-                    local_file = images_dir / filename
-
-                    if local_file.exists():
-                        # Strategy 1: Try Amazon Uploads API
-                        upload_result = client_upload.upload_image_to_amazon(str(local_file))
-
-                        if upload_result.get("success"):
-                            amazon_image_urls.append(upload_result["image_id"])
-                            logger.info(f"✅ Image {idx + 1} uploaded to Amazon S3")
-                            continue
-
-                        # Strategy 2: Fallback to Cloudinary (fast, reliable, 25GB free)
-                        logger.warning(f"⚠️ Uploads API failed — uploading to Cloudinary...")
-                        try:
-                            import requests as req
-                            import os
-                            
-                            cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME", "")
-                            api_key = os.getenv("CLOUDINARY_API_KEY", "")
-                            
-                            if not cloud_name or not api_key:
-                                logger.warning("⚠️ Cloudinary config missing — skipping")
-                            else:
-                                upload_url = f"https://api.cloudinary.com/v1_1/{cloud_name}/image/upload"
-                                
-                                with open(local_file, "rb") as f:
-                                    cloud_resp = req.post(
-                                        upload_url,
-                                        data={
-                                            "upload_preset": "unsigned",  # Unsigned upload
-                                            "api_key": api_key,
-                                            "timestamp": str(int(time.time())),
-                                        },
-                                        files={"file": f},
-                                        timeout=30,
-                                    )
-                                
-                                if cloud_resp.status_code == 200:
-                                    cloud_data = cloud_resp.json()
-                                    cloud_url = cloud_data.get("secure_url", "")
-                                    if cloud_url:
-                                        amazon_image_urls.append(cloud_url)
-                                        logger.info(f"✅ Image {idx + 1} on Cloudinary: {cloud_url}")
-                                        continue
-                                else:
-                                    logger.warning(f"⚠️ Cloudinary error: {cloud_resp.status_code} - {cloud_resp.text[:200]}")
-                        except Exception as cloud_err:
-                            logger.warning(f"⚠️ Cloudinary failed: {cloud_err}")
-
-                        # Strategy 3: Fallback to GitHub (if Cloudinary fails)
-                        logger.warning(f"⚠️ Cloudinary failed — trying GitHub...")
-                        try:
-                            import requests as req
-                            import base64
-                            import os
-                            with open(local_file, "rb") as f:
-                                img_base64 = base64.b64encode(f.read()).decode('utf-8')
-
-                            # GitHub config from environment
-                            gh_token = os.getenv("GITHUB_TOKEN", "")
-                            gh_owner = os.getenv("GITHUB_OWNER", "")
-                            gh_repo = os.getenv("GITHUB_REPO", "")
-                            gh_branch = os.getenv("GITHUB_BRANCH", "main")
-
-                            if not all([gh_token, gh_owner, gh_repo]):
-                                logger.warning("⚠️ GitHub config missing — skipping")
-                            else:
-                                # Upload via GitHub API with retries
-                                gh_url = f"https://api.github.com/repos/{gh_owner}/{gh_repo}/contents/images/{filename}"
-                                github_uploaded = False
-
-                                for attempt in range(2):  # Retry once
-                                    try:
-                                        gh_resp = req.put(
-                                            gh_url,
-                                            headers={
-                                                "Authorization": f"Bearer {gh_token}",
-                                                "Accept": "application/vnd.github.v3+json",
-                                            },
-                                            json={
-                                                "message": f"Upload {filename} via Crazy Lister",
-                                                "content": img_base64,
-                                                "branch": gh_branch,
-                                            },
-                                            timeout=30,
-                                        )
-
-                                        if gh_resp.status_code in (200, 201):
-                                            gh_data = gh_resp.json()
-                                            raw_url = f"https://raw.githubusercontent.com/{gh_owner}/{gh_repo}/{gh_branch}/images/{filename}"
-                                            amazon_image_urls.append(raw_url)
-                                            logger.info(f"✅ Image {idx + 1} on GitHub: {raw_url}")
-                                            github_uploaded = True
-                                            break
-                                        elif gh_resp.status_code == 422:
-                                            # File already exists - update it
-                                            logger.info(f"🔄 Image {idx + 1} already exists on GitHub, updating...")
-                                            get_resp = req.get(
-                                                gh_url,
-                                                headers={"Authorization": f"Bearer {gh_token}", "Accept": "application/vnd.github.v3+json"},
-                                                timeout=10,
-                                            )
-                                            if get_resp.status_code == 200:
-                                                existing_sha = get_resp.json().get("sha", "")
-                                                gh_resp2 = req.put(
-                                                    gh_url,
-                                                    headers={"Authorization": f"Bearer {gh_token}", "Accept": "application/vnd.github.v3+json"},
-                                                    json={
-                                                        "message": f"Update {filename} via Crazy Lister",
-                                                        "content": img_base64,
-                                                        "branch": gh_branch,
-                                                        "sha": existing_sha,
-                                                    },
-                                                    timeout=30,
-                                                )
-                                                if gh_resp2.status_code in (200, 201):
-                                                    raw_url = f"https://raw.githubusercontent.com/{gh_owner}/{gh_repo}/{gh_branch}/images/{filename}"
-                                                    amazon_image_urls.append(raw_url)
-                                                    logger.info(f"✅ Image {idx + 1} updated on GitHub: {raw_url}")
-                                                    github_uploaded = True
-                                                    break
-                                        else:
-                                            logger.warning(f"⚠️ GitHub error (attempt {attempt + 1}): {gh_resp.status_code}")
-                                    except Exception as attempt_err:
-                                        logger.warning(f"⚠️ GitHub attempt {attempt + 1} failed: {attempt_err}")
-                                        if attempt < 1:
-                                            time.sleep(3)
-
-                                if not github_uploaded:
-                                    logger.warning(f"⚠️ Image {idx + 1} failed to upload to GitHub after retries")
-                        except Exception as gh_err:
-                            logger.warning(f"⚠️ GitHub failed: {gh_err}")
-
-                        # Last resort: skip this image
-                        logger.warning(f"⚠️ Image {idx + 1} skipped — no upload method worked")
-                    else:
-                        logger.warning(f"⚠️ Image file not found: {local_file}")
-
-            product_data["images"] = amazon_image_urls
-            logger.info(f"📸 Total images ready: {len(amazon_image_urls)}/{len(local_images)}")
+        product_data["images"] = amazon_image_urls
+        logger.info(f"📸 Total images ready: {len(amazon_image_urls)}/{len(local_images)}")
 
         result = None
         for attempt in range(MAX_RETRIES):

@@ -795,37 +795,25 @@ class SPAPIClient:
             "supplier_declared_dg_hz_regulation": [{"value": "not_applicable"}],
             "batteries_required": [{"value": False}],
 
-            # Note: We will dynamically add required fields for Egypt based on product type below
+            # Egypt HOME type required fields
             "part_number": [{"value": product_data.get("model_number", "N/A")[:30], "language_tag": "ar_AE"}],
+            "voltage": [{"value": 220, "unit": "volts"}],
+            "wattage": [{"value": 0, "unit": "watts"}],
+            "supported_voltage_frequency": [{"value": 220, "unit": "volts"}],  # Required for Egypt
+            "power_plug": [{"value": "type_c_2pin"}],  # EU plug type for Egypt
 
             # Weight (FLAT format)
             "item_weight": [{"value": 0.5, "unit": "kilograms"}],
             "item_package_weight": [{"value": 0.7, "unit": "kilograms"}],
 
-            # Unit count: Egypt marketplace uses Arabic enum values, NOT English!
-            # HOME_ORGANIZERS_AND_STORAGE/VASE schema enumerates: "العد" (count in Arabic)
-            "unit_count": [{
-                "value": float(number_of_items),
-                "type": {"value": "العد", "language_tag": "ar_AE"}
-            }],
+            # Unit count
+            "unit_count": [{"value": number_of_items, "unit": "count"}],
 
-            # Package dimensions
+            # Package dimensions (CORRECT format!)
             "item_package_dimensions": [{
                 "length": {"value": 25.0, "unit": "centimeters"},
                 "width": {"value": 10.0, "unit": "centimeters"},
                 "height": {"value": 15.0, "unit": "centimeters"},
-            }],
-
-            # Item dimensions (Specifically item_length_width_height is requested by VASE)
-            "item_length_width_height": [{
-                "length": {"value": 24.0, "unit": "centimeters"},
-                "width": {"value": 9.0, "unit": "centimeters"},
-                "height": {"value": 14.0, "unit": "centimeters"},
-            }],
-            "item_dimensions": [{
-                "length": {"value": 24.0, "unit": "centimeters"},
-                "width": {"value": 9.0, "unit": "centimeters"},
-                "height": {"value": 14.0, "unit": "centimeters"},
             }],
 
             # Price
@@ -883,28 +871,9 @@ class SPAPIClient:
             }]
 
         # Resolve product type via normalize (AI/frontend → Amazon valid type)
-        raw_type = product_data.get("amazon_product_type") or product_data.get("product_type") or "HOME_ORGANIZERS_AND_STORAGE"
-        product_name = product_data.get("name_ar") or product_data.get("name") or ""
-        final_type = self.normalize_product_type(raw_type, product_name)
-        logger.info(f"🏷️ productType: '{raw_type}' (Name: {product_name}) → '{final_type}'")
-
-        # FACTORY LOGIC: Apply category-specific attributes to avoid Invalid Schema Rejections
-        appliance_types = {"SMALL_HOME_APPLIANCES", "PERSONAL_CARE_APPLIANCE", "FOOD_PROCESSOR", "FOOD_MIXER", "FOOD_BLENDER", "HAIR_DRYER", "VACUUM_CLEANER"}
-        if final_type in appliance_types:
-            logger.info("⚡ Injecting Appliance requirement fields: voltage, wattage, power_plug")
-            attributes["voltage"] = [{"value": 220, "unit": "volts"}]
-            attributes["wattage"] = [{"value": 0, "unit": "watts"}]
-            attributes["supported_voltage_frequency"] = [{"value": 220, "unit": "volts"}]
-            attributes["power_plug"] = [{"value": "type_c_2pin"}]
-        elif final_type in {"KITCHEN_TOOL", "KITCHEN", "COOKWARE", "DRINKWARE", "FOOD_STORAGE", "FOOD_CONTAINER", "HOME_ORGANIZERS_AND_STORAGE", "VASE"}:
-            logger.info("🍳 Injecting Kitchen Tool fields: care_instructions, no liquid, no electrical")
-            # Non-electrical kitchen tools: declare as hand-wash, no liquid, no power required
-            attributes["care_instructions"] = [{"value": "Hand Wash", "language_tag": "ar_AE"}]
-            attributes["contains_liquid_contents"] = [{"value": False}]
-            # Explicitly do NOT set voltage, power_plug, accepted_voltage_frequency for non-electrical products
-        elif final_type in {"SKIN_CLEANING_WIPE", "BEAUTY", "HEALTH_PERSONAL_CARE"}:
-            logger.info("💄 Injecting Beauty/Care specific fields")
-            pass
+        raw_type = product_data.get("product_type", "HOME")
+        final_type = self.normalize_product_type(raw_type)
+        logger.info(f"🏷️ productType: '{raw_type}' → '{final_type}'")
 
         return {
             "productType": final_type,
@@ -913,26 +882,32 @@ class SPAPIClient:
         }
 
     @staticmethod
-    def normalize_product_type(product_type: str, product_name: str = "") -> str:
+    def normalize_product_type(product_type: str) -> str:
         """
-        Convert Arabic product type or internal product type to Amazon valid English product type.
-        
+        Convert Arabic product type to Amazon valid English product type.
+
         IMPORTANT: Egypt (ARBP9OOSHTCHU) has DIFFERENT valid product types!
         Generic types like HOME_KITCHEN, ELECTRONICS are NOT valid for Egypt.
-        """
-        # Smart routing from product name (Overrides ui category)
-        if product_name:
-            name_lower = product_name.lower()
-            if any(k in name_lower for k in ['مزهرية', 'زهرية', 'فازة', 'vase']):
-                return "VASE"
 
+        Valid Egypt types (confirmed via Product Type Definitions API):
+        - HOME (generic fallback for home products)
+        - FOOD_PROCESSOR (specific appliances)
+        - FOOD_MIXER, FOOD_BLENDER (kitchen appliances)
+        - And 1800+ more specific types
+
+        Examples:
+            "مضرب يدوي كهربائي" → "HOME"
+            "HOME_KITCHEN" → "HOME" (not valid for Egypt!)
+            "HOME" → "HOME"
+            "أدوات تنظيم المنزل" → "HOME"
+        """
         if not product_type:
             return "HOME_ORGANIZERS_AND_STORAGE"  # Default: أدوات تنظيم المنزل
         
-        # First check if it's a known UI category (force HOME_ORGANIZERS_AND_STORAGE for Egypt decor/cleaning etc as safe fallback)
+        # First check if it's a known UI category (force HOME_ORGANIZERS_AND_STORAGE for Egypt)
         FRONTEND_CATEGORY_MAP = {
             'STORAGE': 'HOME_ORGANIZERS_AND_STORAGE',
-            'KITCHEN': 'HOME_ORGANIZERS_AND_STORAGE',  # KITCHEN_TOOL not valid in Egypt — use HOME_ORGANIZERS_AND_STORAGE
+            'KITCHEN': 'HOME_ORGANIZERS_AND_STORAGE',
             'BATHROOM': 'HOME_ORGANIZERS_AND_STORAGE',
             'DECOR': 'HOME_ORGANIZERS_AND_STORAGE',
             'CLEANING': 'HOME_ORGANIZERS_AND_STORAGE',
@@ -950,14 +925,13 @@ class SPAPIClient:
 
         # Then check if it's already a valid English product type (don't modify valid ones)
         EGYPT_VALID_TYPES = {
-            "HOME", "HOME_ORGANIZERS_AND_STORAGE", "KITCHEN", "VASE",
-            "SKIN_CLEANING_WIPE", "SMALL_HOME_APPLIANCES", "PERSONAL_CARE_APPLIANCE", "TOOLS",
+            "HOME", "HOME_ORGANIZERS_AND_STORAGE",
             "FOOD_PROCESSOR", "FOOD_MIXER", "FOOD_BLENDER",
             "3D_PRINTABLE_DESIGNS", "3D_PRINTED_PRODUCT",
             "ACCESSORY", "ADULT_COSTUME", "ADVERTISEMENT_COLLECTIBLES",
             "AGRICULTURAL_SUPPLIES", "AMAZON_BOOK_READER_ACCESSORY",
             "AMAZON_TABLET_ACCESSORY", "APPLIANCE_COVER",
-            "ARCHITECTURAL_COVERING", "ART_SUPPLY_DRAWING", "ARTS_AND_CRAFTS",
+            "ARCHITECTURAL_COVERING", "ART_SUPPLY_DRAWING",
             "BABY_PRODUCT", "BAG", "BATTERY", "BEAUTY", "BED",
             "BOOK", "BOOK_CASE", "BULK_FOOD", "CABLE", "CARRIER_CASE",
             "CELL_PHONE", "CHAIR", "CLEANING_BRUSH", "COAT_RACK",

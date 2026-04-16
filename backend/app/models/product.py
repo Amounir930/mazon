@@ -70,6 +70,7 @@ class Product(Base):
     fulfillment_channel = Column(String(20), default="MFN")  # MFN (Merchant), AFN (Amazon)
     handling_time = Column(Integer, default=0)  # days
     product_type = Column(String(100))  # PRODUCT_TYPE
+    amazon_product_type = Column(String(100))  # SP-API exact type
     manufacturer = Column(String(200))
     model_number = Column(String(100))
     country_of_origin = Column(String(10))

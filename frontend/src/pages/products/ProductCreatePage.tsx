@@ -23,7 +23,8 @@ import { AIAssistantPanel } from '@/components/ai/AIAssistantPanel'
 import type { AIMergedProduct } from '@/types/ai'
 import { NeonButton } from '@/components/common'
 import {
-  PRODUCT_TYPES, BROWSE_NODES, CONDITIONS, FULFILLMENT_CHANNELS,
+  PRODUCT_TYPES, PRODUCT_TYPE_CATEGORIES, BROWSE_NODES, BROWSE_NODES_BY_TYPE,
+  CONDITIONS, FULFILLMENT_CHANNELS,
   ID_TYPES, COUNTRIES, UNIT_TYPES, WEIGHT_UNITS, DIMENSION_UNITS,
   DEFAULT_VALUES, VALIDATION_RULES
 } from '@/constants/amazon'
@@ -374,12 +375,18 @@ export default function ProductCreatePage() {
   }, [editProduct])
 
   // ==================== AI: Handle generated products ====================
+  // ⚠️ IMPORTANT: When AI generates products, listingCopies is automatically synced
+  // to match the AI count. This ensures:
+  // - AI generates 3 products → listingCopies = 3 → 3 listings created
+  // - AI generates 1 product → listingCopies = 1 → 1 listing created
+  // The user can manually override listingCopies after AI generation if needed.
   const handleAiProductsGenerated = useCallback((products: AIMergedProduct[]) => {
     setAiProducts(products)
     if (products.length > 0) {
       setSelectedAiProduct(0)
       fillFormFromAi(products[0])
       // Task 6: Sync listingCopies = AI-generated count (direct)
+      // This ensures each AI product gets its own listing/ad on Amazon
       setListingCopies(products.length)
       toast.success(`✅ تم توليد ${products.length} منتج — عدد الإعلانات تم ضبطه لـ ${products.length}`)
     }
@@ -393,13 +400,15 @@ export default function ProductCreatePage() {
       name_ar: product.name_ar,
       name_en: product.name_en,
       product_type: product.product_type,
-      id_type: product.ean ? 'EAN' : (product.upc ? 'UPC' : 'EAN'), // EAN إجباري
-      ean: product.ean || '', // الباركود إجباري من AI
-      has_product_identifier: false, // AI always generates barcodes
-      brand: product.brand,
+      id_type: product.ean ? 'EAN' : (product.upc ? 'UPC' : 'EAN'),
+      ean: product.ean || '',
+      has_product_identifier: !product.ean && !product.upc, // Automatically check exemption if barcode is empty
+
+      // ⚠️ FIXED FIELDS - AI CANNOT modify these (user/seller settings only)
+      // brand: product.brand,              ← REMOVED: Keep user's value
+      // manufacturer: product.manufacturer, ← REMOVED: Keep user's value
+      // country_of_origin: product.country_of_origin, ← REMOVED: Keep user's value
       model_number: product.model_number,
-      manufacturer: product.manufacturer,
-      country_of_origin: product.country_of_origin,
 
       // الوصف والتفاصيل - ملئ مباشر
       description_ar: product.description_ar,
@@ -422,6 +431,11 @@ export default function ProductCreatePage() {
       item_weight: String(DEFAULT_VALUES.item_weight),
       package_weight: String(DEFAULT_VALUES.package_weight),
       number_of_boxes: String(DEFAULT_VALUES.number_of_boxes),
+
+      // AI-selected browse_node_id — الفئة المناسبة حسب المنتج
+      browse_node_id: product.browse_node_id
+        || (BROWSE_NODES_BY_TYPE[product.product_type]?.[0]?.value)
+        || prev.browse_node_id,
     }))
 
     // الحقول الاختيارية
@@ -450,7 +464,7 @@ export default function ProductCreatePage() {
       const nameToImprove = required.name_ar.trim() || required.name_en.trim() || ''
       const descToImprove = required.description_ar.trim() || required.description_en.trim() || ''
       const bullets = required.bullet_points.filter(bp => bp.trim().length > 0).join(' | ')
-      
+
       // FIX: Build specs properly — ensure min_length=5 for backend
       let specs = ''
       if (descToImprove && bullets) {
@@ -600,10 +614,10 @@ export default function ProductCreatePage() {
     }
   }, [])
 
-  // ==================== Upload Images to GitHub ====================
+  // ==================== Upload Images to GitHub (Manual Button) ====================
   const [uploadingToGitHub, setUploadingToGitHub] = useState(false)
 
-  const handleUploadToGitHub = useCallback(async () => {
+  const handleUploadToGitHub = async () => {
     const allFiles = [mainImagePreview, ...extraImagePreviews].filter(Boolean)
     if (allFiles.length === 0) {
       toast.error('لازم ترفع صور الأول')
@@ -611,7 +625,26 @@ export default function ProductCreatePage() {
     }
 
     setUploadingToGitHub(true)
+    try {
+      const githubUrls = await uploadImagesToGitHub()
+      if (githubUrls.length > 0) {
+        toast.success(`✅ تم رفع ${githubUrls.length} من ${allFiles.length} صورة على GitHub`)
+      }
+    } catch (err: any) {
+      toast.error('❌ ' + err.message)
+    } finally {
+      setUploadingToGitHub(false)
+    }
+  }
+
+  const uploadImagesToGitHub = async (): Promise<string[]> => {
+    const allFiles = [mainImagePreview, ...extraImagePreviews].filter(Boolean)
+    if (allFiles.length === 0) {
+      return [] // No images to upload
+    }
+
     let successCount = 0
+    let failedCount = 0
     let githubUrls: string[] = []
 
     for (let i = 0; i < allFiles.length; i++) {
@@ -624,15 +657,17 @@ export default function ProductCreatePage() {
 
         const res = await imagesApi.uploadToGitHub(file)
         if (res.data.success) {
-          githubUrls.push(res.data.github_url)
+          githubUrls.push(res.data.image_url)
           successCount++
+        } else {
+          failedCount++
+          toast.error(`⚠️ صورة ${i + 1} فشلت: ${res.data.error}`)
         }
       } catch (err: any) {
-        toast.error(`فشل رفع صورة ${i + 1}: ${err?.response?.data?.error || err.message}`)
+        failedCount++
+        toast.error(`⚠️ صورة ${i + 1} فشلت: ${err?.response?.data?.error || err.message}`)
       }
     }
-
-    setUploadingToGitHub(false)
 
     if (successCount > 0) {
       // Update image URLs with GitHub URLs
@@ -640,11 +675,14 @@ export default function ProductCreatePage() {
         setMainImageUrl(githubUrls[0])
         setExtraImageUrls(githubUrls.slice(1))
       }
-      toast.success(`✅ تم رفع ${successCount} صورة على GitHub`)
-    } else {
-      toast.error('فشل رفع جميع الصور على GitHub')
     }
-  }, [mainImagePreview, extraImagePreviews])
+
+    if (failedCount > 0 && successCount === 0) {
+      throw new Error(`فشل رفع جميع الصور (${failedCount} صورة)`)
+    }
+
+    return githubUrls
+  }
 
   const handleExtraImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -670,7 +708,7 @@ export default function ProductCreatePage() {
     const filesToUpload = validFiles.slice(0, remainingSlots)
 
     if (validFiles.length > remainingSlots) {
-      toast.warning(`فيه ${validFiles.length - remainingSlots} صورة مش هتترفع - مفيش أماكن فاضية كافية`)
+      toast.error(`⚠️ فيه ${validFiles.length - remainingSlots} صورة مش هتترفع - مفيش أماكن فاضية كافية`)
     }
 
     // Upload each file
@@ -709,33 +747,54 @@ export default function ProductCreatePage() {
   }, [])
 
   // ==================== Build Payload ====================
-  const buildPayload = (variantIndex = 0) => {
-    const allImages = [mainImageUrl, ...extraImageUrls].filter(Boolean)
-    const variantSuffix = variantIndex > 0 ? ` - Variant ${variantIndex + 1}` : ''
+  const buildPayload = (variantIndex = 0, overrideImages?: string[]) => {
+    const allImages = overrideImages || [mainImageUrl, ...extraImageUrls].filter(Boolean)
     // Unique SKU: timestamp + variant index + 2 random segments separated by dashes to prevent duplicates
     const skuTimestamp = Date.now()
     const rand1 = Math.random().toString(36).substring(2, 5).toUpperCase()
     const rand2 = Math.random().toString(36).substring(2, 5).toUpperCase()
-    const sku = isEditMode ? editProduct.sku : `AUTO-${skuTimestamp}-${variantIndex}-${rand1}-${rand2}`
+    
+    const aiData = aiProducts[variantIndex] || null
+
+    let finalNameAr = required.name_ar.trim()
+    let finalNameEn = required.name_en.trim()
+    let finalDescAr = required.description_ar.trim()
+    let finalDescEn = required.description_en.trim()
+
+    // If AI generated this variant, use its unique data instead of repeating
+    if (aiData) {
+      finalNameAr = aiData.name_ar || finalNameAr
+      finalNameEn = aiData.name_en || finalNameEn
+      finalDescAr = aiData.description_ar || finalDescAr
+      finalDescEn = aiData.description_en || finalDescEn
+    } else if (variantIndex > 0) {
+      // Fallback only if no AI data exists
+      finalNameAr += ` - نسخة ${variantIndex + 1}`
+      finalNameEn += ` - Copy ${variantIndex + 1}`
+    }
+
+    const sku = isEditMode ? editProduct.sku : (aiData?.suggested_sku || `AUTO-${skuTimestamp}-${variantIndex}-${rand1}-${rand2}`)
 
     return {
       sku,
       seller_id: selectedSellerId || undefined,
-      name: `${required.name_en.trim()}${variantSuffix}`,
-      name_ar: `${required.name_ar.trim()}${variantSuffix}`,
-      name_en: `${required.name_en.trim()}${variantSuffix}`,
+      name: finalNameAr,
+      name_ar: finalNameAr,
+      name_en: finalNameEn,
       brand: required.brand || DEFAULT_VALUES.brand,
       price: parseFloat(required.price) || 0, // FIX: default to 0 if empty (backend accepts ge=0)
       quantity: parseInt(required.quantity) || 0, // FIX: default to 0 if empty
       currency: 'EGP', // Default currency
       product_type: required.product_type,
+      amazon_product_type: aiData?.amazon_product_type || undefined,
       condition: required.condition,
       fulfillment_channel: 'MFN', // ثابت - الشحن على البائع
       ean: required.id_type === 'EAN' && !required.has_product_identifier ? required.ean : '',
       upc: required.id_type === 'UPC' && !required.has_product_identifier ? required.ean : '',
       has_product_identifier: required.has_product_identifier,
-      description: required.description_en.trim(),
-      description_ar: required.description_ar.trim(),
+      description: finalDescAr,
+      description_ar: finalDescAr,
+      description_en: finalDescEn,
       bullet_points: required.bullet_points.filter(bp => bp.trim().length > 0),
       manufacturer: required.manufacturer || DEFAULT_VALUES.brand,
       model_number: required.model_number || required.name_en.trim(),
@@ -775,12 +834,17 @@ export default function ProductCreatePage() {
 
     setSubmitting(true)
     try {
-      // Use AI products count if available, otherwise use listingCopies
-      const actualCopies = aiProducts.length > 0 ? aiProducts.length : listingCopies
-      
+      // Use images from state (GitHub URLs if uploaded, otherwise local paths)
+      const imageUrls = [mainImageUrl, ...extraImageUrls].filter(Boolean)
+
+      // ⚠️ IMPORTANT: Use the user's explicit listingCopies value
+      // - If AI generated 3 products AND user didn't change listingCopies → actualCopies = 3
+      // - If user manually changed listingCopies to 1 → actualCopies = 1 (respects user choice)
+      const actualCopies = listingCopies
+
       const payloads = []
       for (let i = 0; i < actualCopies; i++) {
-        payloads.push(buildPayload(i))
+        payloads.push(buildPayload(i, imageUrls))
       }
 
       // EDIT MODE: Update existing product
@@ -895,29 +959,71 @@ export default function ProductCreatePage() {
       return
     }
 
+    // MANDATORY: Check if images are on CDN (Cloudinary or GitHub)
+    const allImageUrls = [mainImageUrl, ...extraImageUrls].filter(Boolean)
+    const hasImages = allImageUrls.length > 0
+    const allOnCDN = hasImages && allImageUrls.every(
+      url => url.startsWith('https://') && (
+        url.includes('raw.githubusercontent.com') ||
+        url.includes('res.cloudinary.com')
+      )
+    )
+
+    if (hasImages && !allOnCDN) {
+      toast.error('❌ لازم ترفع الصور على GitHub/Cloudinary الأول — اضغط "📤 حفظ على GitHub"')
+      return
+    }
+
     setSubmitting(true)
     try {
-      // Step 1: Save to DB first
-      const payload = buildPayload()
-      const response = await createMutation.mutateAsync(payload as any)
-      const productId = response.data.id
+      const actualCopies = listingCopies
+      const payloads = []
+      for (let i = 0; i < actualCopies; i++) {
+        payloads.push(buildPayload(i, allImageUrls))
+      }
 
-      // Step 2: Submit to Amazon via SP-API
-      await productsApi.submitToAmazon(productId)
+      let successCount = 0
+      const failedProducts: Array<{ index: number; error: string }> = []
+      
+      if (actualCopies > 1) {
+        toast.loading(`جاري حفظ وإرسال ${actualCopies} منتج لأمازون...`)
+      }
 
-      toast.info('⏳ تم الاستلام — جاري المعالجة لدى أمازون')
+      for (let i = 0; i < payloads.length; i++) {
+        try {
+          // Save to DB with GitHub URLs
+          const product = await createMutation.mutateAsync(payloads[i] as any)
+          const productId = product.id || product.data?.id
+
+          // Submit to Amazon via SP-API
+          await productsApi.submitToAmazon(productId)
+          successCount++
+        } catch (error: any) {
+          let errorMsg = error?.response?.data?.detail
+            || error?.response?.data?.message
+            || (typeof error?.message === 'string' ? error.message : 'خطأ غير معروف')
+          if (Array.isArray(errorMsg)) {
+            errorMsg = errorMsg.map((e: any) => String(e.msg || e.message || '')).join('\n')
+          }
+          failedProducts.push({ index: i + 1, error: typeof errorMsg === 'string' ? errorMsg : String(errorMsg) })
+        }
+      }
+
+      toast.dismiss()
+
+      if (successCount > 0) {
+        toast.success(`✅ تم إرسال ${successCount} منتج لـ Amazon بنجاح!`)
+      }
+      
+      if (failedProducts.length > 0) {
+        const errorDetails = failedProducts.map(f => `رقم ${f.index}: ${f.error}`).join('\n')
+        toast.error(`❌ فشل ${failedProducts.length} منتج:\n${errorDetails}`, { duration: 15000 })
+      }
+
       navigate('/listings')
     } catch (error: any) {
-      let errorMsg = error?.response?.data?.detail
-        || error?.response?.data?.message
-        || (typeof error?.message === 'string' ? error.message : 'حدث خطأ غير معروف')
-      // Handle array detail (FastAPI 422)
-      if (Array.isArray(errorMsg)) {
-        errorMsg = errorMsg.map((e: any) => String(e.msg || e.message || '')).join('\n')
-      }
-      // SAFETY: Ensure errorMsg is always a string
-      errorMsg = typeof errorMsg === 'string' ? errorMsg : String(errorMsg)
-      toast.error('فشل الإرسال: ' + errorMsg)
+      toast.dismiss()
+      toast.error('حدث خطأ فادح غير متوقع')
     } finally {
       setSubmitting(false)
     }
@@ -930,7 +1036,17 @@ export default function ProductCreatePage() {
       return
     }
 
-    const p = buildPayload()
+    // Check if images are uploaded to a CDN (Cloudinary or GitHub)
+    const allImageUrls = [mainImageUrl, ...extraImageUrls].filter(Boolean)
+    const hasImages = allImageUrls.length > 0
+    const allOnCDN = hasImages && allImageUrls.every(
+      url => url.startsWith('https://') && (
+        url.includes('raw.githubusercontent.com') ||
+        url.includes('res.cloudinary.com')
+      )
+    )
+
+    const p = buildPayload(0, allImageUrls)
     const summary = {
       'اسم المنتج (عربي)': p.name_ar,
       'اسم المنتج (English)': p.name_en,
@@ -998,11 +1114,10 @@ export default function ProductCreatePage() {
                   setPage(1)
                   toast.success(`تم اختيار المنتج ${i + 1} — كمّل باقي البيانات`)
                 }}
-                className={`px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                  selectedAiProduct === i
-                    ? 'bg-amazon-orange text-white shadow-lg scale-105'
-                    : 'bg-bg-elevated text-text-secondary border border-border-subtle hover:border-amazon-orange/50 hover:shadow'
-                }`}
+                className={`px-4 py-3 rounded-xl text-sm font-medium transition-all ${selectedAiProduct === i
+                  ? 'bg-amazon-orange text-white shadow-lg scale-105'
+                  : 'bg-bg-elevated text-text-secondary border border-border-subtle hover:border-amazon-orange/50 hover:shadow'
+                  }`}
               >
                 <div className="font-bold">المنتج {i + 1}</div>
                 <div className="text-xs opacity-80 mt-1">{product.name_ar.slice(0, 40)}</div>
@@ -1112,11 +1227,10 @@ export default function ProductCreatePage() {
                   fillFormFromAi(product)
                   toast.success(`تم اختيار المنتج ${i + 1}`)
                 }}
-                className={`px-3 py-2 rounded-xl text-sm transition-colors ${
-                  selectedAiProduct === i
-                    ? 'bg-amazon-orange text-white shadow-lg'
-                    : 'bg-bg-elevated text-text-secondary border border-border-subtle hover:border-amazon-orange/50'
-                }`}
+                className={`px-3 py-2 rounded-xl text-sm transition-colors ${selectedAiProduct === i
+                  ? 'bg-amazon-orange text-white shadow-lg'
+                  : 'bg-bg-elevated text-text-secondary border border-border-subtle hover:border-amazon-orange/50'
+                  }`}
               >
                 المنتج {i + 1}: {product.name_ar.slice(0, 30)}{product.name_ar.length > 30 ? '...' : ''}
               </button>
@@ -1148,11 +1262,18 @@ export default function ProductCreatePage() {
           </Field>
         </div>
 
-        <Field label="نوع المنتج" required hint="نوع المنتج على Amazon — يحدد القوالب المطلوبة">
+        <Field label="نوع المنتج" required hint="اختر الفئة المناسبة — الفئات المتاحة تتغير حسب النوع">
           <SelectInput
             value={required.product_type}
-            onChange={v => setRequired(prev => ({ ...prev, product_type: v }))}
-            options={PRODUCT_TYPES as any}
+            onChange={v => {
+              const newNodes = BROWSE_NODES_BY_TYPE[v] || []
+              setRequired(prev => ({
+                ...prev,
+                product_type: v,
+                browse_node_id: newNodes[0]?.value || prev.browse_node_id
+              }))
+            }}
+            options={PRODUCT_TYPE_CATEGORIES as any}
           />
         </Field>
 
@@ -1189,7 +1310,7 @@ export default function ProductCreatePage() {
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Field label="البراند" required hint="اسم العلامة التجارية — لو مش موجود اكتب Generic">
+          <Field label="🔒 البراند" required hint="اسم العلامة التجارية — ⚠️ حقل ثابت (AI مش بيغيره)">
             <TextInput
               value={required.brand}
               onChange={v => setRequired(prev => ({ ...prev, brand: v }))}
@@ -1203,7 +1324,7 @@ export default function ProductCreatePage() {
               placeholder={required.name_en || 'SKU'}
             />
           </Field>
-          <Field label="المصنع" required hint="اسم الشركة المصنعة">
+          <Field label="🔒 المصنع" required hint="اسم الشركة المصنعة — ⚠️ حقل ثابت (AI مش بيغيره)">
             <TextInput
               value={required.manufacturer}
               onChange={v => setRequired(prev => ({ ...prev, manufacturer: v }))}
@@ -1212,7 +1333,7 @@ export default function ProductCreatePage() {
           </Field>
         </div>
 
-        <Field label="بلد المنشأ" required hint="البلد اللي اتصنع فيها المنتج — مثال: CN للصين">
+        <Field label="🔒 بلد المنشأ" required hint="البلد اللي اتصنع فيها المنتج — ⚠️ حقل ثابت (AI مش بيغيره)">
           <SelectInput
             value={required.country_of_origin}
             onChange={v => setRequired(prev => ({ ...prev, country_of_origin: v }))}
@@ -1270,11 +1391,11 @@ export default function ProductCreatePage() {
           </div>
         </Field>
 
-        <Field label="الفئة (Browse Node)" required>
+        <Field label="الفئة (Browse Node)" required hint={`الفئات المتاحة لـ ${PRODUCT_TYPE_CATEGORIES.find(c => c.value === required.product_type)?.label || 'المنتج'}`}>
           <SelectInput
             value={required.browse_node_id}
             onChange={v => setRequired(prev => ({ ...prev, browse_node_id: v }))}
-            options={BROWSE_NODES as any}
+            options={(BROWSE_NODES_BY_TYPE[required.product_type] || BROWSE_NODES) as any}
           />
         </Field>
 
@@ -1734,7 +1855,7 @@ export default function ProductCreatePage() {
               setListingCopies(newVal)
               // Warn if mismatch with AI products
               if (aiProducts.length > 0 && newVal !== aiProducts.length) {
-                toast.warning(`⚠️ عدد النسخ (${newVal}) مش يساوي عدد منتجات AI (${aiProducts.length})`)
+                toast.error(`⚠️ عدد النسخ (${newVal}) مش يساوي عدد منتجات AI (${aiProducts.length})`)
               }
             }}
             placeholder="1"
@@ -1744,11 +1865,10 @@ export default function ProductCreatePage() {
 
         {/* Match indicator */}
         {aiProducts.length > 0 && (
-          <div className={`mt-3 p-2 rounded-xl text-sm flex items-center gap-2 ${
-            listingCopies === aiProducts.length
-              ? 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20'
-              : 'bg-neon-red/10 text-neon-red border border-neon-red/20'
-          }`}>
+          <div className={`mt-3 p-2 rounded-xl text-sm flex items-center gap-2 ${listingCopies === aiProducts.length
+            ? 'bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20'
+            : 'bg-neon-red/10 text-neon-red border border-neon-red/20'
+            }`}>
             {listingCopies === aiProducts.length ? (
               <>✅ متطابق: {listingCopies} نسخة = {aiProducts.length} منتج AI</>
             ) : (
@@ -1766,7 +1886,7 @@ export default function ProductCreatePage() {
               <Globe className="w-5 h-5 text-neon-cyan" /> حفظ الصور على GitHub
             </h3>
             <p className="text-sm text-text-secondary mt-1">
-              ارفع الصور على GitHub عشان Amazon يقدر يشوفها
+              الصور لازم تترفع على GitHub عشان Amazon يقدر يشوفها
             </p>
           </div>
           <NeonButton
@@ -1780,9 +1900,15 @@ export default function ProductCreatePage() {
             {uploadingToGitHub ? 'جاري الرفع...' : '📤 حفظ على GitHub'}
           </NeonButton>
         </div>
-        {mainImageUrl && mainImageUrl.includes('raw.githubusercontent.com') && (
-          <div className="mt-3 p-2 rounded-xl text-sm bg-neon-cyan/10 text-neon-cyan border border-neon-cyan/20">
-            ✅ الصور محفوظة على GitHub وجاهزة للإرسال لـ Amazon
+        {/* Check if images are on CDN (Cloudinary or GitHub) */}
+        {mainImageUrl && (mainImageUrl.includes('raw.githubusercontent.com') || mainImageUrl.includes('res.cloudinary.com')) && (
+          <div className="mt-3 p-2 rounded-xl text-sm bg-neon-green/10 text-neon-green border border-neon-green/20">
+            ✅ الصور محفوظة على CDN وجاهزة للإرسال
+          </div>
+        )}
+        {mainImagePreview && !mainImageUrl.includes('raw.githubusercontent.com') && !mainImageUrl.includes('res.cloudinary.com') && (
+          <div className="mt-3 p-2 rounded-xl text-sm bg-neon-yellow/10 text-neon-yellow border border-neon-yellow/20">
+            ⚠️ الصور محفوظة محلياً بس — لازم ترفع على GitHub قبل الإرسال لـ Amazon
           </div>
         )}
       </div>
@@ -1793,13 +1919,52 @@ export default function ProductCreatePage() {
           <Eye className="w-5 h-5" /> معاينة البيانات
         </NeonButton>
 
-        <NeonButton variant="success" fullWidth isLoading={submitting} onClick={handleSave}>
-          <Save className="w-5 h-5" /> حفظ في المخزون
-        </NeonButton>
+        {/* Helper: check if images are on CDN */}
+        {(() => {
+          const allUrls = [mainImageUrl, ...extraImageUrls].filter(Boolean)
+          const hasImages = allUrls.length > 0
+          const allOnCDN = hasImages && allUrls.every(
+            url => url.startsWith('https://') && (
+              url.includes('raw.githubusercontent.com') ||
+              url.includes('res.cloudinary.com')
+            )
+          )
+          return (
+            <>
+              <NeonButton
+                variant="success"
+                fullWidth
+                isLoading={submitting}
+                onClick={handleSave}
+                disabled={!hasImages || !allOnCDN}
+              >
+                <Save className="w-5 h-5" /> حفظ في المخزون
+              </NeonButton>
 
-        <NeonButton variant="amazon" fullWidth isLoading={submitting} onClick={handleSubmitToAmazon}>
-          <Globe className="w-5 h-5" /> حفظ وإرسال لـ Amazon
-        </NeonButton>
+              <NeonButton
+                variant="amazon"
+                fullWidth
+                isLoading={submitting}
+                onClick={handleSubmitToAmazon}
+                disabled={!hasImages || !allOnCDN}
+              >
+                <Globe className="w-5 h-5" /> حفظ وإرسال لـ Amazon
+              </NeonButton>
+
+              {/* Warning message if buttons are disabled */}
+              {hasImages && !allOnCDN && (
+                <div className="p-3 rounded-xl text-sm bg-neon-yellow/10 text-neon-yellow border border-neon-yellow/20 text-center">
+                  ⚠️ لازم ترفع الصور على GitHub/Cloudinary الأول — اضغط "📤 حفظ على GitHub" بالأعلى
+                </div>
+              )}
+              {!hasImages && (
+                <div className="p-3 rounded-xl text-sm bg-neon-yellow/10 text-neon-yellow border border-neon-yellow/20 text-center">
+                  ⚠️ لازم ترفع صور المنتج الأول
+                </div>
+              )}
+            </>
+          )
+        })()}
       </div>
 
       <button

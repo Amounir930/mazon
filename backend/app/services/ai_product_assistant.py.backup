@@ -91,41 +91,21 @@ class AIProductAssistant:
                 if 'product_type' not in bp or not bp['product_type']:
                     bp['product_type'] = 'HOME_ORGANIZERS_AND_STORAGE'  # Default fallback
 
-            # FIX: If AI didn't generate enough variants, create them automatically
-            if 'variants' not in raw_result or len(raw_result['variants']) < copies:
-                logger.warning(f"AI didn't return {copies} variants — auto-generating missings")
-                bp = raw_result.get('base_product', {})
-                current_variants = raw_result.get('variants', [])
-                
-                # If completely empty, make a fake base variant from name
-                if not current_variants:
-                    variant_sku = f"{bp.get('model_number', 'PROD')}-001"
-                    current_variants.append({
-                        "variant_number": 1,
-                        "name_ar": name,
-                        "name_en": name,
+            # FIX: If AI didn't generate variants, create them automatically from base_product
+            if 'variants' not in raw_result or not raw_result['variants']:
+                logger.warning("AI didn't return variants — auto-generating from base_product")
+                bp = raw_result['base_product']
+                raw_result['variants'] = []
+                for i in range(copies):
+                    variant_sku = f"{bp.get('model_number', 'PROD')}-{str(i+1).zfill(3)}"
+                    raw_result['variants'].append({
+                        "variant_number": i + 1,
+                        "name_ar": bp.get('product_type', name),
+                        "name_en": bp.get('product_type', name),
                         "description_ar": bp.get('bullet_points_ar', [''])[0] if bp.get('bullet_points_ar') else name,
                         "description_en": bp.get('bullet_points_en', [''])[0] if bp.get('bullet_points_en') else name,
                         "suggested_sku": variant_sku,
                     })
-                
-                # Duplicate the first variant to fill the remaining copies
-                base_var = current_variants[0]
-                marketing_suffixes = ["", " - جودة عالية", " - تصميم متميز", " - اختيار مثالي", " - متانة فائقة", " - إصدار خاص", " - عملي وأنيق", " - خامة ممتازة", " - حصري", " - الأفضل مبيعاً"]
-                
-                while len(current_variants) < copies:
-                    idx = len(current_variants) + 1
-                    suffix = marketing_suffixes[idx % len(marketing_suffixes)]
-                    current_variants.append({
-                        "variant_number": idx,
-                        "name_ar": f"{base_var['name_ar']}{suffix}",
-                        "name_en": f"{base_var['name_en']} Format {idx}",
-                        "description_ar": base_var['description_ar'],
-                        "description_en": base_var['description_en'],
-                        "suggested_sku": f"{base_var['suggested_sku']}-V{idx}"
-                    })
-                
-                raw_result['variants'] = current_variants
 
             result = AIProductResponse(**raw_result)
             logger.info(
@@ -152,65 +132,68 @@ class AIProductAssistant:
     def _build_system_prompt(self, learned_fields: list[str] = None) -> str:
         """Build system prompt with Amazon listing best practices"""
         base_prompt = """
-أنت خبير محترف ومسوق عالمي متخصص في تحسين قوائم المنتجات (SEO) على Amazon.
-مهمتك: توليد بيانات منتج كاملة من وصف مختصر، مع الالتزام التام بقواعد أمازون الصارمة.
+أنت مساعد ذكاء اصطناعي متخصص في تحسين قوائم المنتجات على Amazon.
+مهمتك: توليد بيانات منتج كاملة من وصف مختصر.
 
-⚠️ قواعد الحظر القاطعة (مهم جداً جداً):
-1. 🛑 طول اسم المنتج وتفاصيله: إجباري ومن الممنوعات الكبرى أن يكون اسم المنتج قصيراً!! يجب أن لا يقل اسم المنتج (عربي وإنجليزي) عن 12 كلمة كاملة! استخدم أسلوب Amazon SEO (حشو الكلمات المفتاحية الذكي: النوع + المادة + الاستخدام + الفوائد + لمن هذا المنتج). إذا وجدتك كتبت اسماً قصيراً سأعتبر ذلك فشلاً ذريعاً.
-2. 🛑 الألوان ممنوعة في الاسم: ممنوع منعاً باتاً كتابة أي ألوان (أبيض، أسود، أحمر، ذهبي، فضي، إلخ) في اسم المنتج! لا عربي ولا إنجليزي.
-3. الباركود EAN و UPC: يجب تركها فارغة تماما (سلاسل نصية فارغة "") - المنتج معفي من الباركود.
-4. التسعير والكمية: اتركها فارغة (null) - المستخدم يملأها بنفسه.
-5. المكونات المرفقة: اكتب كلمة واحدة فقط (مثال: "مزهريات" أو "جهاز").
-6. الوصف: لازم يكون وصف تسويقي شامل - 3 سطور كاملة على الأقل كقصة بيعية.
-7. النقاط البيعية (5 نقاط): إجباري - كل نقطة جملة طويلة جداً تشرح ميزة وفائدة قوية.
+⚠️ قواعد إجبارية:
+1. الباركود EAN و UPC: يجب تركها فارغة تماما (سلاسل نصية فارغة "") - المنتج معفي من الباركود.
+2. التسعير والكمية: اتركها فارغة (null) - المستخدم يملأها بنفسه
+3. المكونات المرفقة: اكتب كلمة واحدة فقط (مثال: "خلاط" أو "جهاز")
+4. الوصف (عربي + إنجليزي): لازم يكون وصف شامل - 3 سطور كاملة على الأقل
+   - يشرح المميزات + الاستخدامات + الفوائد
+   - مثال عربي: "هذا الخلاط الكهربائي بقوة 500 واط يأتي مع 5 سرعات مختلفة لتناسب جميع احتياجاتك في المطبخ. مصنوع من مواد عالية الجودة تضمن له المتانة والاستخدام الطويل. مثالي لخلط العجين، تحضير العصائر، وفرم المكونات المختلفة بسهولة تامة."
+5. النقاط البيعية (5 نقاط): إجباري - كل نقطة سطر كامل يشرح ميزة مهمة
+   - كل نقطة 20 حرف على الأقل
+   - تركز على الفوائد للمشتري
 
 ⚠️ قواعد الترجمة القاطعة (مهم جداً):
 - حقول اللغة العربية (name_ar, description_ar, bullet_points_ar) يجب أن تكون باللغة العربية الفصحى فقط وبدون أي كلمات إنجليزية!
 - حقول اللغة الإنجليزية (name_en, description_en, bullet_points_en) يجب أن تكون مخصصة لللغة الإنجليزية فقط وتمثل ترجمة حرفية للمعنى العربي المذكور، بدون أي تحريف!
 
-⚠️ مهم جداً - تصنيف المنتج (amazon_product_type) والفئة (browse_node_id):
-- أنت الآن مُلزم باستخدام "مهارة التصنيف الجبري المطابق". يجب أن تقوم بتحليل المنتج واختيار القالب (Template) الأكثر دقة من القائمة التالية فقط.
-- يُمنع منعاً باتاً ترك المنتج بدون الفئة المناسبة.
+⚠️ مهم جداً - نوع المنتج (product_type) والفئة (browse_node_id):
+- يجب أن تختار النوع الأنسب للمنتج من الأنواع التالية فقط:
 
-القوالب المعتمدة والمسموحة لك (يجب اختيار الأنسب والأدق):
+  1. "STORAGE" — تخزين وتنظيم (صناديق، رفوف، أدراج، منظمات، شماعات، حقائب تخزين)
+     browse_node_id: "21863799031" (تخزين عام) | "21863899031" (سلال وصناديق) | "21863898031" (خزائن ملابس) | "21863900031" (رفوف وأدراج) | "21864265031" (أحذية)
 
-  1. [أدوات تنظيم المنزل، الأثاث، المنظفات، والحمام] -> amazon_product_type: "HOME_ORGANIZERS_AND_STORAGE"
-     (يشمل: STORAGE, KITCHEN_STORAGE, BATHROOM_STORAGE, LAUNDRY, BEDDING, FURNITURE, CLEANING, BATHROOM_ACCESSORY)
-     browse_nodes: "21863799031", "21863899031", "21863900031", "21874771031", "21863798031" (المنظفات), "21863800031" (الحمام)
+  2. "KITCHEN" — أدوات المطبخ (أواني، ملاعق، سكاكين، أطباق، أكواب)
+     browse_node_id: "21863794031" (المطبخ) | "21863790031" (نفايات وتدوير)
 
-  2. [المزهريات والديكورات] -> amazon_product_type: "VASE" أو "HOME_ORGANIZERS_AND_STORAGE"
-     (يشمل: المزهريات استخدم VASE، باقي التحف والديكور استخدم HOME_ORGANIZERS_AND_STORAGE)
-     browse_nodes: "21863797031" (ديكور المنزل)
+  3. "BATHROOM" — مستلزمات الحمام (مناشف، حوامل، منظمات حمام، صابون)
+     browse_node_id: "21863800031" (الحمام) | "85443310031" (تخزين حمام) | "85443428031" (منظم غرف)
 
-  3. [المطبخ وأدوات الطبخ] -> amazon_product_type: "KITCHEN" أو "KITCHEN_TOOL" أو "COOKWARE"
-     (يشمل: أدوات المطبخ غير الكهربائية، الطاسات، المعالق، القطاعات اليدوية)
-     browse_nodes: "21863794031" (المطبخ)
+  4. "DECOR" — ديكور وزينة (لوحات، شموع، مزهريات، إطارات صور)
+     browse_node_id: "21863797031" (ديكور منزل) | "21863903031" (تغليف هدايا)
 
-  4. [المناديل والعناية بالبشرة] -> amazon_product_type: "SKIN_CLEANING_WIPE"
-     (يشمل: مناديل مبللة، مناديل تنظيف مكياج، مستحضرات ورقية للعناية)
+  5. "CLEANING" — تنظيف المنزل (مكانس، ممسحة، سوائل تنظيف، إسفنج)
+     browse_node_id: "21863798031" (أدوات تنظيف) | "21863790031" (نفايات)
 
-  5. [الأجهزة المنزلية الصغيرة] -> amazon_product_type: "SMALL_HOME_APPLIANCES"
-     (يشمل: الخلاطات، المكاوي، محضرات الطعام، العجانات، المكانس الكهربائية)
-     * تنبيه: يجب أن تقوم بتأليف معلومات طاقة (Wattage والجهد 220V) بداخل المواصفات أو الوصف لتجنب رفض أمازون.
+  6. "LAUNDRY" — غسيل وكي (منشر، مكواة، سلة غسيل، كيس غسيل)
+     browse_node_id: "21863791031" (غسيل وبخار وكي)
 
-  6. [أجهزة العناية الشخصية والتجميل] -> amazon_product_type: "PERSONAL_CARE_APPLIANCE"
-     (يشمل: ماكينات الحلاقة، السشوار، أجهزة إزالة الشعر، أدوات التجميل الكهربائية)
-     * تتطلب معلومات الطاقة الكهربائية والضمان بداخل المواصفات.
+  7. "FURNITURE" — أثاث (كراسي، طاولات، خزائن، أرفف حائط)
+     browse_node_id: "21863796031" (أثاث)
 
-  7. [إلكترونيات عامة] -> amazon_product_type: "ELECTRONICS"
-  8. [أدوات ومعدات يدوية] -> amazon_product_type: "TOOLS"
-  9. [مستحضرات التجميل العامة] -> amazon_product_type: "BEAUTY"
+  8. "LIGHTING" — إضاءة (مصابيح، ثريات، أباجورات، شريط LED)
+     browse_node_id: "21863795031" (إضاءة)
 
-⚠️ قواعد الإخراج الإجبارية (JSON):
-- يجب أن تُخرج حقل جديد في الـ JSON وهو "amazon_product_type" وضع فيه القيمة النصية الدقيقة المذكورة أعلاه (مثل "SKIN_CLEANING_WIPE").
-- يجب أن تضع حقل "product_type" (النوع المحلي) بالقيمة المناسبة من واجهتنا (STORAGE/KITCHEN/BATHROOM/CLEANING/APPLIANCE).
-- يجب أن تُخرج حقل "browse_node_id" وتختار أحد الأرقام من القائمة بالأعلى، أو تتركه فارغاً ("") إذا كان المنتج من الأجهزة الصغيرة ولا تعرف عقدته.
+  9. "BEDDING" — مفروشات وبياضات (ملاءات، مخدات، لحاف، بطانيات)
+     browse_node_id: "21863793031" (فراش وبياضات)
+
+  10. "HOME_IMPROVEMENT" — أدوات وتحسين المنزل (منظمات كراج، رفوف سلالم، منظمات خارجية وعدد)
+      browse_node_id: "21874771031" (منظمات منزلية قوية) | "21874835031" (منظمات كراج) | "85437693031" (تخزين خارجي) | "51376780031" (رفوف تخزين شكل سلالم)
+
+  11. "ARTS_AND_CRAFTS" — الفنون والحرف (تخزين ورق الهدايا، أدوات رسم، كرافت)
+      browse_node_id: "21863903031" (تخزين مواد تغليف هدايا وفنون)
+
+- يجب أن تضع حقل "product_type" بالقيمة المناسبة (STORAGE/KITCHEN/BATHROOM/DECOR/CLEANING/LAUNDRY/FURNITURE/LIGHTING/BEDDING/HOME_IMPROVEMENT/ARTS_AND_CRAFTS)
+- يجب أن تضع حقل "browse_node_id" بالرقم الأنسب للمنتج من القائمة أعلاه
 
 معايير Amazon:
-- اسم المنتج: ⚠️ إجباري لا يقل عن 25 كلمة ⚠️. يجب أن يكون اسماً طويلاً ومفصلاً (SEO Title) يتضمن العلامة التجارية + الموديل + المواصفات الأساسية + الاستخدامات. 🛑 (ممنوع كتابة أي ألوان مطلقاً). (max 200 حرف).
-- الوصف: max 2000 حرف، شامل المميزات + الاستخدام.
-- Bullet Points: 5 نقاط، كل نقطة max 500 حرف، تركز على الفوائد.
-- Keywords: max 250 حرف، SEO optimized.
+- اسم المنتج: max 200 حرف، يتضمن العلامة + الموديل + المواصفات الأساسية
+- الوصف: max 2000 حرف، شامل المميزات + الاستخدام
+- Bullet Points: 5 نقاط، كل نقطة max 500 حرف، تركز على الفوائد
+- Keywords: max 250 حرف، SEO optimized
 
 ⚠️ قواعد SKU إجبارية (مهم جداً):
 - SKU لازم يكون فريد لكل منتج — ممنوع التكرار نهائياً
@@ -277,7 +260,7 @@ class AIProductAssistant:
 واختار browse_node_id المناسب من القائمة في النظام.
 
 التنسيق المطلوب (JSON فقط):
-{{"base_product": {{"amazon_product_type": "KITCHEN", "product_type": "KITCHEN", "browse_node_id": "21863794031", "price": null, "ean": "", "upc": "", "bullet_points_ar": ["تصميم عملي بـ 5 أدراج متدرجة يناسب جميع أحجام الأطباق", "مصنوع من بلاستيك PP متين ومقاوم للكسر والصدأ", "أدراج قابلة للسحب بسهولة مع مقابض مريحة", "يوفر مساحة تخزين كبيرة في المطبخ أو الثلاجة", "سهل التنظيف — مجرد مسحة بقطعة قماش مبللة"], "bullet_points_en": ["Practical 5-tier drawer design fits all dish sizes", "Made from durable PP plastic — crack and rust resistant", "Smooth-sliding drawers with comfortable handles", "Provides ample storage space in kitchen or fridge", "Easy to clean — just wipe with a damp cloth"], "keywords": ["منظم مطبخ", "أدراج بلاستيك", "تخزين أطباق"], "material": "بلاستيك PP", "target_audience": "ربات البيوت", "condition": "New", "fulfillment_channel": "MFN", "model_number": "ORG-5DRW-001", "included_components": "منظم", "brand": "Generic", "manufacturer": "China", "country_of_origin": "CN"}}, "variants": [{{"variant_number": 1, "name_ar": "منظم أطباق بلاستيك عالي الجودة بتصميم خمسة أدراج متدرجة يوفر مساحة تخزين مثالية وعملية في المطبخ لترتيب الملاعق الأكواب والبهارات بشكل احترافي وأنيق تماما", "name_en": "High Quality Plastic Five Tier Drawer Dish Organizer Provides Perfect and Practical Kitchen Storage Space for Professionally and Neatly Arranging Spoons Cups and Spices", "description_ar": "منظم أطباق عملي بتصميم 5 أدراج متدرجة مصنوع من بلاستيك PP عالي الجودة. يوفر مساحة تخزين منظمة في المطبخ أو الثلاجة. مثالي لترتيب الأطباق والملاعق.", "description_en": "Practical dish organizer with 5-tier drawer design made from high-quality PP plastic. Provides organized storage space in kitchen or fridge. Easy to clean for daily use.", "suggested_sku": "ORG-5DRW-001"}}]}}
+{{"base_product": {{"product_type": "KITCHEN", "browse_node_id": "21863794031", "price": null, "ean": "", "upc": "", "bullet_points_ar": ["تصميم عملي بـ 5 أدراج متدرجة يناسب جميع أحجام الأطباق", "مصنوع من بلاستيك PP متين ومقاوم للكسر والصدأ", "أدراج قابلة للسحب بسهولة مع مقابض مريحة", "يوفر مساحة تخزين كبيرة في المطبخ أو الثلاجة", "سهل التنظيف — مجرد مسحة بقطعة قماش مبللة"], "bullet_points_en": ["Practical 5-tier drawer design fits all dish sizes", "Made from durable PP plastic — crack and rust resistant", "Smooth-sliding drawers with comfortable handles", "Provides ample storage space in kitchen or fridge", "Easy to clean — just wipe with a damp cloth"], "keywords": ["منظم مطبخ", "أدراج بلاستيك", "تخزين أطباق"], "material": "بلاستيك PP", "target_audience": "ربات البيوت", "condition": "New", "fulfillment_channel": "MFN", "model_number": "ORG-5DRW-001", "included_components": "منظم", "brand": "Generic", "manufacturer": "China", "country_of_origin": "CN"}}, "variants": [{{"variant_number": 1, "name_ar": "منظم أطباق 5 أدراج أبيض", "name_en": "5-Drawer Dish Organizer White", "description_ar": "منظم أطباق عملي بتصميم 5 أدراج متدرجة مصنوع من بلاستيك PP عالي الجودة. يوفر مساحة تخزين منظمة في المطبخ أو الثلاجة. سهل التنظيف والاستخدام اليومي. مثالي لترتيب الأطباق والملاعق والأواني الصغيرة بشكل أنيق ومرتب.", "description_en": "Practical dish organizer with 5-tier drawer design made from high-quality PP plastic. Provides organized storage space in kitchen or fridge. Easy to clean for daily use. Ideal for neatly arranging dishes, spoons, and small utensils.", "suggested_sku": "ORG-5DRW-WHT-001"}}]}}
 
 قواعد مهمة:
 - ⚠️ البراند (brand) والمصنع (manufacturer) وبلد المنشأ (country_of_origin): دي حقول محجوزة — المستخدم بيحددها يدوياً. AI مش بيغيرها — حط أي قيمة مؤقتة.

@@ -173,7 +173,6 @@ async def submit_product_to_amazon(product_id: str, background_tasks: Background
             "fulfillment_channel": product.fulfillment_channel or "MFN",
             "country_of_origin": product.country_of_origin or "CN",
             "product_type": product.product_type or "HOME_ORGANIZERS_AND_STORAGE",
-            "amazon_product_type": product_attrs.get("amazon_product_type") or getattr(product, "amazon_product_type", None) or product.product_type,
             "bullet_points": bullet_points,
             "browse_node_id": product.browse_node_id or "21863799031",
             # Merchant suggested ASIN 

@@ -58,6 +58,7 @@ class ProductCreate(BaseModel):
     fulfillment_channel: str = Field(default="MFN", max_length=20)
     handling_time: int = Field(default=0, ge=0)
     product_type: Optional[str] = Field(None, max_length=100)
+    amazon_product_type: Optional[str] = Field(None, max_length=100)
     manufacturer: Optional[str] = Field(None, max_length=200)
     model_number: Optional[str] = Field(None, max_length=100)
     country_of_origin: Optional[str] = Field(None, max_length=10)

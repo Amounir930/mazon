@@ -40,13 +40,14 @@ class FeedService:
         ET.SubElement(product_elem, "SKU").text = product.get("sku", "")
 
         # Standard Product ID (UPC/EAN)
-        standard_id = ET.SubElement(product_elem, "StandardProductID")
-        if product.get("upc"):
-            ET.SubElement(standard_id, "Type").text = "UPC"
-            ET.SubElement(standard_id, "Value").text = product["upc"]
-        elif product.get("ean"):
-            ET.SubElement(standard_id, "Type").text = "EAN"
-            ET.SubElement(standard_id, "Value").text = product["ean"]
+        if product.get("upc") or product.get("ean"):
+            standard_id = ET.SubElement(product_elem, "StandardProductID")
+            if product.get("upc"):
+                ET.SubElement(standard_id, "Type").text = "UPC"
+                ET.SubElement(standard_id, "Value").text = product["upc"]
+            elif product.get("ean"):
+                ET.SubElement(standard_id, "Type").text = "EAN"
+                ET.SubElement(standard_id, "Value").text = product["ean"]
 
         # Description Data
         desc_data = ET.SubElement(product_elem, "DescriptionData")
@@ -155,6 +156,10 @@ class FeedService:
         # Quantity
         if product.get("quantity") is not None:
             ET.SubElement(product_elem, "Quantity").text = str(product["quantity"])
+
+        # GTIN Exemption Flag (RegisteredParameter)
+        if not product.get("upc") and not product.get("ean"):
+            ET.SubElement(product_elem, "RegisteredParameter").text = "PrivateLabel"
 
         return ET.tostring(envelope, encoding="UTF-8", xml_declaration=True)
 

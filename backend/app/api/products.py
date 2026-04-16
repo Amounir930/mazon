@@ -124,10 +124,17 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
     ).first()
 
     if existing:
-        raise HTTPException(
-            status_code=409,
-            detail="SKU already exists for this seller"
-        )
+        # Auto-generate a unique SKU instead of rejecting
+        base_sku = data.sku
+        counter = 2
+        new_sku = f"{base_sku}-{counter}"
+        while db.query(Product).filter(
+            Product.seller_id == seller_id,
+            Product.sku == new_sku
+        ).first():
+            counter += 1
+            new_sku = f"{base_sku}-{counter}"
+        data = data.model_copy(update={"sku": new_sku})
 
     # DISABLED: No validation blocking — always allow product creation
     # Validation is now optional for display purposes only
@@ -178,6 +185,7 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
         fulfillment_channel=data.fulfillment_channel or "MFN",
         handling_time=data.handling_time or 0,
         product_type=data.product_type or "",
+        amazon_product_type=data.amazon_product_type or "",
         manufacturer=data.manufacturer or "",
         model_number=data.model_number or "",
         country_of_origin=data.country_of_origin or "",

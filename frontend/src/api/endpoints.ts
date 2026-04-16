@@ -286,11 +286,11 @@ export const imagesApi = {
     })
   },
 
-  // رفع صورة مباشرة على GitHub (للحفظ قبل الإرسال)
+  // رفع صورة مباشرة (Cloudinary → GitHub fallback)
   uploadToGitHub: (file: File) => {
     const formData = new FormData()
     formData.append('file', file)
-    return api.post<{ success: boolean; github_url: string; message: string; error: string }>('/images/upload-to-github', formData, {
+    return api.post<{ success: boolean; image_url: string; message: string; error: string }>('/images/upload-to-github', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },

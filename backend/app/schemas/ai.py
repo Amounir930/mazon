@@ -26,6 +26,14 @@ class BaseProductData(BaseModel):
     manufacturer: str = Field(default="Generic", min_length=1, max_length=200)
     
     # MANDATORY: Amazon SP-API product type — must be one of the official English values
+    amazon_product_type: str = Field(
+        default="HOME_ORGANIZERS_AND_STORAGE",
+        description="Amazon SP-API product type (English only, e.g., SKIN_CLEANING_WIPE, SMALL_HOME_APPLIANCES)"
+    )
+    browse_node_id: str = Field(
+        default="",
+        description="Amazon Browse Node ID (e.g. 21863799031)"
+    )
     product_type: str = Field(
         ...,
         min_length=1,
@@ -33,7 +41,7 @@ class BaseProductData(BaseModel):
         description="Amazon SP-API product type (English only, e.g., HOME_KITCHEN, ELECTRONICS)"
     )
     price: Optional[float] = Field(default=None, description="Price in EGP - optional, AI leaves empty")
-    ean: str = Field(..., min_length=13, max_length=13, description="EAN barcode - 13 digits, MANDATORY")
+    ean: str = Field(default="", max_length=13, description="EAN barcode - 13 digits or empty for GTIN exemption")
     upc: Optional[str] = Field(default="", max_length=12)
     bullet_points_ar: List[str] = Field(default_factory=list, min_items=5, max_items=5)
     bullet_points_en: List[str] = Field(default_factory=list, min_items=5, max_items=5)
@@ -77,12 +85,12 @@ class BaseProductData(BaseModel):
     @field_validator("ean")
     @classmethod
     def validate_ean(cls, v: str) -> str:
-        """EAN must be 13 digits - MANDATORY"""
+        """EAN must be 13 digits or empty for GTIN exemption"""
         if not v or not v.strip():
-            raise ValueError("EAN is MANDATORY - AI must generate 13 digits")
+            return ""
         digits = v.strip().replace("-", "")
         if not digits.isdigit() or len(digits) != 13:
-            raise ValueError("EAN must be exactly 13 digits")
+            raise ValueError("EAN must be exactly 13 digits if provided")
         return v.strip()
 
     @field_validator("upc")

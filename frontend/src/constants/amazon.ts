@@ -5,31 +5,132 @@
  * مصدر واحد مركزي - ممنوع الـ Hardcoding في الـ Components
  */
 
-// ==================== Product Types ====================
+// ==================== Product Type Categories ====================
+// كل مجموعة لها browse nodes خاصة بها
+// productType ثابت = HOME_ORGANIZERS_AND_STORAGE (أمازون مصر ترفض أي نوع آخر)
+// الـ browse_node_id هو اللي يحدد الفئة الفعلية للمنتج
 
-export const PRODUCT_TYPES = [
-  { value: 'HOME_ORGANIZERS_AND_STORAGE', label: 'أدوات تنظيم وتخزين المنزل' },
-  { value: 'HOME_KITCHEN', label: 'المنزل والمطبخ' },
-  { value: 'BABY_PRODUCT', label: 'منتجات أطفال' },
-  { value: 'APPAREL', label: 'ملابس وأزياء' },
-  { value: 'ELECTRONICS', label: 'إلكترونيات' },
-  { value: 'TOYS_AND_GAMES', label: 'ألعاب وألعاب' },
-  { value: 'BEAUTY', label: 'العناية الشخصية والجمال' },
-  { value: 'SPORTING_GOODS', label: 'الرياضة والسلع الرياضية' },
-  { value: 'OFFICE_PRODUCTS', label: 'مستلزمات المكتبة والأدوات المكتبية' },
-  { value: 'PET_PRODUCTS', label: 'مستلزمات الحيوانات الأليفة' },
+export const PRODUCT_TYPE_CATEGORIES = [
+  { value: 'STORAGE', label: '📦 تخزين وتنظيم', icon: '📦', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
+  { value: 'KITCHEN', label: '🍳 أدوات المطبخ', icon: '🍳', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
+  { value: 'BATHROOM', label: '🛁 مستلزمات الحمام', icon: '🛁', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
+  { value: 'DECOR', label: '🎨 ديكور وزينة', icon: '🎨', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
+  { value: 'CLEANING', label: '🧹 تنظيف المنزل', icon: '🧹', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
+  { value: 'LAUNDRY', label: '👕 غسيل وكي', icon: '👕', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
+  { value: 'FURNITURE', label: '🪑 أثاث', icon: '🪑', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
+  { value: 'LIGHTING', label: '💡 إضاءة', icon: '💡', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
+  { value: 'BEDDING', label: '🛏️ مفروشات وبياضات', icon: '🛏️', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
+  { value: 'HOME_IMPROVEMENT', label: '🛠️ أدوات وتحسين المنزل', icon: '🛠️', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
+  { value: 'ARTS_AND_CRAFTS', label: '✂️ الفنون والحرف', icon: '✂️', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
 ] as const
 
-// ==================== Browse Nodes ====================
+// PRODUCT_TYPES — للتوافقية مع الكود القديم
+export const PRODUCT_TYPES = PRODUCT_TYPE_CATEGORIES
 
+// ==================== Browse Nodes by Category ====================
+// Browse Node IDs مأخوذة من Amazon SP-API JSON Schema (Egypt marketplace)
+// 🔒 كل الأنواع تُرسل لأمازون كـ HOME_ORGANIZERS_AND_STORAGE
+
+export const BROWSE_NODES_BY_TYPE: Record<string, {value: string; label: string}[]> = {
+  // ====== 📦 تخزين وتنظيم ======
+  'STORAGE': [
+    { value: '21863799031', label: 'التخزين والتنظيم المنزلي' },
+    { value: '21863899031', label: 'سلال وصناديق التخزين' },
+    { value: '21863898031', label: 'خزائن التخزين والملابس' },
+    { value: '21863900031', label: 'مساند ورفوف وأدراج التخزين' },
+    { value: '21863902031', label: 'التخزين والمنظمات المكتبية المنزلية' },
+    { value: '21863904031', label: 'تخزين زينة الأعياد' },
+    { value: '21863901031', label: 'تخزين ديكور الأكليل' },
+    { value: '21864267031', label: 'مرفقات نظام تخزين الخزانة' },
+    { value: '21864265031', label: 'خزانات الأحذية' },
+    { value: '27385458031', label: 'فتحات الأحذية' },
+    { value: '88739314031', label: 'حقائب متحركة' },
+    { value: '207834611031', label: 'منظمات النظارات' },
+    { value: '85443431031', label: 'الشماعات على شكل جيوب' },
+    { value: '21864751031', label: 'رفوف مقسمة' },
+    { value: '21864753031', label: 'نظام الأدراج للتخزين في الخزائن' },
+    { value: '85443438031', label: 'رفوف الرسائل' },
+    { value: '85443434031', label: 'رفوف لتخزين الصحف' },
+    { value: '85443436031', label: 'أحواض المياه المصرفية' },
+    { value: '85443441031', label: 'رفرف مكاتب البيت والتخزين' },
+    { value: '21864274031', label: 'رفوف وعروض المكاتب المنزلية' },
+    { value: '21864277031', label: 'مخازن اضواء الاعياد' },
+  ],
+
+  // ====== 🍳 أدوات المطبخ ======
+  'KITCHEN': [
+    { value: '21863794031', label: 'المطبخ' },
+    { value: '21863790031', label: 'النفايات وإعادة التدوير' },
+  ],
+
+  // ====== 🛁 مستلزمات الحمام ======
+  'BATHROOM': [
+    { value: '21863800031', label: 'الحمام' },
+    { value: '85443310031', label: 'منظمات وتخزين الحمام' },
+    { value: '85443428031', label: 'منظم مستلزمات الغرف والحمام' },
+  ],
+
+  // ====== 🎨 ديكور وزينة ======
+  'DECOR': [
+    { value: '21863797031', label: 'ديكور المنزل' },
+  ],
+
+  // ====== 🧹 تنظيف المنزل ======
+  'CLEANING': [
+    { value: '21863798031', label: 'أدوات التنظيف المنزلية والمكانس' },
+    { value: '21863790031', label: 'النفايات وإعادة التدوير' },
+  ],
+
+  // ====== 👕 غسيل وكي ======
+  'LAUNDRY': [
+    { value: '21863791031', label: 'غسيل الملابس والبخار والكي' },
+  ],
+
+  // ====== 🪑 أثاث ======
+  'FURNITURE': [
+    { value: '21863796031', label: 'أثاث' },
+  ],
+
+  // ====== 💡 إضاءة ======
+  'LIGHTING': [
+    { value: '21863795031', label: 'الإضاءة والعمل الفني' },
+  ],
+
+  // ====== 🛏️ مفروشات وبياضات ======
+  'BEDDING': [
+    { value: '21863793031', label: 'الفراش والبياضات' },
+  ],
+
+  // ====== 🛠️ أدوات وتحسين المنزل ======
+  'HOME_IMPROVEMENT': [
+    { value: '21874771031', label: 'التخزين والمنظمات المنزلية' },
+    { value: '51376780031', label: 'رفوف تخزين على شكل سلالم' },
+    { value: '85437693031', label: 'التخزين الخارجي' },
+    { value: '21874835031', label: 'منتجات تخزين وتنظيم خاصة بالكراج' },
+    { value: '21875016031', label: 'ملحقات نظام تخزين الكراج' },
+    { value: '21875388031', label: 'معدات لأنطمة تخزين الكراج' },
+    { value: '85437913031', label: 'رفوف وحاملات للدرجات' },
+  ],
+
+  // ====== ✂️ الفنون والحرف ======
+  'ARTS_AND_CRAFTS': [
+    { value: '21863903031', label: 'تخزين مواد تغليف الهدايا' },
+  ],
+}
+
+// ====== Fallback: جميع الـ Browse Nodes (للتوافقية) ======
 export const BROWSE_NODES = [
-  { value: '21863799031', label: 'المنزل والمطبخ > التخزين والتنظيم المنزلي' },
-  { value: '21863899031', label: 'المنزل والمطخب > سلال وصناديق التخزين' },
-  { value: '21863898031', label: 'المنزل والمطبخ > خزائن التخزين والملابس' },
-  { value: '21863798031', label: 'المنزل والمطبخ > أدوات المطبخ' },
-  { value: '21863797031', label: 'المنزل والمطبخ > الديكور المنزلي' },
-  { value: '21863796031', label: 'المنزل والمطبخ > الأثاث' },
-  { value: '21863795031', label: 'المنزل والمطبخ > الإضاءة' },
+  ...BROWSE_NODES_BY_TYPE['STORAGE'],
+  ...BROWSE_NODES_BY_TYPE['KITCHEN'],
+  ...BROWSE_NODES_BY_TYPE['BATHROOM'],
+  ...BROWSE_NODES_BY_TYPE['DECOR'],
+  ...BROWSE_NODES_BY_TYPE['CLEANING'],
+  ...BROWSE_NODES_BY_TYPE['LAUNDRY'],
+  ...BROWSE_NODES_BY_TYPE['FURNITURE'],
+  ...BROWSE_NODES_BY_TYPE['LIGHTING'],
+  ...BROWSE_NODES_BY_TYPE['BEDDING'],
+  ...BROWSE_NODES_BY_TYPE['HOME_IMPROVEMENT'],
+  ...BROWSE_NODES_BY_TYPE['ARTS_AND_CRAFTS'],
 ] as const
 
 // ==================== Conditions ====================
@@ -111,7 +212,7 @@ export const DEFAULT_VALUES = {
   brand: 'Generic',
   condition: 'New',
   fulfillment_channel: 'MFN',
-  country_of_origin: 'CN',
+  country_of_origin: 'CN',  // 🔒 FIXED - AI cannot modify this field
   number_of_boxes: 1,
   package_quantity: 1,
   handling_time: 1,
@@ -122,7 +223,7 @@ export const DEFAULT_VALUES = {
   package_length: 25,
   package_width: 10,
   package_height: 15,
-  product_type: 'HOME_ORGANIZERS_AND_STORAGE',
+  product_type: 'STORAGE',  // 📦 الفئة الافتراضية — يتم إرسالها كـ HOME_ORGANIZERS_AND_STORAGE لأمازون
   browse_node_id: '21863799031',
   id_type: 'EAN',
 } as const

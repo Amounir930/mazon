@@ -220,6 +220,12 @@ def run_migrations(engine) -> None:
         if "products" in existing_tables:
             _add_column_if_missing(conn, "products", "has_product_identifier", "BOOLEAN DEFAULT FALSE")
 
+        # ==========================================
+        # Migration 14: Add amazon_product_type to products for SP-API bypass
+        # ==========================================
+        if "products" in existing_tables:
+            _add_column_if_missing(conn, "products", "amazon_product_type", "VARCHAR(100)")
+
         conn.commit()
 
     logger.info("Database migration completed successfully")

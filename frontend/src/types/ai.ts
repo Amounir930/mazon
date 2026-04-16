@@ -15,6 +15,8 @@ export interface BaseProductData {
   brand: string
   manufacturer: string
   product_type: string
+  amazon_product_type?: string
+  browse_node_id?: string
   price: number | null  // اختياري - AI يتركه null
   ean: string  // إجباري - 13 رقم
   upc: string
@@ -68,6 +70,7 @@ export interface AIMergedProduct {
   brand: string
   manufacturer: string
   product_type: string
+  browse_node_id?: string
   price: number | null  // اختياري
   ean: string  // إجباري - 13 رقم
   upc: string

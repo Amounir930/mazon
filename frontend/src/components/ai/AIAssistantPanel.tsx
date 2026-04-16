@@ -215,6 +215,7 @@ function mergeProduct(base: BaseProductData, variant: ProductVariant): AIMergedP
     brand: base.brand,
     manufacturer: base.manufacturer,
     product_type: base.product_type,
+    amazon_product_type: base.amazon_product_type,
     price: base.price,
     ean: base.ean,
     upc: base.upc,
