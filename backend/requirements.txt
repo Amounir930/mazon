@@ -34,7 +34,7 @@ pydantic[email]==2.6.1
 pywebview==4.4.1
 
 # Build
-pyinstaller==6.5.0
+pyinstaller>=6.11.0
 
 # Utils
 python-dotenv==1.0.0

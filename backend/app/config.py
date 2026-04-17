@@ -1,12 +1,22 @@
-"""
-Crazy Lister v3.0 - Configuration
-Environment variables and application settings
-"""
+import sys
 import os
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 from typing import Optional
+
+
+def get_env_path() -> Path:
+    """Unified helper to get the path to the .env file (supports Local and EXE)"""
+    if getattr(sys, 'frozen', False):
+        # Compiled EXE mode: .env is in the same folder as the .exe
+        return Path(sys.executable).parent / ".env"
+    
+    # Development mode: resolve to backend/.env
+    # Current file is backend/app/config.py, we need parent/parent/.env
+    current_file = Path(__file__).resolve()
+    backend_dir = current_file.parent.parent
+    return backend_dir / ".env"
 
 
 # Windows AppData paths
@@ -25,10 +35,11 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=get_env_path(),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
+        protected_namespaces=(),  # Fixes Pydantic UserWarning about 'model_'
     )
 
     # Application
@@ -49,6 +60,11 @@ class Settings(BaseSettings):
     # LWA Credentials (Used for SP-API OAuth)
     SP_API_CLIENT_ID: str = ""
     SP_API_CLIENT_SECRET: str = ""
+    SP_API_REFRESH_TOKEN: str = ""
+    SP_API_SELLER_ID: str = ""
+    SP_API_MARKETPLACE_ID: str = "ARBP9OOSHTCHU"
+    SP_API_COUNTRY: str = "eg"
+    SP_API_ENABLED: bool = True
 
     # CORS (localhost only for desktop app)
     CORS_ORIGINS: list[str] = ["*"]
@@ -67,7 +83,6 @@ class Settings(BaseSettings):
     USE_AMAZON_MOCK: bool = False
 
 
-@lru_cache()
 def get_settings() -> Settings:
-    """Get cached settings instance"""
+    """Get fresh settings instance (no cache to allow live .env updates)"""
     return Settings()

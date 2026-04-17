@@ -17,6 +17,8 @@ from app.services.session_store import (
     deactivate_all_sessions,
 )
 from loguru import logger
+from app.config import get_settings, get_env_path
+
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -338,108 +340,34 @@ async def get_session_status():
             last_verified_at=session.last_verified_at.isoformat() if session.last_verified_at else None,
         )
 
-    # ثانياً: لو مفيش session، شوف لو SP-API credentials موجودة ومفعلة في .env
+    # ثانياً: لو مفيش session، شوف لو SP-API credentials موجودة ومفعلة في settings
     try:
-        import os
-        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
-        env_vars = {}
-        if os.path.exists(env_path):
-            with open(env_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith('#') and '=' in line:
-                        key, _, value = line.partition('=')
-                        env_vars[key.strip()] = value.strip()
+        settings = get_settings()
         
         # Check if SP-API is enabled
-        sp_enabled = env_vars.get("SP_API_ENABLED", "True").lower() == "true"
+        sp_enabled = getattr(settings, "SP_API_ENABLED", True)
         
         if not sp_enabled:
             return SessionStatusResponse(is_connected=False)
         
-        seller_id = env_vars.get("SP_API_SELLER_ID")
-        client_id = env_vars.get("SP_API_CLIENT_ID")
-        refresh_token = env_vars.get("SP_API_REFRESH_TOKEN")
-        country = env_vars.get("SP_API_COUNTRY", "eg")
-
         # Check if we have the essential credentials
-        has_credentials = all([seller_id, client_id, refresh_token])
+        seller_id = getattr(settings, "SP_API_SELLER_ID", None)
+        client_id = getattr(settings, "SP_API_CLIENT_ID", None)
+        refresh_token = getattr(settings, "SP_API_REFRESH_TOKEN", None)
+        country = getattr(settings, "SP_API_COUNTRY", "eg")
 
-        if has_credentials:
-            # Try to get real seller name from Amazon
-            seller_display_name = seller_id
-            is_valid_connection = False
-            
-            try:
-                from app.services.sp_api_client import SPAPIClient
-                client = SPAPIClient(country_code=country)
-                
-                # أولاً: جرب احصل على access token (ده proof إن البيانات شغالة)
-                access_token = client._get_access_token()
-                
-                if access_token:
-                    # لو الـ token نجح، جرب تجيب اسم التاجر
-                    try:
-                        # Use marketplaceParticipations (works) instead of account (403)
-                        participations = client.get_marketplace_participations()
-                        if participations and participations.get("payload"):
-                            payload = participations["payload"]
-                            seller_display_name = (
-                                payload[0].get("storeName") or
-                                payload[0].get("sellerName") or
-                                seller_id
-                            )
-                            logger.info(f"✅ Real seller name from Amazon: {seller_display_name}")
-                            is_valid_connection = True  # ✅ SP-API نجح بالكامل
-                        else:
-                            logger.warning("⚠️ No marketplace participations found")
-                            is_valid_connection = False
-                    except Exception as name_err:
-                        error_str = str(name_err).lower()
-                        # Check if it's a 403 Unauthorized
-                        if "403" in error_str or "unauthorized" in error_str or "denied" in error_str:
-                            logger.error(f"❌ SP-API Unauthorized (403): {name_err}")
-                            is_valid_connection = False
-                        else:
-                            logger.warning(f"⚠️ Could not fetch seller name (but connection OK): {name_err}")
-                            seller_display_name = seller_id
-                            is_valid_connection = True  # Maybe temporary issue
-                    
-            except Exception as e:
-                error_msg = str(e).lower()
-                if "expired" in error_msg or "unauthorized" in error_msg or "invalid" in error_msg:
-                    logger.error(f"❌ SP-API credentials expired/invalid: {str(e)[:200]}")
-                    is_valid_connection = False
-                else:
-                    logger.warning(f"⚠️ SP-API connection issue: {str(e)[:200]}")
-                    # لو خطأ مش في الصلاحية، خلّيه متصل (ممكن مشكلة مؤقتة)
-                    is_valid_connection = True
-                    seller_display_name = seller_id
-            
-            if is_valid_connection:
-                return SessionStatusResponse(
-                    is_connected=True,
-                    auth_method="sp_api",
-                    seller_name=seller_display_name,
-                    email=None,
-                    country_code=country,
-                    is_valid=True,
-                    last_verified_at=None,
-                )
-            else:
-                # البيانات موجودة لكن الـ token منتهي
-                logger.warning("⚠️ Credentials exist but token expired - showing disconnected")
-                return SessionStatusResponse(
-                    is_connected=False,
-                    auth_method=None,
-                    seller_name=None,
-                    email=None,
-                    country_code=country,
-                    is_valid=False,
-                    last_verified_at=None,
-                )
+        if all([seller_id, client_id, refresh_token]):
+            return SessionStatusResponse(
+                is_connected=True,
+                auth_method="sp_api",
+                seller_name=seller_id,
+                email=None,
+                country_code=country,
+                is_valid=True,
+                last_verified_at=None,
+            )
     except Exception as e:
-        logger.warning(f"Failed to check .env credentials: {e}")
+        logger.warning(f"Failed to check settings credentials: {e}")
 
     # لا session ولا credentials
     return SessionStatusResponse(is_connected=False)
@@ -596,30 +524,21 @@ async def verify_session():
             last_verified_at=session.last_verified_at.isoformat() if session.last_verified_at else None,
         )
 
-    # ثانياً: شوف لو فيه SP-API credentials في .env
+    # ثانياً: شوف لو فيه SP-API credentials في settings
     try:
-        import os
-        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
-        env_vars = {}
-        if os.path.exists(env_path):
-            with open(env_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith('#') and '=' in line:
-                        key, _, value = line.partition('=')
-                        env_vars[key.strip()] = value.strip()
+        settings = get_settings()
         
         # Check if SP-API is enabled
-        sp_enabled = env_vars.get("SP_API_ENABLED", "True").lower() == "true"
+        sp_enabled = getattr(settings, "SP_API_ENABLED", True)
         
         if not sp_enabled:
             return SessionStatusResponse(is_connected=False)
         
-        seller_id = env_vars.get("SP_API_SELLER_ID")
-        client_id = env_vars.get("SP_API_CLIENT_ID")
-        client_secret = env_vars.get("SP_API_CLIENT_SECRET")
-        refresh_token = env_vars.get("SP_API_REFRESH_TOKEN")
-        country = env_vars.get("SP_API_COUNTRY", "eg")
+        seller_id = settings.SP_API_SELLER_ID
+        client_id = settings.SP_API_CLIENT_ID
+        client_secret = settings.SP_API_CLIENT_SECRET
+        refresh_token = settings.SP_API_REFRESH_TOKEN
+        country = getattr(settings, "SP_API_COUNTRY", "eg")
 
         has_credentials = all([seller_id, client_id, client_secret, refresh_token])
 
@@ -701,7 +620,7 @@ async def logout():
         deactivate_all_sessions()
         
         # 2. Disable SP-API credentials temporarily
-        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env')
+        env_path = get_env_path()
         env_vars = {}
         if os.path.exists(env_path):
             with open(env_path, 'r', encoding='utf-8') as f:
@@ -718,7 +637,8 @@ async def logout():
             for key, value in env_vars.items():
                 f.write(f'{key}={value}\n')
         
-        load_dotenv(env_path, override=True)
+        from dotenv import load_dotenv
+        load_dotenv(str(env_path), override=True)
         logger.info("🚪 Logout: SP-API disabled")
         
         return DisconnectResponse(

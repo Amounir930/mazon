@@ -51,6 +51,7 @@ a = Analysis(
         'sqlalchemy.ext.asyncio',
         'sqlalchemy.dialects.sqlite',
         'alembic',
+        'aiosqlite',
         # Amazon SP-API
         'boto3',
         'botocore',
@@ -66,6 +67,7 @@ a = Analysis(
         # Data processing
         'openpyxl',
         'pandas',
+        'numpy',
         # Utilities
         'loguru',
         'pydantic',
@@ -75,6 +77,7 @@ a = Analysis(
         'tenacity',
         'bs4',
         'cryptography',
+        'app.services.ai_prompts',
         # PyWebView
         'webview',
         'webview.http',
@@ -102,7 +105,6 @@ a = Analysis(
         # Remove unnecessary backends
         'matplotlib',
         'scipy',
-        'numpy',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

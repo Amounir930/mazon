@@ -15,6 +15,7 @@ import signal
 import threading
 import asyncio
 import socket
+import traceback
 from pathlib import Path
 from urllib.request import urlopen
 from urllib.error import URLError
@@ -96,14 +97,20 @@ def _run_server():
     logger.info(f"Starting FastAPI backend on {BACKEND_URL}...")
 
     try:
+        # Import app directly to catch any import-time errors in this thread
+        from app.main import app
+        
         uvicorn.run(
-            "app.main:app",
+            app,  # Pass the app object directly
             host=BACKEND_HOST,
             port=BACKEND_PORT,
             log_level="warning",
         )
     except Exception as e:
-        logger.error(f"❌ Uvicorn failed: {e}")
+        error_tb = traceback.format_exc()
+        logger.error(f"❌ Uvicorn failed to start:\n{error_tb}")
+        # Signal failure to the main thread
+        _shutdown_event.set()
         raise
 
 
@@ -187,10 +194,11 @@ def main():
     if not os.path.exists(frontend_path):
         logger.error(f"❌ Frontend not found: {frontend_path}")
         logger.error("Run 'npm run build' in frontend/ first!")
-        try:
-            input("Press Enter to exit...")
-        except (RuntimeError, EOFError):
-            pass  # stdin not available in frozen .exe
+        if not getattr(sys, 'frozen', False) and sys.stdin and sys.stdin.isatty():
+            try:
+                input("Press Enter to exit...")
+            except (RuntimeError, EOFError):
+                pass
         sys.exit(1)
 
     logger.info(f"✅ Frontend: {frontend_path}")
@@ -200,9 +208,13 @@ def main():
     start_backend()
 
     # Wait for backend to be ready
-    if not wait_for_server(timeout=15):
+    if not wait_for_server(timeout=30):
         logger.error("❌ Failed to start backend — exiting")
-        input("Press Enter to exit...")
+        if not getattr(sys, 'frozen', False) and sys.stdin and sys.stdin.isatty():
+            try:
+                input("Press Enter to exit...")
+            except (RuntimeError, EOFError):
+                pass
         sys.exit(1)
 
     # Create PyWebView window

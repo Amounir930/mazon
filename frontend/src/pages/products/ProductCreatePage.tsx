@@ -582,8 +582,8 @@ export default function ProductCreatePage() {
     // النقاط البيعية - اختيارية (ممنوع إجباري)
     // التسعير والكمية - اختياري (ممنوع إجباري)
     // No validation on price/quantity - they are optional
-    if (!mainImageUrl && !isEditMode)
-      errors.push('لازم ترفع صورة رئيسية')
+    if (!mainImageUrl)
+      errors.push('لازم ترفع صورة رئيسية — إجباري لأمازون')
 
     return { valid: errors.length === 0, errors }
   }
@@ -747,7 +747,7 @@ export default function ProductCreatePage() {
   }, [])
 
   // ==================== Build Payload ====================
-  const buildPayload = (variantIndex = 0, overrideImages?: string[]) => {
+  const buildPayload = (variantIndex = 0, overrideImages?: string[], isDraft = false) => {
     const allImages = overrideImages || [mainImageUrl, ...extraImageUrls].filter(Boolean)
     // Unique SKU: timestamp + variant index + 2 random segments separated by dashes to prevent duplicates
     const skuTimestamp = Date.now()
@@ -777,6 +777,7 @@ export default function ProductCreatePage() {
 
     return {
       sku,
+      status: isDraft ? 'incomplete' : 'active',
       seller_id: selectedSellerId || undefined,
       name: finalNameAr,
       name_ar: finalNameAr,
@@ -825,11 +826,19 @@ export default function ProductCreatePage() {
   }
 
   // ==================== Submit Handlers ====================
-  const handleSave = async () => {
-    const { valid, errors } = validate()
-    if (!valid) {
-      toast.error(errors.join('\n'))
-      return
+  const handleSave = async (isDraft = false) => {
+    if (!isDraft) {
+      const { valid, errors } = validate()
+      if (!valid) {
+        toast.error(errors.join('\n'))
+        return
+      }
+    } else {
+      // Minimal validation for draft: at least a name
+      if (!required.name_ar.trim() && !required.name_en.trim()) {
+        toast.error('⚠️ لازم تكتب اسم المنتج على الأقل عشان تحفظه كمسودة')
+        return
+      }
     }
 
     setSubmitting(true)
@@ -844,7 +853,7 @@ export default function ProductCreatePage() {
 
       const payloads = []
       for (let i = 0; i < actualCopies; i++) {
-        payloads.push(buildPayload(i, imageUrls))
+        payloads.push(buildPayload(i, imageUrls, isDraft))
       }
 
       // EDIT MODE: Update existing product
@@ -1763,7 +1772,8 @@ export default function ProductCreatePage() {
                 setMainImageUrl('')
                 setMainImagePreview('')
               }}
-              className="absolute top-2 right-2 p-2 bg-neon-red text-white rounded-full hover:bg-neon-red/80 transition-all opacity-0 group-hover:opacity-100"
+              className="absolute top-2 right-2 p-2 bg-neon-red text-white rounded-full hover:bg-neon-red/80 transition-all shadow-lg z-10"
+              title="إزالة الصورة"
             >
               <X className="w-4 h-4" />
             </button>
@@ -1821,7 +1831,8 @@ export default function ProductCreatePage() {
                     />
                     <button
                       onClick={() => removeExtraImage(i)}
-                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                      className="absolute top-1 right-1 p-1 bg-neon-red text-white rounded-full hover:bg-neon-red/80 transition-all shadow-md z-10"
+                      title="إزالة الصورة"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -1929,14 +1940,25 @@ export default function ProductCreatePage() {
               url.includes('res.cloudinary.com')
             )
           )
+          const hasMainImage = !!mainImageUrl
           return (
             <>
+              <NeonButton
+                variant="info"
+                styleType="outline"
+                fullWidth
+                isLoading={submitting}
+                onClick={() => handleSave(true)}
+              >
+                <Save className="w-5 h-5" /> حفظ مؤقت (مسودة)
+              </NeonButton>
+
               <NeonButton
                 variant="success"
                 fullWidth
                 isLoading={submitting}
-                onClick={handleSave}
-                disabled={!hasImages || !allOnCDN}
+                onClick={() => handleSave(false)}
+                disabled={!hasMainImage || (hasImages && !allOnCDN)}
               >
                 <Save className="w-5 h-5" /> حفظ في المخزون
               </NeonButton>
@@ -1946,13 +1968,18 @@ export default function ProductCreatePage() {
                 fullWidth
                 isLoading={submitting}
                 onClick={handleSubmitToAmazon}
-                disabled={!hasImages || !allOnCDN}
+                disabled={!hasMainImage || (hasImages && !allOnCDN)}
               >
                 <Globe className="w-5 h-5" /> حفظ وإرسال لـ Amazon
               </NeonButton>
 
               {/* Warning message if buttons are disabled */}
-              {hasImages && !allOnCDN && (
+              {!hasMainImage && (
+                <div className="p-3 rounded-xl text-sm bg-neon-red/10 text-neon-red border border-neon-red/20 text-center font-bold">
+                  ⚠️ الصورة الرئيسية مطلوبة — يرجى رفع الصورة بالأعلى
+                </div>
+              )}
+              {hasMainImage && !allOnCDN && (
                 <div className="p-3 rounded-xl text-sm bg-neon-yellow/10 text-neon-yellow border border-neon-yellow/20 text-center">
                   ⚠️ لازم ترفع الصور على GitHub/Cloudinary الأول — اضغط "📤 حفظ على GitHub" بالأعلى
                 </div>

@@ -10,7 +10,12 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 import sys
 
-from app.config import get_settings
+from dotenv import load_dotenv
+
+from app.config import get_settings, get_env_path
+# Ensure environment variables are universally loaded into os.environ
+load_dotenv(get_env_path(), override=False)
+
 from app.api.router import api_router
 from app.docs import register_docs_routes
 from app.database import engine, Base, init_db
@@ -49,8 +54,8 @@ app.add_middleware(
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 # Mount static files for uploaded images (Data/images)
-# __file__ = backend/app/main.py → parent.parent.parent = amazon/
-images_dir = Path(__file__).parent.parent.parent / "Data" / "images"
+from app.database import APP_DATA_DIR
+images_dir = APP_DATA_DIR / "images"
 images_dir.mkdir(parents=True, exist_ok=True)
 app.mount(f"{settings.API_V1_PREFIX}/images/static", StaticFiles(directory=str(images_dir)), name="images")
 
@@ -99,6 +104,27 @@ async def startup_event():
                     logger.warning(f"Column {name} migration skipped: {e}")
 
     logger.info("Database initialized successfully")
+    
+    # 3. Ensure default seller exists if .env is populated (for new installations)
+    from app.models.seller import Seller
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        if settings.SP_API_SELLER_ID and not db.query(Seller).first():
+            new_seller = Seller(
+                amazon_seller_id=settings.SP_API_SELLER_ID,
+                display_name=f"Amazon - {settings.SP_API_SELLER_ID}",
+                marketplace_id=getattr(settings, "SP_API_MARKETPLACE_ID", "ARBP9OOSHTCHU"),
+                region=getattr(settings, "AWS_REGION", "eu-west-1"),
+                is_connected=True
+            )
+            db.add(new_seller)
+            db.commit()
+            logger.info(f"Auto-created default seller from .env: {settings.SP_API_SELLER_ID}")
+    except Exception as e:
+        logger.warning(f"Could not auto-create default seller: {e}")
+    finally:
+        db.close()
 
     # Production: No mock data seeding - user must configure real seller credentials
     logger.info("Production mode - no mock data. Configure seller via Settings.")

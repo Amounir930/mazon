@@ -30,11 +30,12 @@ Write-Host "  Backend      : $BACKEND_DIR" -ForegroundColor Gray
 Write-Host "  Release Dir  : $RELEASE_DIR" -ForegroundColor Gray
 Write-Host "  Version      : $VERSION" -ForegroundColor Gray
 
-# -------------------------------------------------------
-# 2. Clean previous builds
-# -------------------------------------------------------
-Write-Host ""
+# [2/6] Cleaning previous builds...
 Write-Host "[2/6] Cleaning previous builds..." -ForegroundColor Yellow
+
+# Kill any running instances to prevent file locking
+Stop-Process -Name "CrazyLister" -Force -ErrorAction SilentlyContinue
+Stop-Process -Name "Crazy Lister" -Force -ErrorAction SilentlyContinue
 
 if (Test-Path "$FRONTEND_DIR\dist") {
     Remove-Item -Recurse -Force "$FRONTEND_DIR\dist"
@@ -64,7 +65,8 @@ Write-Host "[3/6] Building Frontend..." -ForegroundColor Yellow
 
 Push-Location $FRONTEND_DIR
 try {
-    npm run build 2>&1 | Out-Host
+    # Use cmd /c to prevent powershell from treating stderr warnings as fatal errors
+    cmd.exe /c "npm run build"
     if ($LASTEXITCODE -ne 0) {
         throw "Frontend build failed!"
     }
@@ -86,7 +88,7 @@ Write-Host "[4/6] Building Backend .exe (PyInstaller)..." -ForegroundColor Yello
 
 Push-Location $BACKEND_DIR
 try {
-    pyinstaller build.spec --clean 2>&1 | Out-Host
+    cmd.exe /c "pyinstaller build.spec --clean --noconfirm"
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller build failed!"
     }
@@ -110,13 +112,18 @@ Write-Host "[5/6] Preparing release package..." -ForegroundColor Yellow
 # Create release folder
 New-Item -ItemType Directory -Force -Path "$RELEASE_DIR\$BUILD_NAME" | Out-Null
 
-# Copy .exe folder
-Copy-Item -Recurse -Force "$BACKEND_DIR\dist\CrazyLister" "$RELEASE_DIR\$BUILD_NAME\"
-Write-Host "  ✓ Executable copied" -ForegroundColor Green
+# Copy .exe folder contents (Flattened)
+Copy-Item -Recurse -Force "$BACKEND_DIR\dist\CrazyLister\*" "$RELEASE_DIR\$BUILD_NAME\"
+Write-Host "  ✓ Executable files flattened and copied" -ForegroundColor Green
 
-# Copy .env.example
-Copy-Item -Force "$BACKEND_DIR\.env.example" "$RELEASE_DIR\$BUILD_NAME\"
-Write-Host "  ✓ .env.example copied" -ForegroundColor Green
+# Copy .env
+if (Test-Path "$BACKEND_DIR\.env") {
+    Copy-Item -Force "$BACKEND_DIR\.env" "$RELEASE_DIR\$BUILD_NAME\"
+    Write-Host "  ✓ .env copied" -ForegroundColor Green
+} else {
+    Copy-Item -Force "$BACKEND_DIR\.env.example" "$RELEASE_DIR\$BUILD_NAME\.env"
+    Write-Host "  ✓ .env.example copied as .env" -ForegroundColor Green
+}
 
 # Copy README
 Copy-Item -Force "$PROJECT_ROOT\README.md" "$RELEASE_DIR\$BUILD_NAME\" 2>$null
@@ -138,36 +145,31 @@ Write-Host "  ✓ Launcher batch file created" -ForegroundColor Green
 Write-Host "  ✓ Release package prepared" -ForegroundColor Green
 
 # -------------------------------------------------------
-# 6. Create ZIP archive
+# 6. Skip ZIP archive for speed
 # -------------------------------------------------------
 Write-Host ""
-Write-Host "[6/6] Creating ZIP archive..." -ForegroundColor Yellow
+Write-Host "[6/6] Creating ZIP archive (SKIPPED)..." -ForegroundColor Yellow
 
-$ZIP_PATH = "$RELEASE_DIR\$BUILD_NAME.zip"
+# $ZIP_PATH = "$RELEASE_DIR\$BUILD_NAME.zip"
+# if (Test-Path $ZIP_PATH) {
+#    Remove-Item -Force $ZIP_PATH
+# }
+# Compress-Archive -Path "$RELEASE_DIR\$BUILD_NAME\*" -DestinationPath $ZIP_PATH
+# $ZIP_SIZE = (Get-Item $ZIP_PATH).Length / 1MB
+# $ZIP_SIZE_STR = "{0:N2} MB" -f $ZIP_SIZE
+# Write-Host "  ✓ ZIP created: $ZIP_PATH ($ZIP_SIZE_STR)" -ForegroundColor Green
 
-if (Test-Path $ZIP_PATH) {
-    Remove-Item -Force $ZIP_PATH
-}
-
-Compress-Archive -Path "$RELEASE_DIR\$BUILD_NAME\*" -DestinationPath $ZIP_PATH
-
-$ZIP_SIZE = [math]::Round((Get-Item $ZIP_PATH).Length / 1MB, 2)
-Write-Host "  ✓ ZIP created: $ZIP_PATH ($ZIP_SIZE MB)" -ForegroundColor Green
-
-# -------------------------------------------------------
-# Summary
-# -------------------------------------------------------
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  ✓ Build Complete!" -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Release Folder: $RELEASE_DIR\$BUILD_NAME\" -ForegroundColor White
-Write-Host "  ZIP Archive   : $ZIP_PATH" -ForegroundColor White
-Write-Host "  Size          : $ZIP_SIZE MB" -ForegroundColor White
+# Write-Host "  ZIP Archive   : $ZIP_PATH"
+# Write-Host "  Size          : $ZIP_SIZE_STR"
 Write-Host ""
 Write-Host "  To install on client machine:" -ForegroundColor Yellow
-Write-Host "  1. Extract ZIP to C:\Program Files\CrazyLister\" -ForegroundColor Gray
+Write-Host "  1. Copy the Release Folder contents to C:\Program Files\CrazyLister\" -ForegroundColor Gray
 Write-Host "  2. Run StartCrazyLister.bat or CrazyLister.exe" -ForegroundColor Gray
 Write-Host "  3. Configure Amazon SP-API credentials in .env" -ForegroundColor Gray
 Write-Host ""

@@ -1,12 +1,17 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown, FileSpreadsheet, X, Check, Download, AlertCircle, Image as ImageIcon, CloudOff, Cloud } from 'lucide-react'
-import { useProducts, useDeleteProduct, useSubmitListing, useSyncFromAmazon, useExportToAmazon, useExportPriceInventory, useExportListingLoader, useDeleteListing, usePatchListing } from '@/api/hooks'
+import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown, FileSpreadsheet, X, Check, Download, AlertCircle, Image as ImageIcon, CloudOff, Cloud, Eye } from 'lucide-react'
+import { useProducts, useDeleteProduct, useUpdateProduct, useSubmitListing, useSyncFromAmazon, useExportToAmazon, useExportPriceInventory, useExportListingLoader, useDeleteListing, usePatchListing } from '@/api/hooks'
 import { productsApi } from '@/api/endpoints'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import type { Product } from '@/types/api'
 import toast from 'react-hot-toast'
+import {
+  PRODUCT_TYPE_CATEGORIES,
+  BROWSE_NODES,
+  BROWSE_NODES_BY_TYPE,
+} from '@/constants/amazon'
 import {
   importExcelFile,
   generateTemplateExcel,
@@ -18,7 +23,14 @@ export default function ProductListPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  // Inline editing state
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValues, setEditValues] = useState<Partial<Product>>({})
+  const updateMutation = useUpdateProduct()
 
   // Excel import state
   const [showExcelModal, setShowExcelModal] = useState(false)
@@ -115,8 +127,100 @@ export default function ProductListPage() {
     try {
       await deleteMutation.mutateAsync(id)
       toast.success('تم حذف المنتج بنجاح')
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     } catch {
       toast.error('فشل في حذف المنتج')
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return
+    if (!window.confirm(`هل أنت متأكد من حذف ${selectedIds.size} منتج؟`)) return
+
+    const idsToDelete = Array.from(selectedIds)
+    let successCount = 0
+    let failCount = 0
+
+    const loadingToast = toast.loading(`جاري حذف ${selectedIds.size} منتج...`)
+
+    try {
+      // Loop through and delete
+      for (const id of idsToDelete) {
+        try {
+          await deleteMutation.mutateAsync(id)
+          successCount++
+        } catch {
+          failCount++
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`تم حذف ${successCount} منتج بنجاح`, { id: loadingToast })
+      } else {
+        toast.error('فشل حذف المنتجات المختارة', { id: loadingToast })
+      }
+
+      if (failCount > 0) {
+        toast.error(`فشل حذف ${failCount} منتج`)
+      }
+
+      setSelectedIds(new Set())
+      refetch()
+    } catch (error) {
+      toast.error('حدث خطأ أثناء الحذف المجمع', { id: loadingToast })
+    }
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === products.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(products.map(p => p.id)))
+    }
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleEditInline = (product: Product) => {
+    setEditingId(product.id)
+    setEditValues({
+      sku: product.sku,
+      product_type: product.product_type,
+      browse_node_id: product.browse_node_id,
+      price: product.price,
+      quantity: product.quantity,
+    })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setEditValues({})
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingId) return
+    try {
+      await updateMutation.mutateAsync({
+        id: editingId,
+        data: editValues,
+      })
+      toast.success('تم تحديث بيانات المنتج')
+      setEditingId(null)
+      setEditValues({})
+      refetch()
+    } catch (error: any) {
+      toast.error('فشل في تحديث بيانات المنتج')
     }
   }
 
@@ -410,7 +514,8 @@ export default function ProductListPage() {
   }
 
   // ==================== Loading / Error ====================
-  if (isLoading) {
+  // ONLY show full-page loader on initial load (when no data)
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-amazon-orange" />
@@ -514,6 +619,19 @@ export default function ProductListPage() {
             />
           </label>
 
+          <button
+            onClick={() => {
+              refetch()
+              toast.success('تم تنشيط قائمة المنتجات')
+            }}
+            disabled={isLoading}
+            className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 py-3 rounded-xl transition-colors disabled:opacity-50"
+            title="تنشيط البيانات من قاعدة البيانات المحلية"
+          >
+            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+            تنشيط
+          </button>
+
           <Link
             to="/products/create"
             className="flex items-center gap-2 bg-amazon-orange hover:bg-amazon-light text-amazon-dark font-semibold px-6 py-3 rounded-xl transition-colors"
@@ -524,18 +642,42 @@ export default function ProductListPage() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="flex gap-4">
+      {/* Search & Actions */}
+      <div className="flex gap-4 items-center">
         <div className="flex-1 relative">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
             type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder={t('products.searchPlaceholder')}
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                setSearch(searchTerm)
+                toast.success(`جاري البحث عن: ${searchTerm}`)
+              }
+            }}
+            placeholder="اكتب وابحث بالضغط على Enter..."
             className="w-full pr-10 pl-4 py-3 border border-border-medium bg-bg-tertiary rounded-xl focus:ring-2 focus:ring-amazon-orange focus:border-amazon-orange text-text-primary placeholder-text-muted"
           />
         </div>
+
+        {selectedIds.size > 0 && (
+          <button
+            onClick={handleBulkDelete}
+            className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg animate-in fade-in slide-in-from-right-4 transition-all"
+          >
+            <Trash2 className="w-5 h-5" />
+            حذف ({selectedIds.size})
+          </button>
+        )}
+
+        {isLoading && data && (
+          <div className="flex items-center gap-2 text-amazon-orange text-sm font-medium">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            جاري التحديث...
+          </div>
+        )}
+
         <button className="flex items-center gap-2 px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50">
           <Filter className="w-5 h-5" /> تصفية
         </button>
@@ -543,21 +685,33 @@ export default function ProductListPage() {
 
       {/* Products Table */}
       <div className="bg-bg-card rounded-xl border border-border-subtle overflow-hidden">
-        <table className="neon-table">
-          <thead className="bg-bg-elevated">
-            <tr>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.image')}</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.product')}</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.sku')}</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.category')}</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.price')}</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.quantity')}</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.status')}</th>
-              <th className="px-6 py-4 text-right text-sm font-semibold text-text-secondary">{t('products.columns.actions')}</th>
-            </tr>
-          </thead>
+        <div className="overflow-x-auto">
+          <table className="neon-table w-full">
+            <thead className="bg-bg-elevated">
+              <tr>
+                <th className="px-4 py-4 text-right">
+                  <input
+                    type="checkbox"
+                    checked={products.length > 0 && selectedIds.size === products.length}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded border-gray-300 text-amazon-orange focus:ring-amazon-orange"
+                  />
+                </th>
+                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">#</th>
+                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">الصورة</th>
+                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">المنتج</th>
+                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">SKU</th>
+                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">المجموعة</th>
+                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">الفئة</th>
+                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">السعر</th>
+                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">العدد</th>
+                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">الحالة</th>
+                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">الإجراءات</th>
+              </tr>
+            </thead>
           <tbody>
-            {products.map((product: Product) => {
+            {products.map((product: Product, index: number) => {
+              const isEditing = editingId === product.id
               const isIncomplete = product.status === 'incomplete'
 
               // بناء URL الصورة
@@ -570,7 +724,18 @@ export default function ProductListPage() {
               }
 
               return (
-                <tr key={product.id} className={`${isIncomplete ? 'bg-neon-yellow/5' : ''}`}>
+                <tr key={product.id} className={`border-b border-border-subtle hover:bg-bg-hover transition-colors ${selectedIds.has(product.id) ? 'bg-amazon-orange/5' : ''} ${isIncomplete ? 'bg-neon-yellow/5' : ''}`}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(product.id)}
+                      onChange={() => toggleSelect(product.id)}
+                      className="w-4 h-4 rounded border-gray-300 text-amazon-orange focus:ring-amazon-orange"
+                    />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary font-medium">
+                    {index + 1}
+                  </td>
                   <td className="px-6 py-4">
                     {thumbUrl ? (
                       <img
@@ -578,7 +743,6 @@ export default function ProductListPage() {
                         alt={product.name}
                         className="w-10 h-10 rounded-lg object-cover border border-gray-700"
                         onError={(e) => {
-                          // لو الصورة مكسورة، اعرض placeholder
                           (e.target as HTMLImageElement).style.display = 'none'
                           const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement
                           if (placeholder) placeholder.style.display = 'flex'
@@ -594,66 +758,160 @@ export default function ProductListPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <p className="font-medium text-white">{product.name}</p>
+                      <p className="font-medium text-white line-clamp-1">{product.name}</p>
                       {isIncomplete && (
                         <span className="text-amber-500" title="ناقص بيانات Amazon">⚠️</span>
                       )}
                     </div>
                     <p className="text-sm text-gray-500">{product.brand}</p>
-                    {isIncomplete && (
-                      <p className="text-xs text-amber-500/70 mt-1">
-                        ناقص: {getMissingFields(product)}
-                      </p>
+                  </td>
+
+                  {/* SKU */}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editValues.sku || ''}
+                        onChange={e => setEditValues({ ...editValues, sku: e.target.value })}
+                        className="w-32 px-2 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
+                      />
+                    ) : (
+                      <span className="text-sm font-mono text-text-secondary">{product.sku}</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-400 font-mono">{product.sku}</td>
-                  <td className="px-6 py-4 text-sm text-gray-400">{product.category}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-orange-500">{Number(product.price).toFixed(2)} ج.م</td>
-                  <td className="px-6 py-4 text-sm text-gray-400">{product.quantity}</td>
-                  <td className="px-6 py-4"><StatusBadge status={product.status} /></td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      {isIncomplete && (
-                        <button
-                          onClick={() => handleCompleteData(product)}
-                          className="p-2 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition-colors"
-                          title="إكمال البيانات"
-                        >
-                          <AlertCircle className="w-4 h-4" />
-                        </button>
-                      )}
-                      <button onClick={() => handleEdit(product)} className="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-colors" title="تعديل">
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleList(product.id)}
-                        disabled={listMutation.isPending}
-                        className="p-2 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-colors disabled:opacity-50"
-                        title="رفع للأمازون"
-                      >
-                        {listMutation.isPending && listMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                      </button>
-                      <button onClick={() => handleDelete(product.id)} disabled={deleteMutation.isPending} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50" title="حذف">
-                        {deleteMutation.isPending && deleteMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                      </button>
 
-                      {/* SP-API Actions (Amazon Official) — shows when session OR .env credentials */}
-                      <button
-                        onClick={() => handleUpdatePriceOnAmazon(product)}
-                        disabled={patchAmazonMutation.isPending}
-                        className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors disabled:opacity-50"
-                        title="تحديث السعر على Amazon (SP-API)"
+                  {/* المجموعة */}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {isEditing ? (
+                      <select
+                        value={editValues.product_type || ''}
+                        onChange={e => setEditValues({ ...editValues, product_type: e.target.value })}
+                        className="w-40 px-2 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
                       >
-                        {patchAmazonMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteFromAmazon(product.sku)}
-                        disabled={deleteFromAmazonMutation.isPending}
-                        className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
-                        title="حذف من Amazon (SP-API)"
+                        {PRODUCT_TYPE_CATEGORIES.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-sm text-text-secondary">
+                        {PRODUCT_TYPE_CATEGORIES.find(c => c.value === product.product_type)?.label || product.product_type}
+                      </span>
+                    )}
+                  </td>
+
+                  {/* الفئة */}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {isEditing ? (
+                      <select
+                        value={editValues.browse_node_id || ''}
+                        onChange={e => setEditValues({ ...editValues, browse_node_id: e.target.value })}
+                        className="w-48 px-2 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
                       >
-                        {deleteFromAmazonMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudOff className="w-4 h-4" />}
-                      </button>
+                        {(BROWSE_NODES_BY_TYPE[editValues.product_type || 'STORAGE'] || BROWSE_NODES).map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-text-secondary truncate block max-w-[120px]">
+                        {BROWSE_NODES.find(n => n.value === product.browse_node_id)?.label || product.browse_node_id}
+                      </span>
+                    )}
+                  </td>
+
+                  {/* السعر */}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        value={editValues.price || 0}
+                        onChange={e => setEditValues({ ...editValues, price: Number(e.target.value) })}
+                        className="w-20 px-2 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
+                      />
+                    ) : (
+                      <div className="text-sm font-bold text-orange-500">
+                        {Number(product.price).toFixed(2)} <span className="text-xs font-normal text-text-muted">ج.م</span>
+                      </div>
+                    )}
+                  </td>
+
+                  {/* العدد */}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        value={editValues.quantity || 0}
+                        onChange={e => setEditValues({ ...editValues, quantity: Number(e.target.value) })}
+                        className="w-20 px-2 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
+                      />
+                    ) : (
+                      <span className={`text-sm font-medium ${product.quantity > 0 ? 'text-text-primary' : 'text-red-500'}`}>
+                        {product.quantity}
+                      </span>
+                    )}
+                  </td>
+
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <StatusBadge status={product.status} />
+                  </td>
+
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center gap-1">
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={handleSaveEdit}
+                            className="p-1.5 bg-green-600/20 text-green-500 hover:bg-green-600/30 rounded-lg transition-colors"
+                            title="حفظ"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="p-1.5 bg-red-600/20 text-red-500 hover:bg-red-600/30 rounded-lg transition-colors"
+                            title="إلغاء"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleEditInline(product)}
+                            className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-colors"
+                            title="تعديل سريع"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleEdit(product)}
+                            className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-colors"
+                            title="تعديل كامل"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleList(product.id)}
+                            disabled={listMutation.isPending}
+                            className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-colors disabled:opacity-50"
+                            title="رفع للأمازون"
+                          >
+                            {listMutation.isPending && listMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                          </button>
+                          <button onClick={() => handleDelete(product.id)} disabled={deleteMutation.isPending} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50" title="حذف">
+                            {deleteMutation.isPending && deleteMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          </button>
+
+                          {/* SP-API Actions */}
+                          <button
+                            onClick={() => handleUpdatePriceOnAmazon(product)}
+                            disabled={patchAmazonMutation.isPending}
+                            className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors disabled:opacity-50"
+                            title="تحديث السعر على Amazon"
+                          >
+                            <Cloud className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -661,6 +919,7 @@ export default function ProductListPage() {
             })}
           </tbody>
         </table>
+      </div>
 
         {(!products || products.length === 0) && (
           <div className="text-center py-12 text-gray-500">

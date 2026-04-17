@@ -10,8 +10,9 @@ Implements Base + Delta Pattern:
 
 Saves 84% of tokens compared to generating each product separately.
 """
-from typing import Dict, Any
+from typing import Dict, Any, List
 import json
+import re
 from loguru import logger
 
 from app.core.llm_provider import QwenProvider
@@ -37,6 +38,71 @@ class AIProductAssistant:
     def __init__(self):
         self.llm = QwenProvider()
     
+    def _map_amazon_type_to_local(self, amazon_type: str) -> str:
+        """
+        Map Amazon's amazon_product_type to our local product_type enum.
+        This ensures consistency and prevents cross-category data pollution.
+        """
+        mapping = {
+            # Storage & Home Organization
+            "HOME_ORGANIZERS_AND_STORAGE": "STORAGE",
+            "VASE": "DECOR",
+            
+            # Kitchen & Cooking
+            "KITCHEN": "KITCHEN",
+            "KITCHEN_TOOL": "KITCHEN",
+            "COOKWARE": "KITCHEN",
+            
+            # Cleaning & Personal Care
+            "SKIN_CLEANING_WIPE": "CLEANING",
+            
+            # Appliances (Electrical)
+            "SMALL_HOME_APPLIANCES": "APPLIANCE",
+            "PERSONAL_CARE_APPLIANCE": "APPLIANCE",
+            
+            # Electronics & Tools
+            "ELECTRONICS": "ELECTRONICS",
+            "TOOLS": "TOOLS",
+            
+            # Beauty & Cosmetics
+            "BEAUTY": "BEAUTY",
+        }
+        return mapping.get(amazon_type, "GENERAL")
+    
+    def _validate_specs_fidelity(self, original_specs: str, generated_content: str, field_name: str) -> bool:
+        """
+        Validate that generated content preserves the original specs keywords.
+        Returns True if fidelity is acceptable, False otherwise.
+        """
+        if not original_specs or not generated_content:
+            return True
+        
+        # Extract key terms from original specs (Arabic/English words, numbers, units)
+        # Match: Arabic words, English words, numbers with units (300W, 5L, etc.)
+        spec_terms = re.findall(r'[\u0600-\u06FF]+|[a-zA-Z]+[\d\.]*[\w]*|[\d\.]+\s*[ألفباءتثجحخدذرزسشصضطظعغفقكلمنهويA-Za-z]*', original_specs)
+        spec_terms = [t.strip() for t in spec_terms if len(t.strip()) > 1 and t.strip().lower() not in ['و', 'في', 'من', 'الى', 'ال', 'ا', 'ب', 'ت', 'ث', 'ج', 'ح', 'خ', 'د', 'ذ', 'ر', 'ز', 'س', 'ش', 'ص', 'ض', 'ط', 'ظ', 'ع', 'غ', 'ف', 'ق', 'ك', 'ل', 'م', 'ن', 'ه', 'ي', 'و', 'ا']]
+        
+        if not spec_terms:
+            return True
+        
+        # Check if at least 70% of spec terms appear in generated content
+        matched = sum(1 for term in spec_terms if term.lower() in generated_content.lower())
+        fidelity_ratio = matched / len(spec_terms)
+        
+        if fidelity_ratio < 0.7:
+            logger.warning(f"Low specs fidelity in {field_name}: {matched}/{len(spec_terms)} terms matched. Ratio: {fidelity_ratio:.2%}")
+            return False
+        return True
+    
+    def _enhance_with_specs_preservation(self, base_content: str, user_specs: str, enhancement_type: str = "bullet") -> str:
+        """
+        Helper to ensure user specs are preserved when enhancing content.
+        This is used as a reference for the AI prompt, not for post-processing.
+        """
+        # This function documents the expected behavior for the AI
+        # Format: [User Specs] + [Minor AI Enhancements] = Final Content
+        return f"{user_specs} — {enhancement_type}"
+    
     async def generate_products(
         self,
         name: str,
@@ -49,17 +115,17 @@ class AIProductAssistant:
         
         Args:
             name: Product base name
-            specs: Product specifications
+            specs: Product specifications (MUST be preserved in all generated fields)
             copies: Number of variants (1-10)
             learned_fields: Fields learned from previous rejection errors
         """
         # Build system prompt with learned fields
         system_prompt = self._build_system_prompt(learned_fields)
         
-        # Build user prompt
+        # Build user prompt WITH specs preservation emphasis
         user_prompt = self._build_user_prompt(name, specs, copies)
         
-        logger.info(f"Generating {copies} product variant(s): {name}")
+        logger.info(f"Generating {copies} product variant(s): {name} | specs: {specs[:100]}...")
         
         # Call Qwen AI (async — non-blocking)
         raw_result = await self.llm.generate_json(
@@ -76,9 +142,9 @@ class AIProductAssistant:
                 # 1. EAN: Always clear the EAN/UPC as we are using GTIN Exemption
                 bp['ean'] = ''
                 bp['upc'] = ''
-                bp['has_product_identifier'] = False # For passing safely to frontend
+                bp['has_product_identifier'] = False  # For passing safely to frontend
 
-                # 3. Bullet points: Ensure exactly 5
+                # 2. Bullet points: Ensure exactly 5
                 for key in ['bullet_points_ar', 'bullet_points_en']:
                     if key in bp:
                         items = bp[key][:5]  # Truncate to 5
@@ -86,10 +152,27 @@ class AIProductAssistant:
                             items.append("")
                         bp[key] = items
 
-                # 4. Product type: AI selects the appropriate type based on the product
-                # (No longer forced to HOME_ORGANIZERS_AND_STORAGE)
-                if 'product_type' not in bp or not bp['product_type']:
-                    bp['product_type'] = 'HOME_ORGANIZERS_AND_STORAGE'  # Default fallback
+                # 3. Product type mapping: Sync local product_type with amazon_product_type
+                amazon_type = bp.get('amazon_product_type', '')
+                local_type = bp.get('product_type', '')
+                
+                if amazon_type and (not local_type or local_type not in [
+                    'STORAGE', 'KITCHEN', 'BATHROOM', 'DECOR', 'CLEANING', 
+                    'LAUNDRY', 'APPLIANCE', 'FURNITURE', 'LIGHTING', 'BEDDING', 'ELECTRONICS', 'TOOLS', 'BEAUTY', 'GENERAL'
+                ]):
+                    bp['product_type'] = self._map_amazon_type_to_local(amazon_type)
+                    logger.debug(f"Mapped amazon_type '{amazon_type}' -> local_type '{bp['product_type']}'")
+                
+                # 4. Brand & Manufacturer Fallbacks (Ensure at least 1 char)
+                if not bp.get('brand') or not bp.get('brand').strip():
+                    bp['brand'] = 'Generic'
+                if not bp.get('manufacturer') or not bp.get('manufacturer').strip():
+                    bp['manufacturer'] = 'Generic'
+                
+                # Final fallback only if both are missing/invalid
+                if not bp.get('product_type'):
+                    bp['product_type'] = 'GENERAL'
+                    logger.warning(f"Could not determine product_type for '{name}', using fallback 'GENERAL'")
 
             # FIX: If AI didn't generate enough variants, create them automatically
             if 'variants' not in raw_result or len(raw_result['variants']) < copies:
@@ -97,15 +180,19 @@ class AIProductAssistant:
                 bp = raw_result.get('base_product', {})
                 current_variants = raw_result.get('variants', [])
                 
-                # If completely empty, make a fake base variant from name
+                # If completely empty, make a fake base variant from name AND specs
                 if not current_variants:
                     variant_sku = f"{bp.get('model_number', 'PROD')}-001"
+                    # Use specs directly in description to preserve fidelity
+                    specs_ar = specs if any('\u0600' <= c <= '\u06FF' for c in specs) else f"مواصفات: {specs}"
+                    specs_en = specs if any(c.isascii() and c.isalpha() for c in specs) else f"Specs: {specs}"
+                    
                     current_variants.append({
                         "variant_number": 1,
-                        "name_ar": name,
-                        "name_en": name,
-                        "description_ar": bp.get('bullet_points_ar', [''])[0] if bp.get('bullet_points_ar') else name,
-                        "description_en": bp.get('bullet_points_en', [''])[0] if bp.get('bullet_points_en') else name,
+                        "name_ar": f"{name} — {specs_ar}",
+                        "name_en": f"{name} — {specs_en}",
+                        "description_ar": f"{specs_ar}. منتج عالي الجودة مصمم ليُلبي احتياجاتك اليومية بكفاءة وأداء متميز.",
+                        "description_en": f"{specs_en}. High-quality product designed to meet your daily needs with efficient and outstanding performance.",
                         "suggested_sku": variant_sku,
                     })
                 
@@ -131,7 +218,8 @@ class AIProductAssistant:
             logger.info(
                 f"✅ Generated {len(result.variants)} variant(s) — "
                 f"base: brand={result.base_product.brand}, "
-                f"type={result.base_product.product_type}"
+                f"type={result.base_product.product_type}, "
+                f"amazon_type={result.base_product.amazon_product_type}"
             )
             return result
         except Exception as e:
@@ -140,7 +228,6 @@ class AIProductAssistant:
             # Auto-fix and retry once
             if 'base_product' in raw_result:
                 bp = raw_result['base_product']
-                # Try again
                 try:
                     result = AIProductResponse(**raw_result)
                     logger.info(f"✅ Auto-fixed and generated {len(result.variants)} variant(s)")
@@ -150,152 +237,9 @@ class AIProductAssistant:
             raise ValueError(f"AI generated invalid product data: {e}")
     
     def _build_system_prompt(self, learned_fields: list[str] = None) -> str:
-        """Build system prompt with Amazon listing best practices"""
-        base_prompt = """
-أنت خبير محترف ومسوق عالمي متخصص في تحسين قوائم المنتجات (SEO) على Amazon.
-مهمتك: توليد بيانات منتج كاملة من وصف مختصر، مع الالتزام التام بقواعد أمازون الصارمة.
+        from app.services.ai_prompts import build_system_prompt
+        return build_system_prompt(learned_fields)
 
-⚠️ قواعد الحظر القاطعة (مهم جداً جداً):
-1. 🛑 طول اسم المنتج وتفاصيله: إجباري ومن الممنوعات الكبرى أن يكون اسم المنتج قصيراً!! يجب أن لا يقل اسم المنتج (عربي وإنجليزي) عن 12 كلمة كاملة! استخدم أسلوب Amazon SEO (حشو الكلمات المفتاحية الذكي: النوع + المادة + الاستخدام + الفوائد + لمن هذا المنتج). إذا وجدتك كتبت اسماً قصيراً سأعتبر ذلك فشلاً ذريعاً.
-2. 🛑 الألوان ممنوعة في الاسم: ممنوع منعاً باتاً كتابة أي ألوان (أبيض، أسود، أحمر، ذهبي، فضي، إلخ) في اسم المنتج! لا عربي ولا إنجليزي.
-3. الباركود EAN و UPC: يجب تركها فارغة تماما (سلاسل نصية فارغة "") - المنتج معفي من الباركود.
-4. التسعير والكمية: اتركها فارغة (null) - المستخدم يملأها بنفسه.
-5. المكونات المرفقة: اكتب كلمة واحدة فقط (مثال: "مزهريات" أو "جهاز").
-6. الوصف: لازم يكون وصف تسويقي شامل - 3 سطور كاملة على الأقل كقصة بيعية.
-7. النقاط البيعية (5 نقاط): إجباري - كل نقطة جملة طويلة جداً تشرح ميزة وفائدة قوية.
-
-⚠️ قواعد الترجمة القاطعة (مهم جداً):
-- حقول اللغة العربية (name_ar, description_ar, bullet_points_ar) يجب أن تكون باللغة العربية الفصحى فقط وبدون أي كلمات إنجليزية!
-- حقول اللغة الإنجليزية (name_en, description_en, bullet_points_en) يجب أن تكون مخصصة لللغة الإنجليزية فقط وتمثل ترجمة حرفية للمعنى العربي المذكور، بدون أي تحريف!
-
-⚠️ مهم جداً - تصنيف المنتج (amazon_product_type) والفئة (browse_node_id):
-- أنت الآن مُلزم باستخدام "مهارة التصنيف الجبري المطابق". يجب أن تقوم بتحليل المنتج واختيار القالب (Template) الأكثر دقة من القائمة التالية فقط.
-- يُمنع منعاً باتاً ترك المنتج بدون الفئة المناسبة.
-
-القوالب المعتمدة والمسموحة لك (يجب اختيار الأنسب والأدق):
-
-  1. [أدوات تنظيم المنزل، الأثاث، المنظفات، والحمام] -> amazon_product_type: "HOME_ORGANIZERS_AND_STORAGE"
-     (يشمل: STORAGE, KITCHEN_STORAGE, BATHROOM_STORAGE, LAUNDRY, BEDDING, FURNITURE, CLEANING, BATHROOM_ACCESSORY)
-     browse_nodes: "21863799031", "21863899031", "21863900031", "21874771031", "21863798031" (المنظفات), "21863800031" (الحمام)
-
-  2. [المزهريات والديكورات] -> amazon_product_type: "VASE" أو "HOME_ORGANIZERS_AND_STORAGE"
-     (يشمل: المزهريات استخدم VASE، باقي التحف والديكور استخدم HOME_ORGANIZERS_AND_STORAGE)
-     browse_nodes: "21863797031" (ديكور المنزل)
-
-  3. [المطبخ وأدوات الطبخ] -> amazon_product_type: "KITCHEN" أو "KITCHEN_TOOL" أو "COOKWARE"
-     (يشمل: أدوات المطبخ غير الكهربائية، الطاسات، المعالق، القطاعات اليدوية)
-     browse_nodes: "21863794031" (المطبخ)
-
-  4. [المناديل والعناية بالبشرة] -> amazon_product_type: "SKIN_CLEANING_WIPE"
-     (يشمل: مناديل مبللة، مناديل تنظيف مكياج، مستحضرات ورقية للعناية)
-
-  5. [الأجهزة المنزلية الصغيرة] -> amazon_product_type: "SMALL_HOME_APPLIANCES"
-     (يشمل: الخلاطات، المكاوي، محضرات الطعام، العجانات، المكانس الكهربائية)
-     * تنبيه: يجب أن تقوم بتأليف معلومات طاقة (Wattage والجهد 220V) بداخل المواصفات أو الوصف لتجنب رفض أمازون.
-
-  6. [أجهزة العناية الشخصية والتجميل] -> amazon_product_type: "PERSONAL_CARE_APPLIANCE"
-     (يشمل: ماكينات الحلاقة، السشوار، أجهزة إزالة الشعر، أدوات التجميل الكهربائية)
-     * تتطلب معلومات الطاقة الكهربائية والضمان بداخل المواصفات.
-
-  7. [إلكترونيات عامة] -> amazon_product_type: "ELECTRONICS"
-  8. [أدوات ومعدات يدوية] -> amazon_product_type: "TOOLS"
-  9. [مستحضرات التجميل العامة] -> amazon_product_type: "BEAUTY"
-
-⚠️ قواعد الإخراج الإجبارية (JSON):
-- يجب أن تُخرج حقل جديد في الـ JSON وهو "amazon_product_type" وضع فيه القيمة النصية الدقيقة المذكورة أعلاه (مثل "SKIN_CLEANING_WIPE").
-- يجب أن تضع حقل "product_type" (النوع المحلي) بالقيمة المناسبة من واجهتنا (STORAGE/KITCHEN/BATHROOM/CLEANING/APPLIANCE).
-- يجب أن تُخرج حقل "browse_node_id" وتختار أحد الأرقام من القائمة بالأعلى، أو تتركه فارغاً ("") إذا كان المنتج من الأجهزة الصغيرة ولا تعرف عقدته.
-
-معايير Amazon:
-- اسم المنتج: ⚠️ إجباري لا يقل عن 25 كلمة ⚠️. يجب أن يكون اسماً طويلاً ومفصلاً (SEO Title) يتضمن العلامة التجارية + الموديل + المواصفات الأساسية + الاستخدامات. 🛑 (ممنوع كتابة أي ألوان مطلقاً). (max 200 حرف).
-- الوصف: max 2000 حرف، شامل المميزات + الاستخدام.
-- Bullet Points: 5 نقاط، كل نقطة max 500 حرف، تركز على الفوائد.
-- Keywords: max 250 حرف، SEO optimized.
-
-⚠️ قواعد SKU إجبارية (مهم جداً):
-- SKU لازم يكون فريد لكل منتج — ممنوع التكرار نهائياً
-- استخدم دائماً شرطة "-" بين كل مجموعة حروف أو أرقام لكسر التكرار
-- الصيغة: [اختصار-نوع-المنتج]-[مواصفات]-[رقم-متغير]
-- أمثلة صحيحة: MIX-300W-001, BLND-5SPD-002, GRIL-PRO-003
-- أمثلة خاطئة: MIX300W001, BLND5SPD002 (بدون شرطة — ممنوع!)
-- كل منتج لازم يكون له SKU مختلف تماماً حتى لو نفس المنتج
-
-⚠️ مهم جداً:
-- ارجع JSON فقط بدون أي نص إضافي
-- لا تضيف markdown code blocks (```)
-- لا تضيف JSON Schema أو type definitions
-- ارجع القيم مباشرة كما في المثال أدناه
-
-⚠️ تحذير: لازم ترجع حقل "variants" في الـ JSON — ده حقل إجباري!
-- لو copies = 1: رجّع variants فيه عنصر واحد
-- لو copies = 3: رجّع variants فيه 3 عناصر
-- كل variant لازم يكون فيه: variant_number, name_ar, name_en, description_ar, description_en, suggested_sku
-""".strip()
-
-        # Add learned fields section
-        if learned_fields:
-            learned_section = f"""
-
-⚠️ حقول سبق رفضها من Amazon (مطلوب تضمينها في base_product):
-{chr(10).join(f'- {field}' for field in learned_fields)}
-
-تأكد من تضمين كل هذه الحقول في base_product.
-""".strip()
-            return base_prompt + "\n" + learned_section
-
-        return base_prompt
-    
     def _build_user_prompt(self, name: str, specs: str, copies: int) -> str:
-        """Build user prompt for product generation"""
-        variants_instruction = ""
-        if copies > 1:
-            variants_instruction = f"""
-ولّد {copies} منتجات مختلفة — كل منتج يجب أن يكون له:
-- اسم مختلف (عربي + إنجليزي) يركز على زاوية تسويقية مختلفة
-- وصف مختلف (عربي + إنجليزي) يبرز مميزات مختلفة
-- SKU فريد (مثال: MIX-300W-001, MIX-300W-002, ...)
-""".strip()
-        else:
-            variants_instruction = "ولّد منتج واحد ببيانات كاملة."
-
-        # Use strict JSON format with clear example - avoid YAML-like indentation
-        return f"""
-المطلوب: توليد بيانات منتج كامل. أخرج JSON صالح فقط.
-
-اسم المنتج: {name}
-المواصفات: {specs}
-عدد النسخ: {copies}
-
-{variants_instruction}
-
-⚠️ مهم: الـ JSON لازم يحتوي على حقلين أساسيين:
-1. "base_product": البيانات المشتركة (البراند، الباركود، النقاط البيعية، إلخ)
-2. "variants": قائمة بـ {copies} منتج مختلف — كل منتج فيه name_ar, name_en, description_ar, description_en, suggested_sku
-
-⚠️ product_type و browse_node_id إجباريين:
-اختار النوع المناسب من: STORAGE, KITCHEN, BATHROOM, DECOR
-واختار browse_node_id المناسب من القائمة في النظام.
-
-التنسيق المطلوب (JSON فقط):
-{{"base_product": {{"amazon_product_type": "KITCHEN", "product_type": "KITCHEN", "browse_node_id": "21863794031", "price": null, "ean": "", "upc": "", "bullet_points_ar": ["تصميم عملي بـ 5 أدراج متدرجة يناسب جميع أحجام الأطباق", "مصنوع من بلاستيك PP متين ومقاوم للكسر والصدأ", "أدراج قابلة للسحب بسهولة مع مقابض مريحة", "يوفر مساحة تخزين كبيرة في المطبخ أو الثلاجة", "سهل التنظيف — مجرد مسحة بقطعة قماش مبللة"], "bullet_points_en": ["Practical 5-tier drawer design fits all dish sizes", "Made from durable PP plastic — crack and rust resistant", "Smooth-sliding drawers with comfortable handles", "Provides ample storage space in kitchen or fridge", "Easy to clean — just wipe with a damp cloth"], "keywords": ["منظم مطبخ", "أدراج بلاستيك", "تخزين أطباق"], "material": "بلاستيك PP", "target_audience": "ربات البيوت", "condition": "New", "fulfillment_channel": "MFN", "model_number": "ORG-5DRW-001", "included_components": "منظم", "brand": "Generic", "manufacturer": "China", "country_of_origin": "CN"}}, "variants": [{{"variant_number": 1, "name_ar": "منظم أطباق بلاستيك عالي الجودة بتصميم خمسة أدراج متدرجة يوفر مساحة تخزين مثالية وعملية في المطبخ لترتيب الملاعق الأكواب والبهارات بشكل احترافي وأنيق تماما", "name_en": "High Quality Plastic Five Tier Drawer Dish Organizer Provides Perfect and Practical Kitchen Storage Space for Professionally and Neatly Arranging Spoons Cups and Spices", "description_ar": "منظم أطباق عملي بتصميم 5 أدراج متدرجة مصنوع من بلاستيك PP عالي الجودة. يوفر مساحة تخزين منظمة في المطبخ أو الثلاجة. مثالي لترتيب الأطباق والملاعق.", "description_en": "Practical dish organizer with 5-tier drawer design made from high-quality PP plastic. Provides organized storage space in kitchen or fridge. Easy to clean for daily use.", "suggested_sku": "ORG-5DRW-001"}}]}}
-
-قواعد مهمة:
-- ⚠️ البراند (brand) والمصنع (manufacturer) وبلد المنشأ (country_of_origin): دي حقول محجوزة — المستخدم بيحددها يدوياً. AI مش بيغيرها — حط أي قيمة مؤقتة.
-- ⚠️ النقاط البيعية (bullet_points_ar / bullet_points_en): اكتب محتوى حقيقي للمنتج — ممنوع تستخدم "نقطة بيعية كاملة 1" أو أي placeholder! كل نقطة لازم تكون جملة مفيدة تصف ميزة أو فائدة حقيقية للمنتج. مثال صحيح: "تصميم 5 أدراج متدرجة يوفّر مساحة تخزين منظمة" ❌ غلط: "نقطة بيعية كاملة 1 - سطر يشرح ميزة"
-- حقول العربي (عربي فقط) وحقول الإنجليزي (إنجليزي فقط) كترجمة دقيقة للعربي. ممنوع الخلط!
-- الباركود EAN و UPC: اتركها فارغة تماما (سلاسل فارغة "").
-- product_type: اختار من STORAGE, KITCHEN, BATHROOM, DECOR, CLEANING, LAUNDRY, APPLIANCES, FURNITURE, LIGHTING, BEDDING فقط.
-- browse_node_id: اختار الرقم الأنسب للمنتج من القوائم المتاحة لكل نوع.
-- التسعير (price): اتركه null - لا تكتب رقم
-- المكونات المرفقة (included_components): كلمة واحدة فقط
-- الوصف: 3 سطور كاملة على الأقل
-- النقاط البيعية: 5 نقاط كاملة - كل نقطة 20 حرف على الأقل
-- استبدل القيم الافتراضية ببيانات حقيقية مناسبة للمنتج
-- أخرج JSON فقط بدون أي نص إضافي
-- لا تضيف ```json أو ``` في البداية أو النهاية
-- لا تضيف "type": "object" أو أي JSON Schema
-- استخدم double quotes فقط (لا تستخدم single quotes)
-- تأكد من إغلاق جميع الأقواس {{}} و []
-- لا تستخدم YAML format (لا تستخدم indentation بدل الأقواس)
-- ⚠️ لا تنسَ حقل "variants" — ده إجباري وميمكنش تسيبه
-""".strip()
+        from app.services.ai_prompts import build_user_prompt
+        return build_user_prompt(name, specs, copies)
