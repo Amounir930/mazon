@@ -15,9 +15,11 @@ timeout /t 2 >nul
 echo [2/2] Launching Desktop App...
 cd /d %~dp0backend
 set PYTHONPATH=%CD%
-start "" pythonw -m app.launcher
+python -m app.launcher
 
 echo.
-echo Application started in Desktop Mode!
-echo You can close this terminal.
+if %errorlevel% neq 0 (
+    echo [ERROR] Application crashed with exit code %errorlevel%
+    pause
+)
 exit

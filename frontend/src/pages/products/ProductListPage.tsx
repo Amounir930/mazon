@@ -784,9 +784,12 @@ export default function ProductListPage() {
                         ))}
                       </select>
                     ) : (
-                      <span className="text-sm text-text-secondary">
-                        {PRODUCT_TYPE_CATEGORIES.find(c => c.value === product.product_type)?.label || product.product_type}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-lg">{PRODUCT_TYPE_CATEGORIES.find(c => c.value === product.product_type)?.icon || '📦'}</span>
+                        <span className="text-sm text-text-secondary font-medium">
+                          {PRODUCT_TYPE_CATEGORIES.find(c => c.value === product.product_type)?.label || product.product_type}
+                        </span>
+                      </div>
                     )}
                   </td>
 
@@ -798,12 +801,12 @@ export default function ProductListPage() {
                         onChange={e => setEditValues({ ...editValues, browse_node_id: e.target.value })}
                         className="w-48 px-2 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
                       >
-                        {(BROWSE_NODES_BY_TYPE[editValues.product_type || 'STORAGE'] || BROWSE_NODES).map(opt => (
+                        {(BROWSE_NODES_BY_TYPE[editValues.product_type as keyof typeof BROWSE_NODES_BY_TYPE] || BROWSE_NODES).map(opt => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                       </select>
                     ) : (
-                      <span className="text-xs text-text-secondary truncate block max-w-[120px]">
+                      <span className="text-xs text-text-muted bg-gray-800/50 px-2 py-1 rounded border border-gray-700">
                         {BROWSE_NODES.find(n => n.value === product.browse_node_id)?.label || product.browse_node_id}
                       </span>
                     )}
@@ -884,6 +887,11 @@ export default function ProductListPage() {
                             <button onClick={() => handleList(product.id)} disabled={listMutation.isPending} className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded transition-colors" title="رفع للأمازون">
                               {listMutation.isPending && listMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                             </button>
+                            {(product.status === 'failed' || product.status === 'incomplete') && (
+                              <button onClick={() => handleCompleteData(product)} className="p-1.5 text-neon-red hover:text-red-400 hover:bg-neon-red/10 rounded transition-colors" title="معالجة الفشل">
+                                <AlertCircle className="w-4 h-4" />
+                              </button>
+                            )}
                             <button onClick={() => handleUpdatePriceOnAmazon(product)} disabled={patchAmazonMutation.isPending} className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded transition-colors" title="تحديث السعر على Amazon">
                               <Cloud className="w-4 h-4" />
                             </button>

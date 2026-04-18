@@ -84,26 +84,43 @@ const SelectInput = ({
     className="neon-input neon-select"
   >
     {options.map(opt => (
-      <option key={opt.value} value={opt.value}>{opt.label}</option>
+      <option key={opt.value} value={opt.value}>
+        {opt.icon ? `${opt.icon} ${opt.label}` : opt.label}
+      </option>
     ))}
   </select>
 )
 
 const Field = ({
-  label, children, required: isRequired, hint,
+  label, children, required: isRequired, hint, isAiGenerated,
 }: {
   label: string
   children: React.ReactNode
   required?: boolean
   hint?: string
+  isAiGenerated?: boolean
 }) => (
-  <div className="space-y-1">
-    <label className="neon-label neon-label--required">
-      {label}
-      {isRequired && <span className="text-red-500 mr-1">*</span>}
-    </label>
-    {children}
-    {hint && <p className="neon-helper">{hint}</p>}
+  <div className="space-y-1 group">
+    <div className="flex items-center justify-between">
+      <label className="text-sm font-bold text-text-primary flex items-center gap-1.5">
+        {label}
+        {isRequired && <span className="text-neon-red font-black text-xs">*</span>}
+        {isAiGenerated && (
+          <span className="flex items-center gap-0.5 text-[9px] bg-amazon-orange/10 text-amazon-orange px-1.5 py-0.5 rounded border border-amazon-orange/20">
+            <Sparkles className="w-2.5 h-2.5" /> AI
+          </span>
+        )}
+      </label>
+      {hint && (
+        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-[10px] text-text-muted bg-white/5 px-2 py-0.5 rounded-full border border-white/10">
+          <Zap className="w-3 h-3 text-amazon-orange" />
+          {hint}
+        </div>
+      )}
+    </div>
+    <div className="relative">
+      {children}
+    </div>
   </div>
 )
 
@@ -318,6 +335,12 @@ export default function ProductCreatePage() {
   const extraFileInputRef = useRef<HTMLInputElement>(null)
 
   // ==================== Edit Mode: Populate fields ====================
+  useEffect(() => {
+    if ((location.state as any)?.completeMode) {
+      setPage(1) // Jump to form directly
+    }
+  }, [location.state])
+
   useEffect(() => {
     if (editProduct) {
       const bullets = Array.isArray(editProduct.bullet_points)
@@ -1157,14 +1180,14 @@ export default function ProductCreatePage() {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="اسم المنتج (عربي)" required hint="الاسم بالعربي — يظهر على صفحة المنتج">
+          <Field label="اسم المنتج (عربي)" required hint="الاسم بالعربي — يظهر على صفحة المنتج" isAiGenerated={selectedAiProduct !== null}>
             <TextInput
               value={required.name_ar}
               onChange={v => setRequired(prev => ({ ...prev, name_ar: v }))}
               placeholder="مثال: خلاط كهربائي 500 واط"
             />
           </Field>
-          <Field label="اسم المنتج (English)" required hint="الاسم بالإنجليزي — مطلوب لـ Amazon">
+          <Field label="اسم المنتج (English)" required hint="الاسم بالإنجليزي — مطلوب لـ Amazon" isAiGenerated={selectedAiProduct !== null}>
             <TextInput
               value={required.name_en}
               onChange={v => setRequired(prev => ({ ...prev, name_en: v }))}
@@ -1173,7 +1196,7 @@ export default function ProductCreatePage() {
           </Field>
         </div>
 
-        <Field label="نوع المنتج" required hint="اختر الفئة المناسبة — الفئات المتاحة تتغير حسب النوع">
+        <Field label="نوع المنتج" required hint="اختر الفئة المناسبة — الفئات المتاحة تتغير حسب النوع" isAiGenerated={selectedAiProduct !== null}>
           <SelectInput
             value={required.product_type}
             onChange={v => {
@@ -1188,7 +1211,7 @@ export default function ProductCreatePage() {
           />
         </Field>
 
-        <Field label="الباركود" required={!required.has_product_identifier} hint="EAN (13 رقم) أو UPC (12 رقم) — إجباري من Amazon للتعرف على المنتج">
+        <Field label="الباركود" required={!required.has_product_identifier} hint="EAN (13 رقم) أو UPC (12 رقم) — إجباري من Amazon للتعرف على المنتج" isAiGenerated={selectedAiProduct !== null}>
           {/* GTIN Exemption Checkbox */}
           <label className="flex items-center gap-2 mb-3 cursor-pointer group">
             <input
@@ -1259,17 +1282,17 @@ export default function ProductCreatePage() {
           <FileSpreadsheet className="w-5 h-5" /> الوصف والتفاصيل
         </h3>
 
-        <Field label="الوصف (عربي)" required hint="وصف تفصيلي شامل - 3 سطور على الأقل يشرح مميزات المنتج واستخداماته">
+        <Field label="الوصف (عربي)" required hint="وصف تفصيلي شامل - 3 سطور على الأقل يشرح مميزات المنتج واستخداماته" isAiGenerated={selectedAiProduct !== null}>
           <textarea
             value={required.description_ar}
             onChange={e => setRequired(prev => ({ ...prev, description_ar: e.target.value }))}
-            placeholder="مثال: هذا الخلاط الكهربائي بقوة 500 واط يأتي مع 5 سرعات مختلفة لتناسب جميع احتياجاتك في المطبخ. مصنوع من مواد عالية الجودة تضمن له المتانة والاستخدام الطويل. مثالي لخلط العجين، تحضير العصائر، وفرم المكونات المختلفة بسهولة تامة."
+            placeholder="مثال: هذا الخلاط كهربائي بقوة 500 واط يأتي مع 5 سرعات مختلفة لتناسب جميع احتياجاتك في المطبخ. مصنوع من مواد عالية الجودة تضمن له المتانة والاستخدام الطويل. مثالي لخلط العجين، تحضير العصائر، وفرم المكونات المختلفة بسهولة تامة."
             rows={4}
             className="neon-input neon-textarea resize-none"
           />
         </Field>
 
-        <Field label="الوصف (English)" required hint="Comprehensive product description - at least 3 lines describing features and benefits">
+        <Field label="الوصف (English)" required hint="Comprehensive product description - at least 3 lines describing features and benefits" isAiGenerated={selectedAiProduct !== null}>
           <textarea
             value={required.description_en}
             onChange={e => setRequired(prev => ({ ...prev, description_en: e.target.value }))}
@@ -1279,7 +1302,7 @@ export default function ProductCreatePage() {
           />
         </Field>
 
-        <Field label="النقاط البيعية" hint="💡 يُنصح بكتابة 5 نقاط كاملة — كل نقطة جملة مفيدة تشرح ميزة أو فائدة مهمة للمشتري (اختياري)">
+        <Field label="النقاط البيعية" hint="💡 يُنصح بكتابة 5 نقاط كاملة — كل نقطة جملة مفيدة تشرح ميزة أو فائدة مهمة للمشتري (اختياري)" isAiGenerated={selectedAiProduct !== null}>
           <div className="space-y-3">
             {required.bullet_points.map((bp, i) => (
               <div key={i} className="flex gap-2">

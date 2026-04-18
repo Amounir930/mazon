@@ -109,6 +109,9 @@ def _run_server():
     except Exception as e:
         error_tb = traceback.format_exc()
         logger.error(f"❌ Uvicorn failed to start:\n{error_tb}")
+        # Save error to a special file for the main process to see
+        with open(APP_DATA_DIR / "last_error.txt", "w", encoding="utf-8") as f:
+            f.write(error_tb)
         # Signal failure to the main thread
         _shutdown_event.set()
         raise
@@ -123,7 +126,7 @@ def start_backend():
     logger.info("Backend server thread started")
 
 
-def wait_for_server(timeout: int = 30) -> bool:
+def wait_for_server(timeout: int = 60) -> bool:
     """
     Wait for the backend server to be ready.
     Polls the /health endpoint until it responds.
@@ -132,6 +135,11 @@ def wait_for_server(timeout: int = 30) -> bool:
     start_time = time.time()
 
     while time.time() - start_time < timeout:
+        # Check if the server thread already crashed
+        if _shutdown_event.is_set():
+            logger.error("❌ Backend server thread signaled failure")
+            return False
+
         try:
             response = urlopen(f"{BACKEND_URL}/health", timeout=1)
             if response.status == 200:
@@ -139,7 +147,7 @@ def wait_for_server(timeout: int = 30) -> bool:
                 return True
         except (URLError, ConnectionRefusedError, OSError):
             pass
-        time.sleep(0.5)
+        time.sleep(1.0)
 
     logger.error("❌ Backend server failed to start within timeout")
     return False
@@ -208,13 +216,27 @@ def main():
     start_backend()
 
     # Wait for backend to be ready
-    if not wait_for_server(timeout=30):
+    if not wait_for_server(timeout=60):
         logger.error("❌ Failed to start backend — exiting")
-        if not getattr(sys, 'frozen', False) and sys.stdin and sys.stdin.isatty():
-            try:
-                input("Press Enter to exit...")
-            except (RuntimeError, EOFError):
-                pass
+        
+        # Try to show error in a message box if possible
+        last_error_file = APP_DATA_DIR / "last_error.txt"
+        error_msg = "Backend server failed to start."
+        if last_error_file.exists():
+            error_msg = last_error_file.read_text(encoding="utf-8")
+        
+        # We can't use webview yet as start() hasn't been called
+        # But we can try a basic tkinter message box if available
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("Crazy Lister - Error", f"Failed to start backend:\n\n{error_msg[:500]}...")
+            root.destroy()
+        except:
+            pass
+            
         sys.exit(1)
 
     # Create PyWebView window

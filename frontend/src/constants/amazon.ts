@@ -16,9 +16,8 @@ export const PRODUCT_TYPE_CATEGORIES = [
   { value: 'BATHROOM', label: '🛁 مستلزمات الحمام', icon: '🛁', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
   { value: 'DECOR', label: '🎨 ديكور وزينة', icon: '🎨', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
   { value: 'CLEANING', label: '🧹 تنظيف المنزل', icon: '🧹', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
-  { value: 'LAUNDRY', label: '👕 غسيل وكي', icon: '👕', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
-  { value: 'LIGHTING', label: '💡 إضاءة', icon: '💡', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
   { value: 'HOME_IMPROVEMENT', label: '🛠️ أدوات وتحسين المنزل', icon: '🛠️', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
+  { value: 'SHIPPING_SUPPLIES', label: '🚚 لوازم التغليف والشحن', icon: '🚚', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
   { value: 'ARTS_AND_CRAFTS', label: '✂️ الفنون والحرف', icon: '✂️', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
 ] as const
 
@@ -51,8 +50,12 @@ export const BROWSE_NODES_BY_TYPE: Record<string, {value: string; label: string}
     { value: '85443434031', label: 'رفوف لتخزين الصحف' },
     { value: '85443436031', label: 'أحواض المياه المصرفية' },
     { value: '85443441031', label: 'رفرف مكاتب البيت والتخزين' },
-    { value: '21864274031', label: 'رفوف وعروض المكاتب المنزلية' },
+     { value: '21864274031', label: 'رفوف وعروض المكاتب المنزلية' },
     { value: '21864277031', label: 'مخازن اضواء الاعياد' },
+    { value: '207834611031', label: 'منظمات النظارات' },
+    { value: '88739314031', label: 'حقائب متحركة (Moving Bags)' },
+    { value: '21864265031', label: 'خزانات الأحذية' },
+    { value: '85443428031', label: 'منظم مستلزمات الغرف والحمام' },
   ],
 
   // ====== 🍳 أدوات المطبخ ======
@@ -79,16 +82,6 @@ export const BROWSE_NODES_BY_TYPE: Record<string, {value: string; label: string}
     { value: '21863790031', label: 'النفايات وإعادة التدوير' },
   ],
 
-  // ====== 👕 غسيل وكي ======
-  'LAUNDRY': [
-    { value: '21863791031', label: 'غسيل الملابس والبخار والكي' },
-  ],
-
-  // ====== 💡 إضاءة ======
-  'LIGHTING': [
-    { value: '21863795031', label: 'الإضاءة والعمل الفني' },
-  ],
-
   // ====== 🛠️ أدوات وتحسين المنزل ======
   'HOME_IMPROVEMENT': [
     { value: '21874771031', label: 'التخزين والمنظمات المنزلية' },
@@ -98,6 +91,19 @@ export const BROWSE_NODES_BY_TYPE: Record<string, {value: string; label: string}
     { value: '21875016031', label: 'ملحقات نظام تخزين الكراج' },
     { value: '21875388031', label: 'معدات لأنطمة تخزين الكراج' },
     { value: '85437913031', label: 'رفوف وحاملات للدرجات' },
+    { value: '21875019031', label: 'إكسسوارات الرفوف وأنظمة الأرفف' },
+  ],
+
+  // ====== 🚚 لوازم التغليف والشحن ======
+  'SHIPPING_SUPPLIES': [
+    { value: '21857449031', label: 'لوازم التغليف والشحن (الرئيسية)' },
+    { value: '21857535031', label: 'استرتش التغليف الصناعي' },
+    { value: '21857534031', label: 'معدات اللصق والملصقات' },
+    { value: '21857538031', label: 'لوازم حزم الفقاعات (بابلز)' },
+    { value: '21857537031', label: 'منتجات الغطاء البلاستيك الصناعية' },
+    { value: '21857536031', label: 'تسميات التعبئة والعلامات (Labels)' },
+    { value: '85363007031', label: 'الظروف البريدية للشحن المجمع' },
+    { value: '85363005031', label: 'التعبئة والتغليف بالربط' },
   ],
 
   // ====== ✂️ الفنون والحرف ======
@@ -113,9 +119,8 @@ export const BROWSE_NODES = [
   ...BROWSE_NODES_BY_TYPE['BATHROOM'],
   ...BROWSE_NODES_BY_TYPE['DECOR'],
   ...BROWSE_NODES_BY_TYPE['CLEANING'],
-  ...BROWSE_NODES_BY_TYPE['LAUNDRY'],
-  ...BROWSE_NODES_BY_TYPE['LIGHTING'],
   ...BROWSE_NODES_BY_TYPE['HOME_IMPROVEMENT'],
+  ...BROWSE_NODES_BY_TYPE['SHIPPING_SUPPLIES'],
   ...BROWSE_NODES_BY_TYPE['ARTS_AND_CRAFTS'],
 ] as const
 
