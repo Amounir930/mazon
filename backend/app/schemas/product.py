@@ -71,6 +71,12 @@ class ProductCreate(BaseModel):
     unit_count: Optional[dict[str, Any]] = Field(None, description="Unit count: {value, type}")
     target_audience: Optional[str] = Field(None, max_length=100, description="Target audience")
     
+    # Technical Specifications (Electrical)
+    voltage: Optional[str] = Field(None, max_length=50)
+    wattage: Optional[str] = Field(None, max_length=50)
+    operating_frequency: Optional[str] = Field(None, max_length=50)
+    power_plug_type: Optional[str] = Field(None, max_length=50)
+    
     # Variation fields
     is_parent: Optional[bool] = Field(default=False)
     parent_sku: Optional[str] = Field(None, max_length=100)
@@ -152,6 +158,12 @@ class ProductUpdate(BaseModel):
     number_of_items: Optional[int] = Field(None, ge=1)
     unit_count: Optional[dict[str, Any]] = None
     target_audience: Optional[str] = Field(None, max_length=100)
+    
+    # Technical Specifications (Electrical)
+    voltage: Optional[str] = None
+    wattage: Optional[str] = None
+    operating_frequency: Optional[str] = None
+    power_plug_type: Optional[str] = None
 
 
 class ProductResponse(BaseModel):
@@ -202,6 +214,13 @@ class ProductResponse(BaseModel):
     number_of_items: int = 1
     unit_count: Optional[dict[str, Any]] = None
     target_audience: Optional[str] = None
+    
+    # Technical Specifications (Electrical)
+    voltage: Optional[str] = None
+    wattage: Optional[str] = None
+    operating_frequency: Optional[str] = None
+    power_plug_type: Optional[str] = None
+    
     status: str
     created_at: datetime
     updated_at: datetime

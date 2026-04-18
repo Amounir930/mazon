@@ -83,6 +83,12 @@ class Product(Base):
     unit_count = Column(Text)  # JSON: {"value": 500, "type": "Grams"}
     target_audience = Column(String(100))  # Target audience (Adults, Kids, etc.)
 
+    # Technical Specifications (Electrical)
+    voltage = Column(String(50))
+    wattage = Column(String(50))
+    operating_frequency = Column(String(50))
+    power_plug_type = Column(String(50))
+
     # Status
     # draft: جديد في النظام
     # incomplete: ناقص بيانات Amazon (صور، UPC/EAN، bullet points)

@@ -588,15 +588,6 @@ export default function ProductListPage() {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => handleImportFromAmazon(false)}
-              disabled={amazonImporting}
-              className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-3 rounded-xl transition-colors disabled:opacity-50 text-sm"
-              title="استيراد سريع - بيانات أساسية فقط"
-            >
-              {amazonImporting && !fullSyncMode ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              استيراد سريع
-            </button>
-            <button
               onClick={() => handleImportFromAmazon(true)}
               disabled={amazonImporting}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-3 rounded-xl transition-colors disabled:opacity-50 text-sm"
@@ -857,60 +848,50 @@ export default function ProductListPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-1">
                       {isEditing ? (
-                        <>
+                        <div className="flex items-center gap-2">
                           <button
                             onClick={handleSaveEdit}
-                            className="p-1.5 bg-green-600/20 text-green-500 hover:bg-green-600/30 rounded-lg transition-colors"
+                            className="p-2 bg-green-600/20 text-green-500 hover:bg-green-600/30 rounded-lg transition-colors border border-green-600/30"
                             title="حفظ"
                           >
                             <Check className="w-4 h-4" />
                           </button>
                           <button
                             onClick={handleCancelEdit}
-                            className="p-1.5 bg-red-600/20 text-red-500 hover:bg-red-600/30 rounded-lg transition-colors"
+                            className="p-2 bg-red-600/20 text-red-500 hover:bg-red-600/30 rounded-lg transition-colors border border-red-600/30"
                             title="إلغاء"
                           >
                             <X className="w-4 h-4" />
                           </button>
-                        </>
+                        </div>
                       ) : (
-                        <>
-                          <button
-                            onClick={() => handleEditInline(product)}
-                            className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-colors"
-                            title="تعديل سريع"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleEdit(product)}
-                            className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded-lg transition-colors"
-                            title="تعديل كامل"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleList(product.id)}
-                            disabled={listMutation.isPending}
-                            className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-colors disabled:opacity-50"
-                            title="رفع للأمازون"
-                          >
-                            {listMutation.isPending && listMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                          </button>
-                          <button onClick={() => handleDelete(product.id)} disabled={deleteMutation.isPending} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50" title="حذف">
-                            {deleteMutation.isPending && deleteMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                          </button>
-
-                          {/* SP-API Actions */}
-                          <button
-                            onClick={() => handleUpdatePriceOnAmazon(product)}
-                            disabled={patchAmazonMutation.isPending}
-                            className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors disabled:opacity-50"
-                            title="تحديث السعر على Amazon"
-                          >
-                            <Cloud className="w-4 h-4" />
-                          </button>
-                        </>
+                        <div className="flex flex-col gap-2 min-w-[120px]">
+                          {/* Row 1: Local Actions */}
+                          <div className="flex items-center gap-1 justify-center bg-white/5 p-1 rounded-lg">
+                            <button onClick={() => handleEditInline(product)} className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded transition-colors" title="تعديل سريع">
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => handleEdit(product)} className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded transition-colors" title="تعديل كامل">
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => handleDelete(product.id)} disabled={deleteMutation.isPending} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors" title="حذف محلي">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          
+                          {/* Row 2: Amazon Actions */}
+                          <div className="flex items-center gap-1 justify-center bg-amazon-orange/5 p-1 rounded-lg border border-amazon-orange/10">
+                            <button onClick={() => handleList(product.id)} disabled={listMutation.isPending} className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded transition-colors" title="رفع للأمازون">
+                              {listMutation.isPending && listMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                            </button>
+                            <button onClick={() => handleUpdatePriceOnAmazon(product)} disabled={patchAmazonMutation.isPending} className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded transition-colors" title="تحديث السعر على Amazon">
+                              <Cloud className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => handleDeleteFromAmazon(product.sku)} disabled={deleteFromAmazonMutation.isPending} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors" title="حذف من Amazon">
+                              <CloudOff className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </td>

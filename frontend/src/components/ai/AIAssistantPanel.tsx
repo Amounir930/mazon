@@ -57,151 +57,137 @@ export const AIAssistantPanel = memo(function AIAssistantPanel({ onProductsGener
   }, [name, specs, copies, onProductsGenerated])
 
   return (
-    <div className="neon-card neon-card--accent neon-card--pink">
+    <div className="neon-card neon-card--accent neon-card--blue p-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-neon-purple/20 to-neon-pink/10 border border-neon-purple/30">
-          <Sparkles className="w-5 h-5 text-neon-purple" />
+      <div className="flex items-center gap-4 mb-8">
+        <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-amazon-orange/10 border border-amazon-orange/20">
+          <Sparkles className="w-6 h-6 text-amazon-orange" />
         </div>
         <div>
-          <h3 className="font-bold text-lg text-text-primary">مساعد الذكاء الاصطناعي</h3>
-          <p className="text-sm text-text-secondary">اكتب اسم المنتج والمواصفات — AI هيعبّي كل شيء</p>
+          <h3 className="font-bold text-xl text-text-primary">مساعد الذكاء الاصطناعي الذكي</h3>
+          <p className="text-sm text-text-secondary">املأ البيانات الأساسية ودع الـ AI يتولى التفاصيل المعقدة</p>
         </div>
       </div>
 
       {/* Learned Fields Warning */}
       {learnedFields.length > 0 && (
-        <div className="mb-4 p-3 rounded-lg bg-neon-red/5 border border-neon-red/20">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-neon-red mt-0.5 flex-shrink-0" />
+        <div className="mb-6 p-4 rounded-xl bg-neon-red/5 border border-neon-red/20 shadow-inner">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-neon-red mt-0.5 flex-shrink-0" />
             <div className="text-sm">
-              <p className="font-medium text-text-primary mb-1">حقول سبق رفضها Amazon:</p>
-              <div className="flex flex-wrap gap-1">
+              <p className="font-bold text-text-primary mb-2">تنبيه: حقول مرفوضة سابقاً من Amazon</p>
+              <div className="flex flex-wrap gap-2">
                 {learnedFields.map((field, i) => (
-                  <span key={i} className="px-2 py-0.5 bg-neon-red/10 text-neon-red rounded text-xs font-medium">
+                  <span key={i} className="px-2 py-1 bg-neon-red/10 text-neon-red rounded-lg text-xs font-bold border border-neon-red/10">
                     {field}
                   </span>
                 ))}
               </div>
-              <p className="text-xs text-text-secondary mt-1">AI سيتضمن هذه الحقول تلقائياً</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* How it works */}
-      <div className="mb-6 p-4 rounded-lg bg-bg-elevated/50 border border-border-subtle">
-        <div className="flex items-start gap-2">
-          <HelpCircle className="w-5 h-5 text-neon-purple mt-0.5 flex-shrink-0" />
-          <div className="text-sm text-text-secondary">
-            <p className="font-medium text-text-primary mb-1">إزاي يشتغل؟</p>
-            <ol className="list-decimal list-inside space-y-1 text-text-muted">
-              <li>اكتب <strong className="text-text-secondary">اسم المنتج</strong></li>
-              <li>اكتب <strong className="text-text-secondary">المواصفات</strong></li>
-              <li>اضبط <strong className="text-text-secondary">العدد</strong></li>
-              <li>اضغط <strong className="text-text-secondary">توليد</strong></li>
-            </ol>
-          </div>
-        </div>
-      </div>
-
       {/* Form */}
-      <div className="space-y-4">
-        {/* Product Name */}
-        <div className="neon-input-group">
-          <label className="neon-label neon-label--required">اسم المنتج</label>
-          <input
-            type="text"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="مثال: خلاط كهربائي 5 سرعات 300 واط"
-            dir="rtl"
-            className="neon-input neon-input--pink"
-          />
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Product Name */}
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-text-primary flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-amazon-orange"></span>
+              اسم المنتج
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="مثال: خلاط كهربائي 300 واط"
+              dir="rtl"
+              className="neon-input neon-input--blue w-full h-12"
+            />
+          </div>
+
+          {/* Number of Variants */}
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-text-primary flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-amazon-orange"></span>
+              عدد العروض / النسخ
+            </label>
+            <div className="flex items-center gap-3 h-12">
+              <button
+                type="button"
+                onClick={() => {
+                  const v = Math.max(1, copies - 1)
+                  setCopies(v)
+                  onCopiesChange?.(v)
+                }}
+                disabled={copies <= 1}
+                className="w-12 h-full flex items-center justify-center rounded-xl border border-border-medium bg-bg-elevated hover:bg-bg-hover disabled:opacity-30 transition-all active:scale-95"
+              >
+                <Minus className="w-5 h-5 text-text-secondary" />
+              </button>
+              <div className="flex-1 h-full flex items-center justify-center bg-bg-card border border-border-subtle rounded-xl font-bold text-xl text-amazon-orange">
+                {copies}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const v = Math.min(10, copies + 1)
+                  setCopies(v)
+                  onCopiesChange?.(v)
+                }}
+                disabled={copies >= 10}
+                className="w-12 h-full flex items-center justify-center rounded-xl border border-border-medium bg-bg-elevated hover:bg-bg-hover disabled:opacity-30 transition-all active:scale-95"
+              >
+                <Plus className="w-5 h-5 text-text-secondary" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Specifications */}
-        <div className="neon-input-group">
-          <label className="neon-label neon-label--required">المواصفات</label>
+        <div className="space-y-2">
+          <label className="text-sm font-bold text-text-primary flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-amazon-orange"></span>
+            المواصفات الأساسية (اكتب كل سطر ميزة)
+          </label>
           <textarea
             value={specs}
             onChange={e => setSpecs(e.target.value)}
-            placeholder={"5 سرعات\nستانلس ستيل\nسهل التنظيف"}
+            placeholder={"محرك قوي\nشفرات ستانلس\nضمان عامين"}
             dir="rtl"
-            rows={3}
-            className="neon-input neon-textarea resize-none"
+            rows={4}
+            className="neon-input neon-textarea w-full p-4"
           />
-          <span className="neon-helper">اكتب كل المواصفات — كل ما كانت أكتر، النتيجة أدق</span>
-        </div>
-
-        {/* Number of Variants */}
-        <div className="neon-input-group">
-          <label className="neon-label">عدد العروض</label>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                const v = Math.max(1, copies - 1)
-                setCopies(v)
-                onCopiesChange?.(v)
-              }}
-              disabled={copies <= 1}
-              className="w-10 h-10 flex items-center justify-center rounded-xl border border-border-medium bg-bg-elevated hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >
-              <Minus className="w-4 h-4 text-text-secondary" />
-            </button>
-            <input
-              type="number"
-              min="1"
-              max="10"
-              value={copies}
-              onChange={e => {
-                const v = parseInt(e.target.value)
-                if (!isNaN(v) && v >= 1 && v <= 10) {
-                  setCopies(v)
-                  onCopiesChange?.(v)
-                }
-              }}
-              className="neon-input w-20 text-center text-lg font-bold"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                const v = Math.min(10, copies + 1)
-                setCopies(v)
-                onCopiesChange?.(v)
-              }}
-              disabled={copies >= 10}
-              className="w-10 h-10 flex items-center justify-center rounded-xl border border-border-medium bg-bg-elevated hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >
-              <Plus className="w-4 h-4 text-text-secondary" />
-            </button>
-            <span className="text-sm text-text-muted">{copies === 1 ? 'منتج' : 'منتجات'}</span>
-          </div>
-          <span className="neon-helper">كل عرض اسم + وصف + SKU مختلف</span>
         </div>
 
         {/* Generate Button */}
         <button
           onClick={handleGenerate}
           disabled={loading || !name.trim() || !specs.trim()}
-          className="neon-btn neon-btn--rainbow w-full h-12 text-base font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+          className="neon-btn neon-btn--primary w-full h-14 text-lg font-black shadow-lg shadow-amazon-orange/20 active:scale-[0.98] transition-all disabled:opacity-40"
         >
           {loading ? (
-            <><Loader2 className="w-5 h-5 animate-spin" /> جاري التوليد...</>
+            <div className="flex items-center justify-center gap-3">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <span>جاري تحليل البيانات وتوليد المنتج...</span>
+            </div>
           ) : (
-            <><Sparkles className="w-5 h-5" /> توليد منتج{copies > 1 ? ` (${copies})` : ''} بالذكاء الاصطناعي</>
+            <div className="flex items-center justify-center gap-3">
+              <Sparkles className="w-6 h-6" />
+              <span>توليد {copies > 1 ? `${copies} منتجات مختلفة` : 'المنتج'} بالذكاء الاصطناعي</span>
+            </div>
           )}
         </button>
       </div>
 
       {/* Warnings */}
       {warnings.length > 0 && (
-        <div className="mt-4 space-y-2">
+        <div className="mt-6 space-y-3">
           {warnings.map((warning, i) => (
-            <div key={i} className="flex items-start gap-2 text-sm text-neon-yellow bg-neon-yellow/5 rounded-lg p-3 border border-neon-yellow/20">
-              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-              <span>{warning}</span>
+            <div key={i} className="flex items-center gap-3 text-sm text-amazon-orange bg-amazon-orange/5 rounded-xl p-4 border border-amazon-orange/20">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <span className="font-medium">{warning}</span>
             </div>
           ))}
         </div>

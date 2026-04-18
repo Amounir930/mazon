@@ -17,9 +17,7 @@ export const PRODUCT_TYPE_CATEGORIES = [
   { value: 'DECOR', label: '🎨 ديكور وزينة', icon: '🎨', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
   { value: 'CLEANING', label: '🧹 تنظيف المنزل', icon: '🧹', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
   { value: 'LAUNDRY', label: '👕 غسيل وكي', icon: '👕', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
-  { value: 'FURNITURE', label: '🪑 أثاث', icon: '🪑', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
   { value: 'LIGHTING', label: '💡 إضاءة', icon: '💡', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
-  { value: 'BEDDING', label: '🛏️ مفروشات وبياضات', icon: '🛏️', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
   { value: 'HOME_IMPROVEMENT', label: '🛠️ أدوات وتحسين المنزل', icon: '🛠️', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
   { value: 'ARTS_AND_CRAFTS', label: '✂️ الفنون والحرف', icon: '✂️', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
 ] as const
@@ -86,19 +84,9 @@ export const BROWSE_NODES_BY_TYPE: Record<string, {value: string; label: string}
     { value: '21863791031', label: 'غسيل الملابس والبخار والكي' },
   ],
 
-  // ====== 🪑 أثاث ======
-  'FURNITURE': [
-    { value: '21863796031', label: 'أثاث' },
-  ],
-
   // ====== 💡 إضاءة ======
   'LIGHTING': [
     { value: '21863795031', label: 'الإضاءة والعمل الفني' },
-  ],
-
-  // ====== 🛏️ مفروشات وبياضات ======
-  'BEDDING': [
-    { value: '21863793031', label: 'الفراش والبياضات' },
   ],
 
   // ====== 🛠️ أدوات وتحسين المنزل ======
@@ -126,9 +114,7 @@ export const BROWSE_NODES = [
   ...BROWSE_NODES_BY_TYPE['DECOR'],
   ...BROWSE_NODES_BY_TYPE['CLEANING'],
   ...BROWSE_NODES_BY_TYPE['LAUNDRY'],
-  ...BROWSE_NODES_BY_TYPE['FURNITURE'],
   ...BROWSE_NODES_BY_TYPE['LIGHTING'],
-  ...BROWSE_NODES_BY_TYPE['BEDDING'],
   ...BROWSE_NODES_BY_TYPE['HOME_IMPROVEMENT'],
   ...BROWSE_NODES_BY_TYPE['ARTS_AND_CRAFTS'],
 ] as const

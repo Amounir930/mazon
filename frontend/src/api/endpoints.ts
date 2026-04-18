@@ -101,6 +101,9 @@ export const productsApi = {
   list: (params?: { status?: string; category?: string; page?: number; page_size?: number }) =>
     api.get<ProductListResponse>('/products', { params }),
 
+  get: (id: string) =>
+    api.get<Product>(`/products/${id}`),
+
   create: (data: ProductCreate) =>
     api.post<Product>('/products', data),
 

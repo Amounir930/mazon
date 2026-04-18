@@ -13,7 +13,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Package, DollarSign, Image as ImageIcon, Save, Loader2,
   AlertTriangle, CheckCircle, Upload, X, FileSpreadsheet, Eye,
-  Truck, ShoppingCart, Tag, Globe, Sparkles, Store
+  Truck, ShoppingCart, Tag, Globe, Sparkles, Store, Zap
 } from 'lucide-react'
 import { useCreateProduct } from '@/api/hooks'
 import { useSellersList } from '@/api/hooks'
@@ -249,6 +249,11 @@ export default function ProductCreatePage() {
     sale_end_date: '',
     handling_time: String(DEFAULT_VALUES.handling_time),
     package_quantity: String(DEFAULT_VALUES.package_quantity),
+    // Technical Specifications (Electrical)
+    voltage: '',
+    wattage: '',
+    operating_frequency: '',
+    power_plug_type: '',
   })
 
   // ==================== PAGE 3: الصور والإرسال ====================
@@ -364,6 +369,11 @@ export default function ProductCreatePage() {
         sale_end_date: editProduct.sale_end_date ? editProduct.sale_end_date.split('T')[0] : '',
         handling_time: String(editProduct.handling_time || DEFAULT_VALUES.handling_time),
         package_quantity: String(editProduct.package_quantity || DEFAULT_VALUES.package_quantity),
+        // Technical Specifications (Electrical)
+        voltage: editProduct.voltage || '',
+        wattage: editProduct.wattage || '',
+        operating_frequency: editProduct.operating_frequency || '',
+        power_plug_type: editProduct.power_plug_type || '',
       })
 
       const images = editProduct.images || []
@@ -822,6 +832,11 @@ export default function ProductCreatePage() {
       },
       keywords: optional.keywords,
       images: allImages,
+      // Technical Specifications (Electrical)
+      voltage: optional.voltage,
+      wattage: optional.wattage,
+      operating_frequency: optional.operating_frequency,
+      power_plug_type: optional.power_plug_type,
     }
   }
 
@@ -1084,134 +1099,21 @@ export default function ProductCreatePage() {
 
   // ==================== Render Page 0: مساعد الذكاء الاصطناعي ====================
   const renderPage0 = (
-    <div className="space-y-6">
-      {/* Hero Section */}
-      <div className="text-center py-8">
-        <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 mb-4">
-          <Sparkles className="w-10 h-10 text-white" />
-        </div>
-        <h2 className="text-2xl font-bold text-text-primary mb-2">
-          أنشئ منتجك بالذكاء الاصطناعي
-        </h2>
-        <p className="text-text-muted max-w-lg mx-auto">
-          اكتب اسم المنتج والمواصفات — والذكاء الاصطناعي هيعبّي كل الخانات نيابة عنك في ثوانٍ
-        </p>
-      </div>
-
+    <div className="space-y-8">
       {/* AI Assistant Panel */}
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-3xl mx-auto">
         <AIAssistantPanel
           onProductsGenerated={handleAiProductsGenerated}
           onCopiesChange={setListingCopies}
         />
       </div>
 
-      {/* AI Product Variant Selector */}
-      {aiProducts.length > 1 && (
-        <div className="max-w-2xl mx-auto rounded-xl neon-card neon-card--accent neon-card--blue p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-4 h-4 text-neon-blue" />
-            <h4 className="font-medium text-text-primary">المنتجات المولّدة — اختار اللي عايزه</h4>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {aiProducts.map((product, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  setSelectedAiProduct(i)
-                  fillFormFromAi(product)
-                  setPage(1)
-                  toast.success(`تم اختيار المنتج ${i + 1} — كمّل باقي البيانات`)
-                }}
-                className={`px-4 py-3 rounded-xl text-sm font-medium transition-all ${selectedAiProduct === i
-                  ? 'bg-amazon-orange text-white shadow-lg scale-105'
-                  : 'bg-bg-elevated text-text-secondary border border-border-subtle hover:border-amazon-orange/50 hover:shadow'
-                  }`}
-              >
-                <div className="font-bold">المنتج {i + 1}</div>
-                <div className="text-xs opacity-80 mt-1">{product.name_ar.slice(0, 40)}</div>
-                <div className="text-xs opacity-60 mt-1">SKU: {product.suggested_sku}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Divider */}
-      {aiProducts.length === 0 && (
-        <div className="max-w-2xl mx-auto space-y-4">
-          {/* Amazon Import Section */}
-          <div className="rounded-xl neon-card p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Globe className="w-5 h-5 text-text-muted" />
-              <h4 className="font-medium text-text-primary">استيراد من Amazon</h4>
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={importType}
-                onChange={e => setImportType(e.target.value)}
-                className="neon-input neon-select px-3 py-2 text-sm"
-              >
-                <option value="ASIN">ASIN</option>
-                <option value="UPC">UPC</option>
-                <option value="EAN">EAN</option>
-              </select>
-              <input
-                type="text"
-                value={importSearch}
-                onChange={e => setImportSearch(e.target.value)}
-                placeholder="أدخل الرقم..."
-                dir="ltr"
-                className="neon-input flex-1 text-sm"
-              />
-              <NeonButton variant="info" size="sm" onClick={handleImportFromAmazon} isLoading={importing}>
-                <Globe className="w-4 h-4" />
-                استيراد
-              </NeonButton>
-            </div>
-            <p className="text-xs text-text-muted mt-2">ابحث في Amazon بنفس الحساب — ينزل نفس الصنف بالظبط</p>
-          </div>
-
-          <div className="relative flex items-center py-2">
-            <div className="flex-grow border-t border-border-subtle"></div>
-            <span className="flex-shrink mx-4 text-sm text-text-muted">أو</span>
-            <div className="flex-grow border-t border-border-subtle"></div>
-          </div>
-
-          {/* Skip AI Button */}
-          <div className="text-center">
-            <p className="text-sm text-text-secondary mb-3">
-              عايز تملأ البيانات بإيدك؟
-            </p>
-            <NeonButton variant="primary" styleType="outline" onClick={() => setPage(1)}>
-              ← ابدأ بإدخال البيانات يدوياً
-            </NeonButton>
-          </div>
-        </div>
-      )}
-
-      {/* Info Cards */}
-      <div className="max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
-        <div className="p-4 rounded-xl neon-card neon-card--accent neon-card--green">
-          <div className="text-2xl mb-2">⚡</div>
-          <h4 className="font-bold text-text-primary text-sm">سريع</h4>
-          <p className="text-xs text-text-secondary mt-1">
-            توليد منتج كامل في 3 ثوانٍ
-          </p>
-        </div>
-        <div className="p-4 rounded-xl neon-card neon-card--accent neon-card--blue">
-          <div className="text-2xl mb-2">🎯</div>
-          <h4 className="font-bold text-text-primary text-sm">دقيق</h4>
-          <p className="text-xs text-text-secondary mt-1">
-            بيانات متوافقة مع معايير Amazon
-          </p>
-        </div>
-        <div className="p-4 rounded-xl neon-card neon-card--accent neon-card--pink">
-          <div className="text-2xl mb-2">🔄</div>
-          <h4 className="font-bold text-text-primary text-sm">مرن</h4>
-          <p className="text-xs text-text-secondary mt-1">
-            ولّد عدة منتجات بنفس المواصفات
-          </p>
+      <div className="max-w-3xl mx-auto">
+        {/* Manual Entry Button */}
+        <div className="text-center pt-4">
+          <NeonButton variant="primary" styleType="outline" size="lg" onClick={() => setPage(1)}>
+            ← إدخال البيانات يدوياً بدون مساعدة
+          </NeonButton>
         </div>
       </div>
     </div>
@@ -1656,6 +1558,53 @@ export default function ProductCreatePage() {
               onChange={v => setOptional(prev => ({ ...prev, package_quantity: v }))}
               placeholder="1"
               min="1"
+            />
+          </Field>
+        </div>
+      </div>
+      
+      {/* المواصفات الفنية (كهرباء) */}
+      <div className="neon-card p-4 neon-card--accent neon-card--blue">
+        <h3 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+          <Zap className="w-5 h-5 text-yellow-400" /> المواصفات الفنية (للمنتجات الكهربائية)
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="الفولت (Voltage)" hint="مثال: 220">
+            <TextInput
+              value={optional.voltage}
+              onChange={v => setOptional(prev => ({ ...prev, voltage: v }))}
+              placeholder="220"
+            />
+          </Field>
+          <Field label="الواط (Wattage)" hint="مثال: 1500">
+            <TextInput
+              value={optional.wattage}
+              onChange={v => setOptional(prev => ({ ...prev, wattage: v }))}
+              placeholder="1500"
+            />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <Field label="تردد الجهد (Frequency)" hint="مثال: 50 أو 60">
+            <TextInput
+              value={optional.operating_frequency}
+              onChange={v => setOptional(prev => ({ ...prev, operating_frequency: v }))}
+              placeholder="50"
+            />
+          </Field>
+          <Field label="نوع القابس (Plug Type)" hint="مثال: Type C, Type G">
+            <SelectInput
+              value={optional.power_plug_type}
+              onChange={v => setOptional(prev => ({ ...prev, power_plug_type: v }))}
+              options={[
+                { value: '', label: 'اختر نوع القابس...' },
+                { value: 'type_c_2pin', label: 'Type C (دبوسين - أغلب مصر)' },
+                { value: 'type_g_3pin', label: 'Type G (3 دبابيس - إنجليزي)' },
+                { value: 'type_a_2pin', label: 'Type A (دبوسين مسطح - أمريكي)' },
+                { value: 'not_applicable', label: 'غير متوفر / لا يحتاج' },
+              ]}
             />
           </Field>
         </div>

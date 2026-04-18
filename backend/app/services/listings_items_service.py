@@ -72,6 +72,10 @@ class ListingsItemsService:
         currency: str = "EGP",
         compare_price: float = None,
         sale_price: float = None,
+        voltage: str = None,
+        wattage: str = None,
+        operating_frequency: str = None,
+        power_plug_type: str = None,
     ) -> dict:
         """
         Build the EXACT JSON payload Amazon expects for Listings Items API.
@@ -286,6 +290,24 @@ class ListingsItemsService:
         if browse_node_id:
             attrs["browse_node_id"] = [
                 {"value": browse_node_id, "marketplace_id": ListingsItemsService.MARKETPLACE_ID}
+            ]
+
+        # Electrical Specifications
+        if voltage:
+            attrs["voltage"] = [
+                {"value": float(voltage) if voltage.replace('.','').isdigit() else voltage, "unit": "volts", "marketplace_id": ListingsItemsService.MARKETPLACE_ID}
+            ]
+        if wattage:
+            attrs["wattage"] = [
+                {"value": float(wattage) if wattage.replace('.','').isdigit() else wattage, "unit": "watts", "marketplace_id": ListingsItemsService.MARKETPLACE_ID}
+            ]
+        if operating_frequency:
+            attrs["operating_frequency"] = [
+                {"value": float(operating_frequency) if operating_frequency.replace('.','').isdigit() else operating_frequency, "unit": "hertz", "marketplace_id": ListingsItemsService.MARKETPLACE_ID}
+            ]
+        if power_plug_type:
+            attrs["power_plug_type"] = [
+                {"value": power_plug_type, "marketplace_id": ListingsItemsService.MARKETPLACE_ID}
             ]
 
         # Build the FINAL payload

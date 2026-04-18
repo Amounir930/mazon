@@ -855,6 +855,22 @@ class SPAPIClient:
             else:
                 logger.warning(f"⚠️ Image {idx} skipped (not HTTPS): {img_ref[:50]}")
 
+        # === ELECTRICAL SPECIFICATIONS ===
+        voltage = product_data.get("voltage")
+        wattage = product_data.get("wattage")
+        frequency = product_data.get("operating_frequency")
+        plug_type = product_data.get("power_plug_type")
+
+        if voltage:
+            attributes["voltage"] = [{"value": float(voltage) if str(voltage).replace('.','').isdigit() else voltage, "unit": "volts"}]
+        if wattage:
+            attributes["wattage"] = [{"value": float(wattage) if str(wattage).replace('.','').isdigit() else wattage, "unit": "watts"}]
+        if frequency:
+            # Amazon often uses 'operating_frequency' or 'accepted_voltage_frequency'
+            attributes["operating_frequency"] = [{"value": float(frequency) if str(frequency).replace('.','').isdigit() else frequency, "unit": "hertz"}]
+        if plug_type:
+            attributes["power_plug_type"] = [{"value": plug_type}]
+
         # Remove None values
         attributes = {k: v for k, v in attributes.items() if v is not None}
 
@@ -892,10 +908,14 @@ class SPAPIClient:
         appliance_types = {"SMALL_HOME_APPLIANCES", "PERSONAL_CARE_APPLIANCE", "FOOD_PROCESSOR", "FOOD_MIXER", "FOOD_BLENDER", "HAIR_DRYER", "VACUUM_CLEANER"}
         if final_type in appliance_types:
             logger.info("⚡ Injecting Appliance requirement fields: voltage, wattage, power_plug")
-            attributes["voltage"] = [{"value": 220, "unit": "volts"}]
-            attributes["wattage"] = [{"value": 0, "unit": "watts"}]
-            attributes["supported_voltage_frequency"] = [{"value": 220, "unit": "volts"}]
-            attributes["power_plug"] = [{"value": "type_c_2pin"}]
+            if "voltage" not in attributes:
+                attributes["voltage"] = [{"value": 220, "unit": "volts"}]
+            if "wattage" not in attributes:
+                attributes["wattage"] = [{"value": 0, "unit": "watts"}]
+            if "operating_frequency" not in attributes:
+                attributes["operating_frequency"] = [{"value": 50, "unit": "hertz"}]
+            if "power_plug_type" not in attributes:
+                attributes["power_plug_type"] = [{"value": "type_c_2pin"}]
         elif final_type in {"KITCHEN_TOOL", "KITCHEN", "COOKWARE", "DRINKWARE", "FOOD_STORAGE", "FOOD_CONTAINER", "HOME_ORGANIZERS_AND_STORAGE", "VASE"}:
             logger.info("🍳 Injecting Kitchen Tool fields: care_instructions, no liquid, no electrical")
             # Non-electrical kitchen tools: declare as hand-wash, no liquid, no power required

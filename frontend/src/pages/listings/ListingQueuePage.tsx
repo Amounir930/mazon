@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next'
-import { Loader2, Play, RotateCcw, AlertCircle, CheckCircle, Info, Image as ImageIcon } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Loader2, Play, RotateCcw, AlertCircle, CheckCircle, Info, Image as ImageIcon, Edit2 } from 'lucide-react'
 import { useListings, useRetryListing } from '@/api/hooks'
+import { productsApi } from '@/api/endpoints'
 import { StatusBadge, NeonButton } from '@/components/common'
 import type { Listing } from '@/types/api'
 import { useState, useEffect, useRef } from 'react'
@@ -8,6 +10,7 @@ import toast from 'react-hot-toast'
 
 export default function ListingQueuePage() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const { data: listings, isLoading } = useListings({})
   const retryMutation = useRetryListing()
   
@@ -71,6 +74,17 @@ export default function ListingQueuePage() {
       toast.success('تمت إعادة المحاولة!')
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'فشل إعادة المحاولة')
+    }
+  }
+
+  const handleEditProduct = async (productId: string) => {
+    const loadingToast = toast.loading('جاري تحميل بيانات المنتج...')
+    try {
+      const { data: product } = await productsApi.get(productId)
+      toast.dismiss(loadingToast)
+      navigate('/products/create', { state: { editMode: true, editProduct: product } })
+    } catch (e: any) {
+      toast.error('فشل في تحميل بيانات المنتج', { id: loadingToast })
     }
   }
 
@@ -267,14 +281,24 @@ export default function ListingQueuePage() {
                   </td>
                   <td className="text-right">
                     {listing.status === 'failed' && (
-                      <button
-                        className="neon-btn neon-btn--warning neon-btn--sm"
-                        onClick={() => handleRetry(listing.id!)}
-                        disabled={retryMutation.isPending}
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                        إعادة محاولة
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          className="neon-btn neon-btn--info neon-btn--sm"
+                          onClick={() => handleEditProduct(listing.product_id)}
+                          title="تعديل المنتج لحل المشكلة"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                          تعديل
+                        </button>
+                        <button
+                          className="neon-btn neon-btn--warning neon-btn--sm"
+                          onClick={() => handleRetry(listing.id!)}
+                          disabled={retryMutation.isPending}
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          إعادة محاولة
+                        </button>
+                      </div>
                     )}
                     {listing.status === 'success' && (
                       <span className="text-xs text-neon-cyan flex items-center gap-1">

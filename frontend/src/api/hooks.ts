@@ -69,6 +69,19 @@ export function useProducts(params?: { status?: string; category?: string; searc
   })
 }
 
+export function useProduct(id: string | undefined) {
+  return useQuery({
+    queryKey: ['products', 'detail', id],
+    queryFn: async () => {
+      if (!id) return null
+      const { data } = await productsApi.get(id)
+      return data
+    },
+    enabled: !!id,
+    staleTime: 1000 * 60 * 5,
+  })
+}
+
 export function useCreateProduct() {
   const queryClient = useQueryClient()
 

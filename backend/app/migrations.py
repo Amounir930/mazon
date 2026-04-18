@@ -226,6 +226,15 @@ def run_migrations(engine) -> None:
         if "products" in existing_tables:
             _add_column_if_missing(conn, "products", "amazon_product_type", "VARCHAR(100)")
 
+        # ==========================================
+        # Migration 15: Add electrical specifications to products
+        # ==========================================
+        if "products" in existing_tables:
+            _add_column_if_missing(conn, "products", "voltage", "VARCHAR(50)")
+            _add_column_if_missing(conn, "products", "wattage", "VARCHAR(50)")
+            _add_column_if_missing(conn, "products", "operating_frequency", "VARCHAR(50)")
+            _add_column_if_missing(conn, "products", "power_plug_type", "VARCHAR(50)")
+
         conn.commit()
 
     logger.info("Database migration completed successfully")

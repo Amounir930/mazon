@@ -106,6 +106,14 @@ async def list_products(
     )
 
 
+@router.get("/{product_id}")
+async def get_product(product_id: str, db: Session = Depends(get_db)):
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product_to_dict(product)
+
+
 @router.post("", status_code=201)
 async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
     # Auto-assign seller_id if empty (use first available seller)
@@ -202,6 +210,11 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
         sale_price=data.sale_price,
         sale_start_date=data.sale_start_date,
         sale_end_date=data.sale_end_date,
+        # Technical Specifications (Electrical)
+        voltage=data.voltage,
+        wattage=data.wattage,
+        operating_frequency=data.operating_frequency,
+        power_plug_type=data.power_plug_type,
         # المنتج بيتحفظ draft لو كامل، incomplete لو ناقص
         status=status,
     )
@@ -405,6 +418,10 @@ async def preview_amazon_feed(data: ProductCreate):
         currency=data.currency or "EGP",
         compare_price=float(data.compare_price) if data.compare_price else None,
         sale_price=float(data.sale_price) if data.sale_price else None,
+        voltage=data.voltage,
+        wattage=data.wattage,
+        operating_frequency=data.operating_frequency,
+        power_plug_type=data.power_plug_type,
     )
 
     # Validation
