@@ -168,7 +168,7 @@ class ProductUpdate(BaseModel):
 
 class ProductResponse(BaseModel):
     """Schema for product response"""
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=(), from_attributes=True)
     id: str
     seller_id: str
     sku: str
@@ -226,9 +226,6 @@ class ProductResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class ProductListResponse(BaseModel):
     """Paginated product list response"""
@@ -257,6 +254,7 @@ class ListingCreate(BaseModel):
 
 class ListingResponse(BaseModel):
     """Schema for listing response"""
+    model_config = ConfigDict(from_attributes=True)
     id: str
     product_id: str
     seller_id: str
@@ -271,6 +269,3 @@ class ListingResponse(BaseModel):
     completed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     retry_count: int = 0
-
-    class Config:
-        from_attributes = True
