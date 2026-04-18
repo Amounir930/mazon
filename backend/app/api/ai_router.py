@@ -168,7 +168,7 @@ async def generate_product(request: AIProductRequest):
         logger.info(f"✅ AI generated {len(result.variants)} variant(s)")
         logger.info(f"   base_product: brand={result.base_product.brand}, product_type={result.base_product.product_type}")
         
-        # Build response matching frontend expectations
+        # Build response matching frontend expectations (AIGenerateProductResponse)
         return {
             "success": True,
             "data": {
@@ -194,6 +194,10 @@ async def generate_product(request: AIProductRequest):
             "data": None,
             "validation_errors": [],
             "warnings": [],
+            "fallback_used": False,
+            "metadata": {
+                "model_used": "qwen-max",
+            }
         }
     except Exception as e:
         logger.error(f"Unexpected error in AI generation: {e}", exc_info=True)
@@ -204,4 +208,8 @@ async def generate_product(request: AIProductRequest):
             "data": None,
             "validation_errors": [],
             "warnings": [],
+            "fallback_used": False,
+            "metadata": {
+                "model_used": "qwen-max",
+            }
         }

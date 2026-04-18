@@ -137,6 +137,7 @@ export const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
         toast.error(errorMsg)
       }
     } catch (err: any) {
+      console.error('❌ AI Generation Error:', err)
       const errorMsg =
         err?.response?.data?.error ||
         err?.response?.data?.message ||

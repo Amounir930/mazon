@@ -13,6 +13,7 @@ from typing import List, Optional, ClassVar
 
 class PriceEstimate(BaseModel):
     """Estimated price range in EGP"""
+    model_config = ConfigDict(protected_namespaces=())
     min: float = Field(..., ge=0, description="Minimum price")
     max: float = Field(..., ge=0, description="Maximum price")
 
@@ -143,6 +144,7 @@ class AIProductResponse(BaseModel):
 
 class AIProductRequest(BaseModel):
     """Request to generate products"""
+    model_config = ConfigDict(protected_namespaces=())
     name: str = Field(..., min_length=2, max_length=200, description="Product name")
     specs: str = Field(..., min_length=5, max_length=2000, description="Product specifications")
     copies: int = Field(default=1, ge=1, le=10, description="Number of variants (1-10)")
