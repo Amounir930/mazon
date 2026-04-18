@@ -1,14 +1,14 @@
 /**
  * Amazon SP-API Constants
  * 
- * جميع الثوابت والقوائم المنسدلة المطلوبة لـ Amazon SP-API
- * مصدر واحد مركزي - ممنوع الـ Hardcoding في الـ Components
+ * All constants and dropdowns required for Amazon SP-API
+ * Single centralized source - NO hardcoding in Components
  */
 
 // ==================== Product Type Categories ====================
-// كل مجموعة لها browse nodes خاصة بها
-// تم حذف// productType ثابت = HOME_ORGANIZERS_AND_STORAGE (أمازون مصر ترفض أي نوع آخر)
-// الـ browse_node_id هو اللي يحدد الفئة الفعلية للمنتج
+// Each category has its own browse nodes
+// Product type is fixed to HOME_ORGANIZERS_AND_STORAGE for Amazon Egypt
+// browse_node_id determines the actual category sent to Amazon
 
 export const PRODUCT_TYPE_CATEGORIES = [
   { value: 'STORAGE', label: '📦 تخزين وتنظيم', icon: '📦', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
@@ -21,12 +21,12 @@ export const PRODUCT_TYPE_CATEGORIES = [
   { value: 'ARTS_AND_CRAFTS', label: '✂️ الفنون والحرف', icon: '✂️', amazonType: 'HOME_ORGANIZERS_AND_STORAGE' },
 ] as const
 
-// PRODUCT_TYPES — للتوافقية مع الكود القديم
+// PRODUCT_TYPES — for backward compatibility with old code
 export const PRODUCT_TYPES = PRODUCT_TYPE_CATEGORIES
 
 // ==================== Browse Nodes by Category ====================
-// Browse Node IDs مأخوذة من Amazon SP-API JSON Schema (Egypt marketplace)
-// 🔒 كل الأنواع تُرسل لأمازون كـ HOME_ORGANIZERS_AND_STORAGE
+// Browse Node IDs from Amazon SP-API JSON Schema (Egypt marketplace)
+// All types sent to Amazon as HOME_ORGANIZERS_AND_STORAGE
 
 export const BROWSE_NODES_BY_TYPE: Record<string, {value: string; label: string}[]> = {
   // ====== 📦 تخزين وتنظيم ======
@@ -111,7 +111,7 @@ export const BROWSE_NODES_BY_TYPE: Record<string, {value: string; label: string}
   ],
 }
 
-// ====== Fallback: جميع الـ Browse Nodes (للتوافقية) ======
+// Fallback: All Browse Nodes for backward compatibility
 export const BROWSE_NODES = [
   ...BROWSE_NODES_BY_TYPE['STORAGE'],
   ...BROWSE_NODES_BY_TYPE['KITCHEN'],
@@ -213,7 +213,7 @@ export const DEFAULT_VALUES = {
   package_length: 25,
   package_width: 10,
   package_height: 15,
-  product_type: 'STORAGE',  // 📦 الفئة الافتراضية — يتم إرسالها كـ HOME_ORGANIZERS_AND_STORAGE لأمازون
+  product_type: 'STORAGE',  // Default category - sent as HOME_ORGANIZERS_AND_STORAGE to Amazon
   browse_node_id: '21863799031',
   id_type: 'EAN',
 } as const
@@ -227,9 +227,10 @@ export const VALIDATION_RULES = {
   description_en: { min: 50, max: 2000, required: true },
   ean: { exact: 13, required: true },
   upc: { exact: 12, required: true },
-  price: { min: 0.01, required: false }, // اختياري
-  quantity: { min: 0, required: false },  // اختياري
+  price: { min: 0.01, required: false }, // optional
+  quantity: { min: 0, required: false },  // optional
   brand: { min: 1, max: 200, required: true },
   model_number: { min: 1, max: 100, required: true },
   manufacturer: { min: 1, max: 200, required: true },
-  bullet_points: { count: 5, min: 20, max: 500, required: true }, // 5 نقاط إجبارية
+  bullet_points: { count: 5, min: 20, max: 500, required: true }, // 5 required bullet points
+} as const

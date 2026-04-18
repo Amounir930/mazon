@@ -21,9 +21,10 @@ def build_system_prompt(learned_fields: list[str] = None) -> str:
 - يتبعه جمل إنشائية تسويقية احترافية بحيث لا يقل الإجمالي عن 50 كلمة.
 - في حالة التوليد المتعدد، يجب أن يكون الوصف فريداً ومختلفاً في كل نسخة.
 
-⚠️ القاعدة 4: النقاط البيعية (Bullet Points) - [قاعدة 5-12]
+⚠️ القاعدة 4: النقاط البيعية (Bullet Points) - [قاعدة 5 + 12 كلمة]
 - يجب توليد 5 نقاط بيعية بالضبط.
-- كل نقطة سطر واحد فقط، ولا تقل عن 12 كلمة.
+- كل نقطة سطر واحد فقط، و**لا تقل عن 12 كلمة على الأقل** (قاعدة صارمة جداً).
+- استخدم كلمات وصفية قوية في كل نقطة.
 - في حالة التوليد المتعدد، يجب أن تكون النقاط البيعية فريدة ومختلفة الصياغة في كل نسخة.
 
 ⚠️ القاعدة 5: تصنيف المنتج (Category) - [التصنيف التلقائي الذكي]
@@ -94,5 +95,5 @@ def build_user_prompt(name: str, specs: str, copies: int) -> str:
 6. "suggested_sku": SKU فريد لكل نسخة.
 
 التنسيق المطلوب (JSON فقط):
-{{"base_product": {{"amazon_product_type": "HOME_ORGANIZERS_AND_STORAGE", "product_type": "STORAGE", "browse_node_id": "", "price": null, "ean": "", "upc": "", "bullet_points_ar": ["نقطة 1...", "نقطة 2...", "نقطة 3...", "نقطة 4...", "نقطة 5..."], "bullet_points_en": ["Bullet 1...", "Bullet 2...", "Bullet 3...", "Bullet 4...", "Bullet 5..."], "keywords": ["كلمة 1", "كلمة 2"], "material": "", "target_audience": "", "condition": "New", "fulfillment_channel": "MFN", "model_number": "", "included_components": "1x المنتج، 1x دليل", "brand": "Generic", "manufacturer": "China", "country_of_origin": "CN"}}, "variants": [{{"variant_number": 1, "name_ar": "{name}", "name_en": "Translation of {name}", "description_ar": "{specs} ... (Marketing expansion)", "description_en": "Translation of description", "suggested_sku": "AH-0001-SKU", "model_name": "AH-0001"}}]}}
-""".strip()
+{{"base_product": {{"amazon_product_type": "HOME_ORGANIZERS_AND_STORAGE", "product_type": "STORAGE", "browse_node_id": "", "price": null, "ean": "", "upc": "", "bullet_points_ar": ["نقطة 1 بـ 12+ كلمة...", "نقطة 2 بـ 12+ كلمة...", "نقطة 3 بـ 12+ كلمة...", "نقطة 4 بـ 12+ كلمة...", "نقطة 5 بـ 12+ كلمة..."], "bullet_points_en": ["Bullet 1 with 12+ words minimum...", "Bullet 2 with 12+ words minimum...", "Bullet 3 with 12+ words minimum...", "Bullet 4 with 12+ words minimum...", "Bullet 5 with 12+ words minimum..."], "keywords": ["كلمة 1", "كلمة 2"], "material": "", "target_audience": "", "condition": "New", "fulfillment_channel": "MFN", "model_number": "", "included_components": "1x المنتج، 1x دليل", "brand": "Generic", "manufacturer": "China", "country_of_origin": "CN"}}, "variants": [{{"variant_number": 1, "name_ar": "{name}", "name_en": "<PROFESSIONAL ENGLISH TRANSLATION>", "description_ar": "{specs} ... (Marketing expansion to 50+ words)", "description_en": "<PROFESSIONAL ENGLISH TRANSLATION of full description>", "suggested_sku": "AH-0001-SKU", "model_name": "AH-0001"}}]}}
+"""

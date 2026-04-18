@@ -28,6 +28,9 @@ import {
   ID_TYPES, COUNTRIES, UNIT_TYPES, WEIGHT_UNITS, DIMENSION_UNITS,
   DEFAULT_VALUES, VALIDATION_RULES
 } from '@/constants/amazon'
+import ProductRulesValidator, { type ValidationIssue } from '@/services/ProductRulesValidator'
+import ProductTranslationService from '@/services/ProductTranslationService'
+import { ValidationInline, ValidationSummary, type ValidationDisplayProps } from '@/components/ValidationDisplay'
 import toast from 'react-hot-toast'
 
 // ==================== Shared UI Components ====================
@@ -274,7 +277,10 @@ export default function ProductCreatePage() {
     power_plug_type: '',
   })
 
-  // ==================== PAGE 3: الصور والإرسال ====================
+  // ==================== VALIDATION STATE ====================
+  const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([])
+
+  // PAGE 3: الصور والإرسال ====================
   const [mainImageUrl, setMainImageUrl] = useState<string>('')
   const [mainImagePreview, setMainImagePreview] = useState<string>('')
   const [extraImageUrls, setExtraImageUrls] = useState<string[]>([])
@@ -331,6 +337,45 @@ export default function ProductCreatePage() {
       setImporting(false)
     }
   }, [importSearch, importType])
+
+  // ==================== VALIDATION HANDLER ====================
+  const handleValidateAndTranslate = useCallback((updatedRequired: any) => {
+    // Run comprehensive validation with all fields
+    const issues = ProductRulesValidator.validateFullProduct({
+      model_number: updatedRequired.model_number,
+      description_ar: updatedRequired.description_ar,
+      description_en: updatedRequired.description_en,
+      name_ar: updatedRequired.name_ar,
+      name_en: updatedRequired.name_en,
+      bullet_points: updatedRequired.bullet_points,
+      keywords: updatedRequired.keywords,
+    })
+    
+    setValidationIssues(issues)
+    
+    // Run automatic translations for Arabic fields if they have content
+    const translations = ProductTranslationService.translateProduct({
+      description_ar: updatedRequired.description_ar,
+      bullet_points: updatedRequired.bullet_points,
+      name_ar: updatedRequired.name_ar,
+    })
+    
+    // Only update fields that have translations and are currently empty
+    const updatedWithTranslations = { ...updatedRequired }
+    if (translations.description_en && !updatedRequired.description_en?.trim()) {
+      updatedWithTranslations.description_en = translations.description_en
+    }
+    if (translations.name_en && !updatedRequired.name_en?.trim()) {
+      updatedWithTranslations.name_en = translations.name_en
+    }
+    if (translations.bullet_points_en && Array.isArray(translations.bullet_points_en)) {
+      updatedWithTranslations.bullet_points = updatedRequired.bullet_points.map((bp: string, i: number) =>
+        bp.trim() ? bp : (translations.bullet_points_en[i] || bp)
+      )
+    }
+    
+    return updatedWithTranslations
+  }, [])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const extraFileInputRef = useRef<HTMLInputElement>(null)
@@ -1192,14 +1237,22 @@ export default function ProductCreatePage() {
           <Field label="اسم السلعة (عربي)" required hint="الاسم بالعربي — يظهر على صفحة المنتج" isAiGenerated={selectedAiProduct !== null}>
             <TextInput
               value={required.name_ar}
-              onChange={v => setRequired(prev => ({ ...prev, name_ar: v }))}
+              onChange={v => {
+                const updated = { ...required, name_ar: v }
+                const validated = handleValidateAndTranslate(updated)
+                setRequired(validated)
+              }}
               placeholder="مثال: خلاط كهربائي 500 واط"
             />
           </Field>
           <Field label="اسم السلعة (English)" required hint="الاسم بالإنجليزي — مطلوب لـ Amazon" isAiGenerated={selectedAiProduct !== null}>
             <TextInput
               value={required.name_en}
-              onChange={v => setRequired(prev => ({ ...prev, name_en: v }))}
+              onChange={v => {
+                const updated = { ...required, name_en: v }
+                const validated = handleValidateAndTranslate(updated)
+                setRequired(validated)
+              }}
               placeholder="Example: Electric Hand Mixer 500W"
             />
           </Field>
@@ -1299,23 +1352,41 @@ export default function ProductCreatePage() {
         </h3>
 
         <Field label="الوصف (عربي)" required hint="وصف تفصيلي شامل - 3 سطور على الأقل يشرح مميزات المنتج واستخداماته" isAiGenerated={selectedAiProduct !== null}>
-          <textarea
-            value={required.description_ar}
-            onChange={e => setRequired(prev => ({ ...prev, description_ar: e.target.value }))}
-            placeholder="مثال: هذا الخلاط كهربائي بقوة 500 واط يأتي مع 5 سرعات مختلفة لتناسب جميع احتياجاتك في المطبخ. مصنوع من مواد عالية الجودة تضمن له المتانة والاستخدام الطويل. مثالي لخلط العجين، تحضير العصائر، وفرم المكونات المختلفة بسهولة تامة."
-            rows={4}
-            className="neon-input neon-textarea resize-none"
-          />
+          <div>
+            <textarea
+              value={required.description_ar}
+              onChange={e => {
+                const updated = { ...required, description_ar: e.target.value }
+                const validated = handleValidateAndTranslate(updated)
+                setRequired(validated)
+              }}
+              placeholder="مثال: هذا الخلاط كهربائي بقوة 500 واط يأتي مع 5 سرعات مختلفة لتناسب جميع احتياجاتك في المطبخ. مصنوع من مواد عالية الجودة تضمن له المتانة والاستخدام الطويل. مثالي لخلط العجين، تحضير العصائر، وفرم المكونات المختلفة بسهولة تامة."
+              rows={4}
+              className="neon-input neon-textarea resize-none"
+            />
+            {validationIssues && (
+              <ValidationInline issue={validationIssues.find(issue => issue.field === 'description_ar')} />
+            )}
+          </div>
         </Field>
 
         <Field label="الوصف (English)" required hint="Comprehensive product description - at least 3 lines describing features and benefits" isAiGenerated={selectedAiProduct !== null}>
-          <textarea
-            value={required.description_en}
-            onChange={e => setRequired(prev => ({ ...prev, description_en: e.target.value }))}
-            placeholder="Example: This 500W electric hand mixer comes with 5 different speed settings to handle all your kitchen needs. Made from premium quality materials that ensure durability and long-lasting performance. Perfect for mixing dough, preparing smoothies, and chopping ingredients with ease."
-            rows={4}
-            className="neon-input neon-textarea resize-none"
-          />
+          <div>
+            <textarea
+              value={required.description_en}
+              onChange={e => {
+                const updated = { ...required, description_en: e.target.value }
+                const validated = handleValidateAndTranslate(updated)
+                setRequired(validated)
+              }}
+              placeholder="Example: This 500W electric hand mixer comes with 5 different speed settings to handle all your kitchen needs. Made from premium quality materials that ensure durability and long-lasting performance. Perfect for mixing dough, preparing smoothies, and chopping ingredients with ease."
+              rows={4}
+              className="neon-input neon-textarea resize-none"
+            />
+            {validationIssues && (
+              <ValidationInline issue={validationIssues.find(issue => issue.field === 'description_en')} />
+            )}
+          </div>
         </Field>
 
         <Field label="مميزات المنتج الرئيسية (Bullet Points)" hint="💡 يُنصح بكتابة 5 نقاط كاملة — كل نقطة جملة مفيدة (إجباري لأمازون)" isAiGenerated={selectedAiProduct !== null}>
@@ -1325,17 +1396,24 @@ export default function ProductCreatePage() {
                 <span className="flex-shrink-0 w-8 h-10 flex items-center justify-center bg-amazon-orange/20 text-amazon-orange text-sm font-bold rounded-xl">
                   {i + 1}
                 </span>
-                <input
-                  type="text"
-                  value={bp}
-                  onChange={e => {
-                    const newBp = [...required.bullet_points]
-                    newBp[i] = e.target.value
-                    setRequired(prev => ({ ...prev, bullet_points: newBp }))
-                  }}
-                  placeholder={`النقطة البيعية ${i + 1} - اكتب جملة كاملة تشرح ميزة مهمة...`}
-                  className="neon-input flex-1"
-                />
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={bp}
+                    onChange={e => {
+                      const newBp = [...required.bullet_points]
+                      newBp[i] = e.target.value
+                      const updated = { ...required, bullet_points: newBp }
+                      const validated = handleValidateAndTranslate(updated)
+                      setRequired(validated)
+                    }}
+                    placeholder={`النقطة البيعية ${i + 1} - اكتب جملة كاملة تشرح ميزة مهمة...`}
+                    className="neon-input w-full"
+                  />
+                  {validationIssues && (
+                    <ValidationInline issue={validationIssues.find(issue => issue.field === `bullet_point_${i}`)} />
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -1914,6 +1992,16 @@ export default function ProductCreatePage() {
 
       {/* الأزرار */}
       <div className="flex flex-col gap-3">
+        {/* Validation Summary */}
+        {validationIssues && validationIssues.length > 0 && (
+          <ValidationSummary
+            errors={validationIssues.filter(i => i.severity === 'error').length}
+            warnings={validationIssues.filter(i => i.severity === 'warning').length}
+            success={validationIssues.filter(i => i.severity === 'success').length}
+            canSubmit={validationIssues.every(i => i.severity !== 'error')}
+          />
+        )}
+
         <NeonButton variant="warning" fullWidth onClick={handlePreview}>
           <Eye className="w-5 h-5" /> معاينة البيانات
         </NeonButton>

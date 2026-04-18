@@ -47,10 +47,10 @@ export class ProductRulesValidator {
   /**
    * فحص الوصف - يجب أن يكون 40+ كلمة
    */
-  static validateDescription(description: string | undefined): ValidationIssue {
+  static validateDescription(description: string | undefined, field: string = 'description'): ValidationIssue {
     if (!description || description.trim() === '') {
       return {
-        field: 'description',
+        field: field,
         isValid: false,
         message: 'الوصف مطلوب',
         wordCount: 0,
@@ -63,7 +63,7 @@ export class ProductRulesValidator {
     const isValid = wordCount >= 40;
 
     return {
-      field: 'description',
+      field: field,
       isValid,
       message: isValid 
         ? `✅ الوصف صحيح (${wordCount} كلمة)`
@@ -160,10 +160,10 @@ export class ProductRulesValidator {
   /**
    * فحص الترجمة الإنجليزية - يجب أن لا تكون فارغة
    */
-  static validateEnglishName(name_en: string | undefined): ValidationIssue {
+  static validateEnglishName(name_en: string | undefined, field: string = 'name_en'): ValidationIssue {
     if (!name_en || name_en.trim() === '') {
       return {
-        field: 'name_en',
+        field: field,
         isValid: false,
         message: 'اسم المنتج بالإنجليزية مطلوب',
         severity: 'error',
@@ -173,7 +173,7 @@ export class ProductRulesValidator {
     // فحص أن الترجمة ليست عربية
     if (/[\u0600-\u06FF]/.test(name_en)) {
       return {
-        field: 'name_en',
+        field: field,
         isValid: false,
         message: '❌ الاسم يجب أن يكون بالإنجليزية فقط',
         severity: 'error',
@@ -181,7 +181,7 @@ export class ProductRulesValidator {
     }
 
     return {
-      field: 'name_en',
+      field: field,
       isValid: true,
       message: '✅ الترجمة الإنجليزية موجودة',
       severity: 'success',
@@ -232,17 +232,35 @@ export class ProductRulesValidator {
     // 1. رقم الموديل
     issues.push(this.validateModelNumber(product.model_number));
 
-    // 2. الوصف
-    issues.push(this.validateDescription(product.description));
+    // 2. الوصف العربي
+    if (product.description_ar) {
+      issues.push(this.validateDescription(product.description_ar, 'description_ar'));
+    }
 
-    // 3. نقاط البيع
-    issues.push(...this.validateAllBulletPoints(product.bullet_points));
+    // 3. الوصف الإنجليزي
+    if (product.description_en) {
+      issues.push(this.validateDescription(product.description_en, 'description_en'));
+    }
 
-    // 4. الترجمة الإنجليزية
-    issues.push(this.validateEnglishName(product.name_en));
+    // 4. الاسم العربي
+    if (product.name_ar) {
+      issues.push(this.validateEnglishName(product.name_ar, 'name_ar'));
+    }
 
-    // 5. الكلمات المفتاحية
-    issues.push(this.validateKeywords(product.keywords));
+    // 5. الاسم الإنجليزي
+    if (product.name_en) {
+      issues.push(this.validateEnglishName(product.name_en, 'name_en'));
+    }
+
+    // 6. نقاط البيع
+    if (product.bullet_points && Array.isArray(product.bullet_points)) {
+      issues.push(...this.validateAllBulletPoints(product.bullet_points));
+    }
+
+    // 7. الكلمات المفتاحية
+    if (product.keywords) {
+      issues.push(this.validateKeywords(product.keywords));
+    }
 
     return issues;
   }
