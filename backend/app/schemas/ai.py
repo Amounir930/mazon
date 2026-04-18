@@ -7,7 +7,7 @@ Uses Base + Delta Pattern:
 - base_product: Common fields shared across all variants
 - variants: Per-product differences (name, description, SKU)
 """
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import List, Optional, ClassVar
 
 
@@ -22,6 +22,7 @@ class BaseProductData(BaseModel):
     Common product data shared across all variants.
     These fields are the same for every product generated.
     """
+    model_config = ConfigDict(protected_namespaces=())
     brand: str = Field(default="Generic", min_length=1, max_length=200)
     manufacturer: str = Field(default="Generic", min_length=1, max_length=200)
     
@@ -109,6 +110,7 @@ class ProductVariant(BaseModel):
     Per-product variations.
     Only these fields differ between products.
     """
+    model_config = ConfigDict(protected_namespaces=())
     variant_number: int = Field(..., ge=1, description="Variant index (1-based)")
     name_ar: str = Field(..., min_length=2, max_length=500, description="Arabic product name")
     name_en: str = Field(..., min_length=2, max_length=500, description="English product name")
@@ -134,6 +136,7 @@ class AIProductResponse(BaseModel):
     - base_product: Shared data (same for all variants)
     - variants: Per-product differences
     """
+    model_config = ConfigDict(protected_namespaces=())
     base_product: BaseProductData
     variants: List[ProductVariant] = Field(..., min_items=1, max_items=10)
 

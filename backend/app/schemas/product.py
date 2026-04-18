@@ -168,6 +168,7 @@ class ProductUpdate(BaseModel):
 
 class ProductResponse(BaseModel):
     """Schema for product response"""
+    model_config = ConfigDict(protected_namespaces=())
     id: str
     seller_id: str
     sku: str

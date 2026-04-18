@@ -218,3 +218,79 @@ class QwenProvider:
         
         # All retries exhausted
         raise last_error or ValueError("Qwen API failed after retries")
+
+    async def generate_text(self, prompt: str, system_prompt: str = None, max_tokens: int = 2000, temperature: float = 0.7) -> str:
+        """Generate plain text response from Qwen API.
+        
+        Args:
+            prompt: User message/prompt
+            system_prompt: System message (optional, default: "You are a helpful assistant")
+            max_tokens: Maximum tokens in response (default: 2000)
+            temperature: Sampling temperature (default: 0.7)
+            
+        Returns:
+            str: Generated text response
+            
+        Raises:
+            ValueError: If API fails after retries
+        """
+        if not system_prompt:
+            system_prompt = "You are a helpful assistant providing accurate, clear, and concise information."
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+        
+        last_error = None
+        max_retries = 2
+        
+        for attempt in range(max_retries + 1):
+            try:
+                logger.info(f"Qwen text generation (attempt {attempt + 1}/{max_retries + 1}): {len(prompt)} chars")
+                
+                async with httpx.AsyncClient(timeout=self.TIMEOUT) as client:
+                    response = await client.post(
+                        f"{self.BASE_URL}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": self.MODEL,
+                            "messages": messages,
+                            "temperature": temperature,
+                            "max_tokens": max_tokens
+                        }
+                    )
+                    
+                    if response.status_code != 200:
+                        logger.error(f"Qwen API error (attempt {attempt + 1}): {response.status_code}")
+                        last_error = ValueError(f"Qwen API returned {response.status_code}")
+                        continue
+                
+                    data = response.json()
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                    
+                    if content:
+                        usage = data.get("usage", {})
+                        tokens = usage.get("total_tokens", "unknown")
+                        logger.info(f"Qwen text response: {tokens} tokens used, {len(content)} chars returned")
+                        return content
+                    else:
+                        logger.error(f"Empty response from Qwen (attempt {attempt + 1})")
+                        last_error = ValueError("Qwen returned empty content")
+                        continue
+                    
+            except httpx.TimeoutException:
+                logger.warning(f"Qwen API timeout (attempt {attempt + 1})")
+                last_error = ValueError("Qwen API request timed out")
+                continue
+                
+            except Exception as e:
+                logger.error(f"Text generation error (attempt {attempt + 1}): {e}")
+                last_error = e
+                continue
+        
+        # All retries exhausted
+        raise last_error or ValueError("Qwen text generation failed after retries")

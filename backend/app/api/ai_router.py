@@ -168,31 +168,40 @@ async def generate_product(request: AIProductRequest):
         logger.info(f"✅ AI generated {len(result.variants)} variant(s)")
         logger.info(f"   base_product: brand={result.base_product.brand}, product_type={result.base_product.product_type}")
         
-        # Build warnings - EAN is now mandatory from AI, no warning needed
-        warnings: list[str] = []
-        
+        # Build response matching frontend expectations
         return {
-            "base_product": result.base_product.model_dump(),
-            "variants": [v.model_dump() for v in result.variants],
-            "count": len(result.variants),
-            "warnings": warnings,
+            "success": True,
+            "data": {
+                "base_product": result.base_product.model_dump(),
+                "variants": [v.model_dump() for v in result.variants],
+            },
+            "validation_errors": [],
+            "warnings": [],
+            "fallback_used": False,
             "metadata": {
-                "model": "qwen-max",
-                "provider": "portal.qwen.ai",
-                "pattern": "base+delta",
-                "tokens_saved": "84%",
+                "model_used": "qwen-max",
+                "tokens_used": None,
+                "processing_time_ms": None,
             }
         }
         
     except ValueError as e:
         logger.error(f"AI generation failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"فشل التوليد: {str(e)}"
-        )
+        return {
+            "success": False,
+            "error": str(e),
+            "message": f"فشل التوليد: {str(e)}",
+            "data": None,
+            "validation_errors": [],
+            "warnings": [],
+        }
     except Exception as e:
         logger.error(f"Unexpected error in AI generation: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="خطأ غير متوقع في التوليد — حاول مرة أخرى"
-        )
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "خطأ غير متوقع في التوليد — حاول مرة أخرى",
+            "data": None,
+            "validation_errors": [],
+            "warnings": [],
+        }

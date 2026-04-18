@@ -5,6 +5,7 @@ Validates product data before submission to Amazon
 from typing import Optional
 from dataclasses import dataclass, field
 import re
+from loguru import logger
 
 
 @dataclass
@@ -177,3 +178,86 @@ class ValidationService:
             ean=product.get("ean"),
             bullet_points=product.get("bullet_points", []),
         )
+
+    @staticmethod
+    def check_specs_fidelity(original_specs: str, generated_content: str,
+                           field_name: str, min_ratio: float = 0.85) -> tuple[bool, list[str]]:
+        """
+        Validate specs preservation with detailed feedback.
+        Returns: (is_valid, list_of_missing_terms)
+        """
+        if not original_specs or not generated_content:
+            return True, []
+
+        # Extract meaningful terms (improved regex)
+        spec_terms = re.findall(
+            r'[\u0600-\u06FF]{2,}|[a-zA-Z]{2,}[\d\.]*|[\d\.]+\s*[ألف-يA-Za-z]{1,3}',
+            original_specs
+        )
+        spec_terms = [t.strip().lower() for t in spec_terms if len(t.strip()) > 2]
+
+        if not spec_terms:
+            return True, []
+
+        # Check presence
+        missing = [t for t in spec_terms if t not in generated_content.lower()]
+        ratio = 1 - (len(missing) / len(spec_terms))
+
+        if ratio < min_ratio:
+            logger.warning(
+                f"Specs fidelity low in {field_name}: "
+                f"{len(spec_terms)-len(missing)}/{len(spec_terms)} matched. "
+                f"Missing: {missing[:5]}"  # Show first 5 missing
+            )
+            return False, missing
+        return True, []
+
+    @staticmethod
+    def check_variant_isolation(variants: list[dict]) -> tuple[bool, str]:
+        """Ensure variants don't contain each other's unique content"""
+        if len(variants) < 2:
+            return True, ""
+
+        # Extract unique identifiers per variant
+        signatures = []
+        for v in variants:
+            sig = set((v.get('name_ar') or '').split() + (v.get('description_ar') or '').split())
+            signatures.append(sig)
+
+        # Check pairwise overlap
+        for i in range(len(signatures)):
+            for j in range(i+1, len(signatures)):
+                overlap = len(signatures[i] & signatures[j])
+                total = len(signatures[i] | signatures[j])
+                if total > 10 and overlap/total > 0.7:  # 70% overlap threshold
+                    return False, f"Variants {i+1} and {j+1} show high content overlap ({overlap/total:.1%})"
+
+        return True, ""
+
+    @staticmethod
+    def check_cross_product_contamination(product_name: str, specs: str, generated_content: str) -> tuple[bool, list[str]]:
+        """Check for cross-product contamination (e.g., blender getting lantern content)"""
+        # Define forbidden seeds based on known problematic products
+        FORBIDDEN_SEEDS = {
+            "خلاط": ["فانوس", "رمضان", "هلال", "ديكور إسلامي", "lantern", "ramadan", "crescent"],
+            "منظم أحذية": ["مطبخ", "ستانلس", "5 سرعات", "kitchen", "stainless", "speeds"],
+            "فرشاة تنظيف": ["LED", "إضاءة", "بطارية", "lighting", "battery"],
+            # Add more as needed
+        }
+
+        found_contaminants = []
+        product_lower = product_name.lower()
+        specs_lower = specs.lower()
+        content_lower = generated_content.lower()
+
+        for product_type, forbidden in FORBIDDEN_SEEDS.items():
+            if product_type in product_lower or product_type in specs_lower:
+                for seed in forbidden:
+                    if seed in content_lower and seed not in product_lower and seed not in specs_lower:
+                        found_contaminants.append(f"'{seed}' (forbidden for {product_type})")
+
+        if found_contaminants:
+            logger.warning(f"Cross-product contamination detected: {found_contaminants}")
+            return False, found_contaminants
+
+        return True, []
