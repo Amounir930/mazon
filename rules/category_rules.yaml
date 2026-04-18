@@ -1,0 +1,189 @@
+# ===== تعريفات الفئات والخصائص الثابتة =====
+
+categories:
+  # أدوات المطبخ
+  "HOME_KITCHEN":
+    arabic_name: "أدوات المطبخ"
+    amazon_category_id: "HOME_KITCHEN"
+    required_attributes:
+      - material          # المادة
+      - color             # اللون
+    optional_attributes:
+      - brand
+      - capacity
+      - warranty
+    typical_bullet_points:
+      - "مصنع من مواد عالية الجودة وآمنة على الصحة"
+      - "سهل التنظيف والاستخدام اليومي"
+      - "آمن 100% على الطعام والشراب"
+      - "ضمان طويل الأجل على المنتج"
+      - "سعر منافس وجودة متميزة"
+    min_margin_percent: 20
+    typical_weight_range: "50g-5kg"
+    min_description_words: 100
+    max_description_words: 1000
+    price_range_egp: "50-2000"
+  
+  # الملابس والأزياء
+  "APPAREL":
+    arabic_name: "الملابس والأزياء"
+    amazon_category_id: "APPAREL"
+    required_attributes:
+      - size              # المقاس
+      - color             # اللون
+      - material          # المادة
+    optional_attributes:
+      - brand
+      - style
+      - season
+    typical_bullet_points:
+      - "مريح وعملي للاستخدام اليومي"
+      - "مادة ذات جودة عالية وخياطة متقنة"
+      - "ألوان عصرية وجذابة تناسب الجميع"
+      - "مناسب لجميع الأعمار والفئات"
+      - "قابل للغسل الآلي والكي الآمن"
+    min_margin_percent: 30
+    typical_weight_range: "50g-500g"
+    min_description_words: 100
+    max_description_words: 800
+    price_range_egp: "50-1500"
+    size_options:
+      - "XS"
+      - "S"
+      - "M"
+      - "L"
+      - "XL"
+      - "XXL"
+  
+  # الإلكترونيات
+  "ELECTRONICS":
+    arabic_name: "الإلكترونيات"
+    amazon_category_id: "ELECTRONICS"
+    required_attributes:
+      - color
+      - brand
+    optional_attributes:
+      - warranty_months
+      - voltage
+      - wattage
+    typical_bullet_points:
+      - "أحدث التقنيات والموصفات"
+      - "ضمان رسمي من الشركة المصنعة"
+      - "سهل الاستخدام وآمن تماماً"
+      - "توفير كبير في الكهرباء"
+      - "عمر افتراضي طويل وإصلاح معتمد"
+    min_margin_percent: 15
+    typical_weight_range: "100g-50kg"
+    min_description_words: 150
+    max_description_words: 2000
+    price_range_egp: "200-50000"
+    warranty_options:
+      - "no_warranty"
+      - "6_months"
+      - "1_year"
+      - "2_years"
+      - "3_years"
+      - "5_years"
+  
+  # الهدايا والديكور (Ramadan/Gifts)
+  "GIFTS_AND_DECOR":
+    arabic_name: "الهدايا والديكور الإسلامي"
+    amazon_category_id: "GIFTS_AND_DECOR"
+    required_attributes:
+      - color
+      - material
+    optional_attributes:
+      - brand
+      - occasion
+    typical_bullet_points:
+      - "منتج زينة وهدايا عالي الجودة مناسب للمناسبات والأعياد الإسلامية العظيمة"
+      - "مصنوع من مواد آمنة وموثوقة تتحمل الاستخدام اليومي والتعليق والتخزين"
+      - "تصميم إسلامي حديث وعصري يناسب جميع الأذواق والديكورات المنزلية المختلفة"
+      - "هدية مثالية وفريدة لجميع المناسبات والأعياس والاحتفالات الإسلامية الخاصة"
+      - "مناسب للاستخدام في المنزل والمكاتب والمحلات ويعطي منظراً احترافياً وراقياً"
+    min_margin_percent: 25
+    typical_weight_range: "50g-2kg"
+    min_description_words: 80
+    max_description_words: 1000
+    price_range_egp: "50-5000"
+  
+  # الكتب والإعلام
+  "BOOKS":
+    arabic_name: "الكتب والإعلام"
+    amazon_category_id: "BOOKS"
+    required_attributes:
+      - author
+      - language
+      - pages
+    optional_attributes:
+      - isbn
+      - publication_date
+      - publisher
+    typical_bullet_points:
+      - "كتاب أصلي وحديث من الناشر"
+      - "نسخة مُجلدة عالية الجودة"
+      - "معروف عالمياً وله آراء إيجابية"
+      - "مناسب لجميع الأعمار والثقافات"
+      - "سعر منافس جداً مقارنة بالسوق"
+    min_margin_percent: 10
+    typical_weight_range: "200g-1kg"
+    min_description_words: 100
+    max_description_words: 500
+    price_range_egp: "30-500"
+  
+  # الألعاب
+  "TOYS":
+    arabic_name: "الألعاب والهدايا"
+    amazon_category_id: "TOYS"
+    required_attributes:
+      - age_group
+      - color
+    optional_attributes:
+      - brand
+      - material
+      - batteries_required
+    typical_bullet_points:
+      - "لعبة آمنة وخالية من المواد السامة"
+      - "تطور مهارات الطفل والذكاء"
+      - "مصنعة من مواد قوية وتحمل الاستخدام"
+      - "هدية مثالية لأعياد الميلاد"
+      - "معتمدة من الجهات الصحية الدولية"
+    min_margin_percent: 25
+    typical_weight_range: "50g-5kg"
+    min_description_words: 80
+    max_description_words: 600
+    price_range_egp: "50-2000"
+    age_groups:
+      - "0-3_years"
+      - "3-5_years"
+      - "5-8_years"
+      - "8-12_years"
+      - "12+_years"
+    occasions:
+      - "ramadan"
+      - "eid"
+      - "birthday"
+      - "wedding"
+      - "housewarming"
+
+# قالب عام للبيانات الناقصة
+generic_templates:
+  description_expansion: |
+    هذا المنتج يتميز بالجودة العالية والتصميم العصري. مناسب للاستخدام اليومي ويوفر قيمة ممتازة مقابل السعر.
+    يأتي بمواد آمنة وموثوقة. العديد من العملاء الراضين عن المنتج.
+  
+  benefits_format: |
+    - يحسن من جودة الحياة اليومية
+    - توفير جيد للمال على المدى الطويل
+    - سهل الاستخدام والصيانة
+    - يدوم طويلاً ويحتمل الاستخدام المكثف
+    - تصميم عملي وجميل في نفس الوقت
+
+# Validation templates
+validation_templates:
+  min_bullet_point_length: 10
+  max_bullet_point_length: 500
+  min_description_words: 30
+  max_description_words: 3000
+  min_sku_length: 5
+  max_sku_length: 40

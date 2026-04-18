@@ -1,0 +1,198 @@
+# ===== قواعس التحسين التلقائي الذكي =====
+
+optimization:
+  # تنظيف النصوص التلقائي
+  text_enhancement:
+    name:
+      - remove_extra_spaces: true
+      - capitalize_first_letter: true
+      - uppercase_sku: true
+      - fix_common_typos: true
+      - remove_price_from_name: true  # "حقيبة - 150 ج" → "حقيبة"
+      - add_quantity_if_missing: false  # اختياري
+      - add_unit_if_missing: true  # "كوب" → "كوب (10 قطع)"
+      - max_length_enforce: 200
+    
+    description:
+      - remove_extra_spaces: true
+      - fix_common_typos: true
+      - ensure_min_length: 50
+      - expand_if_too_short: true  # إضافة نص من template
+      - limit_max_length: 2000
+      - remove_price_mentions: true
+      - add_key_features: true  # إضافة خصائص من category template
+      - add_benefits_not_features: true  # "يحافظ على الطعام" بدل "يتسع لـ 5 لتر"
+    
+    bullet_points:
+      - ensure_5_points: true
+      - remove_empty: true
+      - make_actionable: true  # "استمتع بـ..." بدل "المنتج..."
+      - add_benefits: true
+      - remove_duplicates: true
+      - ensure_unique_content: true
+      - max_length_each: 500
+    
+    brand:
+      - capitalize_first: true
+      - trim: true
+      - limit_length: 50
+      - use_generic_if_empty: true  # "Generic" إذا فارغ
+
+  # تحسين الأسعار التلقائي
+  pricing_optimization:
+    auto_adjust_enabled: true
+    
+    strategies:
+      margin_based:
+        enabled: true
+        min_margin_percent: 15
+        max_margin_percent: 100
+        calculation: "price = cost * (1 + margin_percent/100)"
+      
+      market_based:
+        enabled: false  # يحتاج API للأسعار السوقية
+        source: "amazon_live_prices"
+        adjustment: "market_average * 0.95"
+    
+    compare_price:
+      auto_set: true
+      formula: "compare_price = price * 1.20"  # 20% أعلى من السعر الحالي
+      only_if_empty: true
+    
+    sale_price:
+      auto_set: false
+      formula: "sale_price = price * 0.90"  # خصم 10%
+      only_if_empty: true
+    
+    currency:
+      auto_convert: true
+      update_interval_hours: 24
+      default_currency: "EGP"
+
+  # تحسين الصور التلقائي
+  image_optimization:
+    auto_resize:
+      enabled: true
+      target_size: "1500x1500"
+      maintain_aspect_ratio: true
+      method: "center_crop_or_pad"
+    
+    background_enforcement:
+      enabled: true
+      required_color: "white"
+      auto_fix: true  # تبييض الخلفية تلقائياً
+    
+    compression:
+      enabled: true
+      target_quality: 85
+      max_file_size_mb: 10
+    
+    watermark:
+      enabled: false
+      position: "bottom-right"
+      opacity: 0.5
+
+  # تحسين البيانات المنطقية
+  data_enhancement:
+    auto_set_attributes:
+      enabled: true  # تعيين خصائص من template الفئة
+      source: "category_template"
+
+# ===== تطبيق القواعس الصارمة الإلزامية =====
+strict_enforcement:
+  # 1. تنسيق مميزات المنتج (Bullet Points)
+  bullet_points_enforcement:
+    enabled: true
+    rules:
+      - remove_numbering: true  # حذف "نقطة 1:" و "نقطة 2:"
+        pattern_to_remove: '^نقطة \d+:\s*'
+      - ensure_narrative_style: true
+        description: "تحويل إلى جمل انشائية"
+      - min_words_validation: 15
+        action: "reject_if_below"
+      - ensure_unique_sentences: true
+        action: "regenerate_if_duplicate"
+      - arabic_grammar_check: true
+        action: "auto_correct_minor_errors"
+
+  # 2. إلزامية رقم الموديل
+  model_number_enforcement:
+    enabled: true
+    rule: "always_generic"
+    override_user_input: true
+    value: "Generic"
+    condition: "applied_to_all_products"
+
+  # 3. بناء الوصف المركب
+  composite_description_enforcement:
+    enabled: true
+    builder:
+      step_1: "extract_product_name"
+      step_2: "get_user_description"
+      step_3: "add_narrative_sentences"
+    builder_config:
+      min_narrative_words: 40
+      style: "professional_narrative"
+    validation:
+      min_total_words: 40
+      must_include_benefits: true
+      arabic_quality: "high"
+    examples:
+      - "منتج: [اسم المنتج]. [الوصف الأساسي]. [جمل انشائية بفوائد المنتج وخصائصه]"
+
+  # 4. المكونات المضمنة
+  included_components_enforcement:
+    enabled: true
+    rule: "always_no_components"
+    override_user_input: true
+    value: "لا يوجد"
+    condition: "applied_to_all_products"
+
+  # 5. المواصفات الفنية الشرطية
+  technical_specs_enforcement:
+    enabled: true
+    conditional_logic:
+      if_specs_in_description:
+        action: "extract_and_populate"
+        method: "parse_description_for_technical_data"
+        fields:
+          - dimensions
+          - weight
+          - material
+          - color
+          - warranty
+          - voltage
+          - power_consumption
+      else:
+        action: "fill_with_zero"
+        all_fields: true
+
+  # 6. التحقق من جودة النصوص
+  text_quality_enforcement:
+    enabled: true
+    validations:
+      - narrative_style: true
+        error_on_fail: "ERR_NOT_NARRATIVE_STYLE"
+      - min_word_count:
+          bullet_points: 15
+          description: 40
+        error_on_fail: "ERR_INSUFFICIENT_WORD_COUNT"
+      - no_numbered_lists: true
+        error_on_fail: "ERR_NUMBERED_FORMAT_FOUND"
+      - arabic_grammar_check: true
+        level: "basic"
+        auto_fix: "minor_errors_only"
+      - unique_content_per_line: true
+        error_on_fail: "ERR_DUPLICATE_CONTENT"
+
+# ===== توقيت تطبيق القواعس الصارمة =====
+application_timing:
+  on_product_create: true
+  on_before_submit: true
+  on_auto_enhancement: true
+  blocking_severity: "HIGH"
+  error_action: "request_user_correction"
+
+  rollback_on_error: true
+  log_all_changes: true
+  notify_on_critical_error: true

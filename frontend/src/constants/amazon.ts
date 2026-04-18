@@ -7,7 +7,7 @@
 
 // ==================== Product Type Categories ====================
 // كل مجموعة لها browse nodes خاصة بها
-// productType ثابت = HOME_ORGANIZERS_AND_STORAGE (أمازون مصر ترفض أي نوع آخر)
+// تم حذف// productType ثابت = HOME_ORGANIZERS_AND_STORAGE (أمازون مصر ترفض أي نوع آخر)
 // الـ browse_node_id هو اللي يحدد الفئة الفعلية للمنتج
 
 export const PRODUCT_TYPE_CATEGORIES = [
@@ -31,8 +31,7 @@ export const PRODUCT_TYPES = PRODUCT_TYPE_CATEGORIES
 export const BROWSE_NODES_BY_TYPE: Record<string, {value: string; label: string}[]> = {
   // ====== 📦 تخزين وتنظيم ======
   'STORAGE': [
-    { value: '21863799031', label: 'التخزين والتنظيم المنزلي' },
-    { value: '21863899031', label: 'سلال وصناديق التخزين' },
+    { value: '2186379931', label: 'سلال وصناديق التخزين' },
     { value: '21863898031', label: 'خزائن التخزين والملابس' },
     { value: '21863900031', label: 'مساند ورفوف وأدراج التخزين' },
     { value: '21863902031', label: 'التخزين والمنظمات المكتبية المنزلية' },
@@ -234,5 +233,3 @@ export const VALIDATION_RULES = {
   model_number: { min: 1, max: 100, required: true },
   manufacturer: { min: 1, max: 200, required: true },
   bullet_points: { count: 5, min: 20, max: 500, required: true }, // 5 نقاط إجبارية
-  images: { main: { required: true, min_size: 1000 }, extra: { max: 8 } },
-} as const

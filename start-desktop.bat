@@ -4,6 +4,13 @@ echo   Crazy Lister v3.0 - Desktop App
 echo ========================================
 echo.
 
+:: Build Frontend
+echo [0/2] Building Frontend...
+cd /d %~dp0frontend
+set NODE_OPTIONS=--max-old-space-size=4096
+call npm run build
+cd /d %~dp0
+
 :: Kill lingering processes
 echo [1/2] Cleaning up old processes...
 taskkill /F /IM python.exe >nul 2>&1

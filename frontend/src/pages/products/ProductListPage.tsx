@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown, FileSpreadsheet, X, Check, Download, AlertCircle, Image as ImageIcon, CloudOff, Cloud, Eye } from 'lucide-react'
@@ -26,6 +26,22 @@ export default function ProductListPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  // Top scroll logic
+  const topScrollRef = useRef<HTMLDivElement>(null)
+  const bottomScrollRef = useRef<HTMLDivElement>(null)
+
+  const handleTopScroll = () => {
+    if (topScrollRef.current && bottomScrollRef.current) {
+      bottomScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft
+    }
+  }
+
+  const handleBottomScroll = () => {
+    if (topScrollRef.current && bottomScrollRef.current) {
+      topScrollRef.current.scrollLeft = bottomScrollRef.current.scrollLeft
+    }
+  }
 
   // Inline editing state
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -195,6 +211,7 @@ export default function ProductListPage() {
   const handleEditInline = (product: Product) => {
     setEditingId(product.id)
     setEditValues({
+      name_ar: product.name_ar || product.name || '',
       sku: product.sku,
       product_type: product.product_type,
       browse_node_id: product.browse_node_id,
@@ -531,6 +548,20 @@ export default function ProductListPage() {
     )
   }
 
+  // Helper to get Arabic label for product type
+  const getProductTypeLabel = (type: string) => {
+    const category = PRODUCT_TYPE_CATEGORIES.find(c => c.value === type || c.amazonType === type)
+    return category?.label || type
+  }
+
+  // Helper to get Arabic label for browse node
+  const getBrowseNodeLabel = (nodeId: string, type: string) => {
+    if (!nodeId) return '-'
+    const nodes = BROWSE_NODES_BY_TYPE[type] || BROWSE_NODES
+    const node = nodes.find(n => n.value === nodeId)
+    return node?.label || nodeId
+  }
+
   // ==================== Render ====================
   return (
     <div className="space-y-6">
@@ -676,28 +707,41 @@ export default function ProductListPage() {
 
       {/* Products Table */}
       <div className="bg-bg-card rounded-xl border border-border-subtle overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="neon-table w-full">
+        {/* Top Scrollbar Hack */}
+        <div
+          ref={topScrollRef}
+          onScroll={handleTopScroll}
+          className="overflow-x-auto h-4 border-b border-border-subtle bg-bg-elevated"
+          style={{ direction: 'rtl' }}
+        >
+          <div style={{ width: '1300px', height: '1px' }} />
+        </div>
+
+        <div
+          ref={bottomScrollRef}
+          onScroll={handleBottomScroll}
+          className="overflow-x-auto"
+        >
+          <table className="neon-table w-full min-w-[1200px]">
             <thead className="bg-bg-elevated">
               <tr>
-                <th className="px-4 py-4 text-right">
+                <th className="px-1 py-3 text-right w-8">
                   <input
                     type="checkbox"
                     checked={products.length > 0 && selectedIds.size === products.length}
                     onChange={toggleSelectAll}
-                    className="w-4 h-4 rounded border-gray-300 text-amazon-orange focus:ring-amazon-orange"
+                    className="w-3 h-3 rounded border-gray-300 text-amazon-orange focus:ring-amazon-orange"
                   />
                 </th>
-                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">#</th>
-                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">الصورة</th>
-                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">المنتج</th>
-                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">SKU</th>
-                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">المجموعة</th>
-                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">الفئة</th>
-                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">السعر</th>
-                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">العدد</th>
-                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">الحالة</th>
-                <th className="px-4 py-4 text-right text-xs font-semibold text-text-secondary">الإجراءات</th>
+                <th className="px-1 py-3 text-right text-sm font-semibold text-text-secondary w-6">#</th>
+                <th className="px-1 py-3 text-right text-sm font-semibold text-text-secondary w-12">الصورة</th>
+                <th className="px-1 py-3 text-right text-sm font-semibold text-text-secondary w-48">المنتج</th>
+                <th className="px-1 py-3 text-right text-sm font-semibold text-text-secondary w-16">SKU</th>
+                <th className="px-1 py-3 text-right text-sm font-semibold text-text-secondary w-24">المجموعة</th>
+                <th className="px-1 py-3 text-right text-sm font-semibold text-text-secondary w-24">الفئة</th>
+                <th className="px-1 py-3 text-right text-sm font-semibold text-text-secondary w-12">السعر</th>
+                <th className="px-1 py-3 text-right text-sm font-semibold text-text-secondary w-12">العدد</th>
+                <th className="px-1 py-3 text-right text-sm font-semibold text-text-secondary w-24">الإجراءات</th>
               </tr>
             </thead>
           <tbody>
@@ -716,23 +760,23 @@ export default function ProductListPage() {
 
               return (
                 <tr key={product.id} className={`border-b border-border-subtle hover:bg-bg-hover transition-colors ${selectedIds.has(product.id) ? 'bg-amazon-orange/5' : ''} ${isIncomplete ? 'bg-neon-yellow/5' : ''}`}>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-1 py-2">
                     <input
                       type="checkbox"
                       checked={selectedIds.has(product.id)}
                       onChange={() => toggleSelect(product.id)}
-                      className="w-4 h-4 rounded border-gray-300 text-amazon-orange focus:ring-amazon-orange"
+                      className="w-3 h-3 rounded border-gray-300 text-amazon-orange focus:ring-amazon-orange"
                     />
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary font-medium">
+                  <td className="px-1 py-2 text-sm text-text-secondary">
                     {index + 1}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-1 py-2">
                     {thumbUrl ? (
                       <img
                         src={thumbUrl}
                         alt={product.name}
-                        className="w-10 h-10 rounded-lg object-cover border border-gray-700"
+                        className="w-8 h-8 rounded object-cover border border-gray-700"
                         onError={(e) => {
                           (e.target as HTMLImageElement).style.display = 'none'
                           const placeholder = (e.target as HTMLImageElement).nextElementSibling as HTMLElement
@@ -741,30 +785,40 @@ export default function ProductListPage() {
                       />
                     ) : null}
                     <div
-                      className="w-10 h-10 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center"
+                      className="w-8 h-8 rounded bg-gray-800 border border-gray-700 flex items-center justify-center"
                       style={{ display: thumbUrl ? 'none' : 'flex' }}
                     >
-                      <ImageIcon className="w-5 h-5 text-gray-600" />
+                      <ImageIcon className="w-4 h-4 text-gray-600" />
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-white line-clamp-1">{product.name}</p>
-                      {isIncomplete && (
-                        <span className="text-amber-500" title="ناقص بيانات Amazon">⚠️</span>
+                  <td className="px-1 py-2">
+                    <div className="flex flex-col gap-0.5 w-44">
+                      {isEditing ? (
+                        <textarea
+                          value={editValues.name_ar || ''}
+                          onChange={e => setEditValues({ ...editValues, name_ar: e.target.value })}
+                          className="w-full px-1 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange h-14 resize-none"
+                        />
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <p className="font-bold text-white text-sm line-clamp-3 leading-tight" title={product.name_ar || product.name}>{product.name_ar || product.name}</p>
+                          {isIncomplete && (
+                            <span className="text-amber-500 shrink-0 text-sm" title="ناقص بيانات Amazon">⚠️</span>
+                          )}
+                        </div>
                       )}
+                      <p className="text-xs text-gray-500 truncate">{product.brand}</p>
                     </div>
-                    <p className="text-sm text-gray-500">{product.brand}</p>
                   </td>
 
                   {/* SKU */}
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-1 py-2 whitespace-nowrap">
                     {isEditing ? (
                       <input
                         type="text"
                         value={editValues.sku || ''}
                         onChange={e => setEditValues({ ...editValues, sku: e.target.value })}
-                        className="w-32 px-2 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
+                        className="w-16 px-1 py-0.5 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
                       />
                     ) : (
                       <span className="text-sm font-mono text-text-secondary">{product.sku}</span>
@@ -772,70 +826,70 @@ export default function ProductListPage() {
                   </td>
 
                   {/* المجموعة */}
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-1 py-2 whitespace-nowrap">
                     {isEditing ? (
                       <select
                         value={editValues.product_type || ''}
                         onChange={e => setEditValues({ ...editValues, product_type: e.target.value })}
-                        className="w-40 px-2 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
+                        className="w-24 px-1 py-0.5 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
                       >
                         {PRODUCT_TYPE_CATEGORIES.map(opt => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                       </select>
                     ) : (
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-lg">{PRODUCT_TYPE_CATEGORIES.find(c => c.value === product.product_type)?.icon || '📦'}</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-base">{PRODUCT_TYPE_CATEGORIES.find(c => c.value === product.product_type || c.amazonType === product.product_type)?.icon || '📦'}</span>
                         <span className="text-sm text-text-secondary font-medium">
-                          {PRODUCT_TYPE_CATEGORIES.find(c => c.value === product.product_type)?.label || product.product_type}
+                          {getProductTypeLabel(product.product_type)}
                         </span>
                       </div>
                     )}
                   </td>
 
                   {/* الفئة */}
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-1 py-2 whitespace-nowrap">
                     {isEditing ? (
                       <select
                         value={editValues.browse_node_id || ''}
                         onChange={e => setEditValues({ ...editValues, browse_node_id: e.target.value })}
-                        className="w-48 px-2 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
+                        className="w-24 px-1 py-0.5 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
                       >
-                        {(BROWSE_NODES_BY_TYPE[editValues.product_type as keyof typeof BROWSE_NODES_BY_TYPE] || BROWSE_NODES).map(opt => (
+                        {(BROWSE_NODES_BY_TYPE[editValues.product_type || ''] || BROWSE_NODES).map(opt => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>
                         ))}
                       </select>
                     ) : (
-                      <span className="text-xs text-text-muted bg-gray-800/50 px-2 py-1 rounded border border-gray-700">
-                        {BROWSE_NODES.find(n => n.value === product.browse_node_id)?.label || product.browse_node_id}
+                      <span className="text-sm text-text-secondary badge bg-white/5 border border-white/10 px-1 py-0.5 rounded max-w-[80px] truncate block" title={getBrowseNodeLabel(product.browse_node_id, product.product_type)}>
+                        {getBrowseNodeLabel(product.browse_node_id, product.product_type)}
                       </span>
                     )}
                   </td>
 
                   {/* السعر */}
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-1 py-2 whitespace-nowrap">
                     {isEditing ? (
                       <input
                         type="number"
                         value={editValues.price || 0}
                         onChange={e => setEditValues({ ...editValues, price: Number(e.target.value) })}
-                        className="w-20 px-2 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
+                        className="w-16 px-1 py-0.5 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
                       />
                     ) : (
                       <div className="text-sm font-bold text-orange-500">
-                        {Number(product.price).toFixed(2)} <span className="text-xs font-normal text-text-muted">ج.م</span>
+                        {Number(product.price).toFixed(2)}
                       </div>
                     )}
                   </td>
 
                   {/* العدد */}
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-1 py-2 whitespace-nowrap text-center">
                     {isEditing ? (
                       <input
                         type="number"
                         value={editValues.quantity || 0}
                         onChange={e => setEditValues({ ...editValues, quantity: Number(e.target.value) })}
-                        className="w-20 px-2 py-1 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
+                        className="w-12 px-1 py-0.5 bg-bg-tertiary border border-border-medium rounded text-sm text-white focus:ring-1 focus:ring-amazon-orange"
                       />
                     ) : (
                       <span className={`text-sm font-medium ${product.quantity > 0 ? 'text-text-primary' : 'text-red-500'}`}>
@@ -844,59 +898,50 @@ export default function ProductListPage() {
                     )}
                   </td>
 
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <StatusBadge status={product.status} />
-                  </td>
-
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-1">
+                  <td className="px-1 py-2 whitespace-nowrap">
+                    <div className="flex items-center gap-0.5">
                       {isEditing ? (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <button
                             onClick={handleSaveEdit}
-                            className="p-2 bg-green-600/20 text-green-500 hover:bg-green-600/30 rounded-lg transition-colors border border-green-600/30"
+                            className="p-1 bg-green-600/20 text-green-500 hover:bg-green-600/30 rounded transition-colors border border-green-600/30"
                             title="حفظ"
                           >
-                            <Check className="w-4 h-4" />
+                            <Check className="w-3 h-3" />
                           </button>
                           <button
                             onClick={handleCancelEdit}
-                            className="p-2 bg-red-600/20 text-red-500 hover:bg-red-600/30 rounded-lg transition-colors border border-red-600/30"
+                            className="p-1 bg-red-600/20 text-red-500 hover:bg-red-600/30 rounded transition-colors border border-red-600/30"
                             title="إلغاء"
                           >
-                            <X className="w-4 h-4" />
+                            <X className="w-3 h-3" />
                           </button>
                         </div>
                       ) : (
-                        <div className="flex flex-col gap-2 min-w-[120px]">
+                        <div className="flex flex-col gap-1 min-w-[80px]">
                           {/* Row 1: Local Actions */}
-                          <div className="flex items-center gap-1 justify-center bg-white/5 p-1 rounded-lg">
-                            <button onClick={() => handleEditInline(product)} className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded transition-colors" title="تعديل سريع">
-                              <Edit2 className="w-4 h-4" />
+                          <div className="flex items-center gap-0.5 justify-center bg-white/5 p-0.5 rounded">
+                            <button onClick={() => handleEditInline(product)} className="p-1 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded transition-colors" title="تعديل سريع">
+                              <Edit2 className="w-3 h-3" />
                             </button>
-                            <button onClick={() => handleEdit(product)} className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded transition-colors" title="تعديل كامل">
-                              <Eye className="w-4 h-4" />
+                            <button onClick={() => handleEdit(product)} className="p-1 text-gray-400 hover:text-orange-500 hover:bg-orange-500/10 rounded transition-colors" title="تعديل كامل">
+                              <Eye className="w-3 h-3" />
                             </button>
-                            <button onClick={() => handleDelete(product.id)} disabled={deleteMutation.isPending} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors" title="حذف محلي">
-                              <Trash2 className="w-4 h-4" />
+                            <button onClick={() => handleDelete(product.id)} disabled={deleteMutation.isPending} className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors" title="حذف محلي">
+                              <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
                           
                           {/* Row 2: Amazon Actions */}
-                          <div className="flex items-center gap-1 justify-center bg-amazon-orange/5 p-1 rounded-lg border border-amazon-orange/10">
-                            <button onClick={() => handleList(product.id)} disabled={listMutation.isPending} className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded transition-colors" title="رفع للأمازون">
-                              {listMutation.isPending && listMutation.variables === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                          <div className="flex items-center gap-0.5 justify-center bg-amazon-orange/5 p-0.5 rounded border border-amazon-orange/10">
+                            <button onClick={() => handleList(product.id)} disabled={listMutation.isPending} className="p-1 text-gray-400 hover:text-green-500 hover:bg-green-500/10 rounded transition-colors" title="رفع للأمازون">
+                              {listMutation.isPending && listMutation.variables === product.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
                             </button>
-                            {(product.status === 'failed' || product.status === 'incomplete') && (
-                              <button onClick={() => handleCompleteData(product)} className="p-1.5 text-neon-red hover:text-red-400 hover:bg-neon-red/10 rounded transition-colors" title="معالجة الفشل">
-                                <AlertCircle className="w-4 h-4" />
-                              </button>
-                            )}
-                            <button onClick={() => handleUpdatePriceOnAmazon(product)} disabled={patchAmazonMutation.isPending} className="p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded transition-colors" title="تحديث السعر على Amazon">
-                              <Cloud className="w-4 h-4" />
+                            <button onClick={() => handleUpdatePriceOnAmazon(product)} disabled={patchAmazonMutation.isPending} className="p-1 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded transition-colors" title="تحديث السعر على Amazon">
+                              <Cloud className="w-3 h-3" />
                             </button>
-                            <button onClick={() => handleDeleteFromAmazon(product.sku)} disabled={deleteFromAmazonMutation.isPending} className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors" title="حذف من Amazon">
-                              <CloudOff className="w-4 h-4" />
+                            <button onClick={() => handleDeleteFromAmazon(product.sku)} disabled={deleteFromAmazonMutation.isPending} className="p-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors" title="حذف من Amazon">
+                              <CloudOff className="w-3 h-3" />
                             </button>
                           </div>
                         </div>

@@ -1,0 +1,166 @@
+# ===== قواعس إنشاء المنتجات الثابتة =====
+# لا يمكن تجاوزها - ثابتة في النظام
+
+product_creation:
+  # الحقول المطلوبة من Amazon SP-API
+  required_fields:
+    - sku                    # معرف فريد
+    - name                   # اسم المنتج
+    - price                  # السعر
+    - product_type           # فئة المنتج
+    - condition              # حالة المنتج (New/Used)
+    - fulfillment_channel    # MFN أو AFN
+    - main_image             # الصورة الرئيسية
+
+  # الحقول الاختيارية (لكن مهمة)
+  recommended_fields:
+    - bullet_points         # 5 نقاط بيع
+    - description           # وصف كامل
+    - brand                 # البراند
+    - ean                   # الباركود
+    - dimensions            # الأبعاد
+    - weight                # الوزن
+    - images                # صور إضافية (8 صور)
+
+  # القيم الافتراضية (عند عدم تحديد قيمة)
+  defaults:
+    condition: "New"
+    fulfillment_channel: "MFN"
+    brand: "Generic"
+    country: "CN"
+    currency: "EGP"
+    language_title: "ar"
+    status: "draft"
+    quantity: 1
+    handling_time: 0
+    number_of_items: 1
+    package_quantity: 1
+
+  # حدود الحقول
+  field_limits:
+    name:
+      min_length: 10
+      max_length: 200
+    description:
+      min_length: 50
+      max_length: 2000
+    sku:
+      max_length: 40
+      pattern: "^[A-Z0-9-]+$"
+    price:
+      min_value: 0.01
+      max_value: 999999.99
+    bullet_points:
+      count: 5
+      max_length_each: 500
+    images:
+      max_count: 9
+      min_width: 1000
+      min_height: 1000
+      max_file_size_mb: 10
+      allowed_formats: ["jpg", "jpeg", "png", "gif"]
+
+  # Rules للأسعار
+  pricing_rules:
+    margin_check: true
+    min_margin_percent: 10
+    compare_price_rule: "compare_price >= price"
+    sale_price_rule: "sale_price < price"
+
+  # Rules للصور
+  image_rules:
+    main_image:
+      required: true
+      background_color: "white"
+    additional_images:
+      required: false
+      should_show_product: true
+
+# تعريفات الحقول النصية
+field_definitions:
+  name:
+    type: "string"
+    constraints:
+      - no_special_chars: ["@", "#", "$"]
+      - no_excessive_uppercase: true
+      - trim_spaces: true
+  
+  description:
+    type: "text"
+    constraints:
+      - min_sentences: 3
+      - no_repeated_words_threshold: 0.3
+      - trim_spaces: true
+  
+  brand:
+    type: "string"
+    constraints:
+      - capitalize_first: true
+      - max_length: 50
+
+# ===== قواعس صارمة للتنسيق الإلزامي =====
+strict_requirements:
+  # 1. مميزات المنتج - قواعس إلزامية
+  bullet_points_format:
+    rule: "remove_numbering"
+    description: "حذف 'نقطة 1:' و 'نقطة 2:' - كتابة الجمل مباشرة"
+    format: "جملة انشائية مباشرة بدون ترقيم"
+    min_words_per_line: 15
+    requirement: "MANDATORY"
+    examples:
+      - "منتج عالي الجودة يتميز بمواد متينة وآمنة على الصحة ومناسب للاستخدام اليومي في المطبخ"
+      - "سهل التنظيف والاستخدام مع ضمان طويل الأجل يحمي المستثمر من أي عيوب تصنيع"
+
+  # 2. رقم الموديل - قاعدة إلزامية
+  model_number:
+    default_value: "Generic"
+    rule: "always_generic"
+    requirement: "MANDATORY"
+    description: "رقم الموديل يكون 'Generic' دائماً"
+
+  # 3. الوصف - قاعدة إلزامية
+  description_format:
+    rule: "composite_description"
+    requirement: "MANDATORY"
+    structure:
+      - part_1: "اسم المنتج الأساسي"
+      - part_2: "الوصف الرئيسي من المستخدم"
+      - part_3: "جمل انشائية توضيحية"
+    min_words_total: 40
+    description: "جمل انشائية من 40 كلمة على الأقل"
+    style: "narrative" # أسلوب انشائي وليس وصفي مباشر
+
+  # 4. المكونات المضمنة - قاعدة إلزامية
+  included_components:
+    default_value: "لا يوجد"
+    rule: "always_no_components"
+    requirement: "MANDATORY"
+    description: "المكونات المضمنة تسجل 'لا يوجد' دائماً"
+
+  # 5. المواصفات الفنية - قاعدة شرطية
+  technical_specifications:
+    rule: "conditional"
+    requirement: "MANDATORY"
+    conditions:
+      - if: "specifications_mentioned_in_description"
+        then: "extract_and_fill_all_fields"
+      - if: "specifications_not_mentioned"
+        then: "fill_all_fields_with_zero"
+    description: "لو تم إضافة المواصفات في الوصف تُضاف، غير كدة تكتب 0 في كل الخانات"
+
+  # 6. متطلبات جودة النصوص
+  text_quality:
+    narrative_style: true
+    description: "جميع النصوص يجب أن تكون بأسلوب انشائي احترافي"
+    requirements:
+      - no_simple_lists: "بدون قوائم بسيطة"
+      - full_sentences: "جمل كاملة مترابطة"
+      - arabic_grammar: "لغة عربية صحيحة"
+      - min_word_count_per_field: "الحد الأدنى 15+ كلمة لكل حقل"
+  
+  sku:
+    type: "string"
+    constraints:
+      - uppercase_only: true
+      - unique_per_seller: true
+      - pattern: "^[A-Z0-9-]+$"

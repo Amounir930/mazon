@@ -1,0 +1,141 @@
+# ===== قواعس التحقق الصارمة =====
+
+validation:
+  # أخطاء حرجة - ترفع الإرسال
+  blocking_errors:
+    - field: "sku"
+      rule: "sku_exists"
+      message: "SKU مكرر لنفس البائع"
+      code: "ERR_DUPLICATE_SKU"
+    
+    - field: "name"
+      rule: "min_length"
+      message: "الاسم قصير جداً (أقل من 10 أحرف)"
+      code: "ERR_NAME_TOO_SHORT"
+    
+    - field: "name"
+      rule: "max_length"
+      message: "الاسم طويل جداً (أكثر من 200 حرف)"
+      code: "ERR_NAME_TOO_LONG"
+    
+    - field: "price"
+      rule: "must_be_positive"
+      message: "السعر يجب أن يكون موجب وأكبر من صفر"
+      code: "ERR_INVALID_PRICE"
+    
+    - field: "main_image"
+      rule: "required"
+      message: "الصورة الرئيسية مطلوبة"
+      code: "ERR_NO_MAIN_IMAGE"
+    
+    - field: "product_type"
+      rule: "valid_category"
+      message: "نوع المنتج غير صحيح أو غير معروف"
+      code: "ERR_INVALID_CATEGORY"
+    
+    - field: "condition"
+      rule: "valid_enum"
+      message: "حالة المنتج يجب أن تكون: New, Used, Refurbished, CollectibleLikeNew"
+      code: "ERR_INVALID_CONDITION"
+    
+    - field: "fulfillment_channel"
+      rule: "valid_enum"
+      message: "قناة الشحن يجب أن تكون: MFN أو AFN"
+      code: "ERR_INVALID_FULFILLMENT"
+
+  # تحذيرات - لا ترفع لكن تُنصح
+  warnings:
+    - field: "bullet_points"
+      rule: "missing"
+      message: "ينصح بإضافة 5 نقاط بيع (أثير المنتج)"
+      severity: "medium"
+      code: "WARN_NO_BULLET_POINTS"
+    
+    - field: "description"
+      rule: "too_short"
+      threshold: 100
+      message: "الوصف قصير جداً - ينصح بـ 100+ كلمة (الحد الأدنى يعطي قبول أكثر)"
+      severity: "low"
+      code: "WARN_SHORT_DESCRIPTION"
+    
+    - field: "name_en"
+      rule: "missing"
+      message: "ينصح بإضافة اسم إنجليزي للمنتج"
+      severity: "low"
+      code: "WARN_NO_ENGLISH_NAME"
+    
+    - field: "price"
+      rule: "low_margin"
+      threshold: 10
+      message: "الهامش منخفض جداً - ينصح بـ 15%+ (سعر أقل من التكلفة × 1.15)"
+      severity: "medium"
+      code: "WARN_LOW_MARGIN"
+    
+    - field: "images"
+      rule: "too_few"
+      threshold: 1
+      message: "ينصح بإضافة 3-8 صور إضافية (يزيد من فرص البيع)"
+      severity: "low"
+      code: "WARN_FEW_IMAGES"
+    
+    - field: "weight"
+      rule: "missing"
+      message: "الوزن غير محدد - مهم جداً لحساب الشحن"
+      severity: "high"
+      code: "WARN_NO_WEIGHT"
+    
+    - field: "dimensions"
+      rule: "missing"
+      message: "الأبعاد غير محددة - مهمة لحساب رسوم FBA"
+      severity: "medium"
+      code: "WARN_NO_DIMENSIONS"
+    
+    - field: "ean"
+      rule: "missing"
+      message: "الباركود (EAN/UPC) غير محدد - ينصح إذا كان المنتج يحمله"
+      severity: "low"
+      code: "WARN_NO_EAN"
+
+  # معايير البيانات
+  data_standards:
+    text_encoding: "utf-8"
+    date_format: "YYYY-MM-DD"
+    decimal_places: 2
+    decimal_separator: "."
+    currency_format: "XXX.XX"
+
+  # Valid enums
+  valid_values:
+    product_type:
+      - HOME_KITCHEN
+      - APPAREL
+      - ELECTRONICS
+      - BOOKS
+      - TOYS
+      - GIFTS_AND_DECOR
+    condition:
+      - "New"
+      - "Used"
+      - "Refurbished"
+      - "CollectibleLikeNew"
+      - "CollectibleVeryGood"
+      - "CollectibleGood"
+      - "CollectibleAcceptable"
+      - "UsedLikeNew"
+      - "UsedVeryGood"
+      - "UsedGood"
+      - "UsedAcceptable"
+    
+    fulfillment_channel:
+      - "MFN"
+      - "AFN"
+    
+    package_unit_type:
+      - "EACH"
+      - "DOZEN"
+      - "POUNDS"
+      - "KILOGRAM"
+      - "GRAMS"
+      - "OUNCES"
+      - "LITERS"
+      - "MILLILITERS"

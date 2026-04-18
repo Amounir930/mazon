@@ -3,7 +3,7 @@ API Router Configuration
 Aggregates all route routers
 """
 from fastapi import APIRouter
-from app.api import sellers, products, listings, feeds, tasks, amazon_connect, products_sync, bulk_upload, auth_routes, activity_log, price_updates, export_templates, catalog_search, images, sp_api_router, ai_router, settings_routes, github_upload
+from app.api import sellers, products, listings, feeds, tasks, amazon_connect, products_sync, bulk_upload, auth_routes, activity_log, price_updates, export_templates, catalog_search, images, sp_api_router, ai_router, settings_routes, github_upload, automation_routes
 
 api_router = APIRouter()
 
@@ -27,3 +27,4 @@ api_router.include_router(bulk_upload.router, prefix="/bulk", tags=["bulk"])
 api_router.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
 api_router.include_router(activity_log.router, prefix="/products", tags=["activity-log"])
 api_router.include_router(sp_api_router.router, prefix="/sp-api", tags=["sp-api"])
+api_router.include_router(automation_routes.router, prefix="/automation", tags=["automation"])
