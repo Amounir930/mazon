@@ -227,6 +227,7 @@ export default function ProductCreatePage() {
     has_product_identifier: false, // GTIN exemption checkbox
     brand: DEFAULT_VALUES.brand,
     model_number: '',
+    model_name: '', // [NEW] Required by SP-API
     manufacturer: DEFAULT_VALUES.brand,
     country_of_origin: DEFAULT_VALUES.country_of_origin,
 
@@ -438,10 +439,11 @@ export default function ProductCreatePage() {
       has_product_identifier: !product.ean && !product.upc, // Automatically check exemption if barcode is empty
 
       // ⚠️ FIXED FIELDS - AI CANNOT modify these (user/seller settings only)
-      // brand: product.brand,              ← REMOVED: Keep user's value
-      // manufacturer: product.manufacturer, ← REMOVED: Keep user's value
-      // country_of_origin: product.country_of_origin, ← REMOVED: Keep user's value
+      brand: product.brand || prev.brand,
+      manufacturer: product.manufacturer || prev.manufacturer,
+      country_of_origin: product.country_of_origin || prev.country_of_origin,
       model_number: product.model_number,
+      model_name: product.model_name || '', // [NEW]
 
       // الوصف والتفاصيل - ملئ مباشر
       description_ar: product.description_ar,
@@ -532,20 +534,22 @@ export default function ProductCreatePage() {
       if (result.variants.length > 0) {
         const v = result.variants[0]
         const b = result.base_product
-        // Only improve: name, description, bullet_points, keywords — NOT static fields
-        setRequired(prev => ({
-          ...prev,
-          name_ar: v.name_ar || prev.name_ar,
-          name_en: v.name_en || prev.name_en,
-          description_ar: v.description_ar || prev.description_ar,
-          description_en: v.description_en || prev.description_en,
-          bullet_points: [...b.bullet_points_ar, '', '', '', '', ''].slice(0, 5),
-        }))
-        setOptional(prev => ({
-          ...prev,
-          keywords: b.keywords || prev.keywords,
-        }))
-        toast.success('تم تحسين البيانات بالذكاء الاصطناعي!')
+        
+        // Construct a merged product object for fillFormFromAi
+        const merged: AIMergedProduct = {
+          ...b,
+          ...v,
+          variant_number: v.variant_number,
+          name_ar: v.name_ar,
+          name_en: v.name_en,
+          description_ar: v.description_ar,
+          description_en: v.description_en,
+          suggested_sku: v.suggested_sku,
+          model_name: v.model_name || b.model_name || '',
+        }
+
+        fillFormFromAi(merged)
+        toast.success('تم تحسين وتحديث كافة البيانات بالذكاء الاصطناعي!')
       }
     } catch (e: any) {
       // FIX: Properly extract error message from FastAPI 422 response
@@ -608,10 +612,14 @@ export default function ProductCreatePage() {
       errors.push('المصنع مطلوب')
     if (required.model_number.trim().length < 1)
       errors.push('رقم الموديل مطلوب')
+    if (required.model_name.trim().length < 1)
+      errors.push('اسم الموديل مطلوب (Model Name)')
     if (required.description_ar.trim().length < 50)
       errors.push('الوصف بالعربي لازم يكون وصف كامل - 3 سطور على الأقل (50 حرف كحد أدنى)')
     if (required.description_en.trim().length < 50)
       errors.push('الوصف بالإنجليزي لازم يكون وصف كامل - 3 سطور على الأقل (50 حرف كحد أدنى)')
+    if (!required.included_components || required.included_components.trim().length < 1)
+      errors.push('المكونات المضمنة مطلوبة (Included Components)')
     // النقاط البيعية - اختيارية (ممنوع إجباري)
     // التسعير والكمية - اختياري (ممنوع إجباري)
     // No validation on price/quantity - they are optional
@@ -832,6 +840,7 @@ export default function ProductCreatePage() {
       bullet_points: required.bullet_points.filter(bp => bp.trim().length > 0),
       manufacturer: required.manufacturer || DEFAULT_VALUES.brand,
       model_number: required.model_number || required.name_en.trim(),
+      model_name: required.model_name || required.name_ar.trim(), // [NEW]
       country_of_origin: required.country_of_origin,
       browse_node_id: required.browse_node_id,
       material: optional.material,
@@ -1180,14 +1189,14 @@ export default function ProductCreatePage() {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="اسم المنتج (عربي)" required hint="الاسم بالعربي — يظهر على صفحة المنتج" isAiGenerated={selectedAiProduct !== null}>
+          <Field label="اسم السلعة (عربي)" required hint="الاسم بالعربي — يظهر على صفحة المنتج" isAiGenerated={selectedAiProduct !== null}>
             <TextInput
               value={required.name_ar}
               onChange={v => setRequired(prev => ({ ...prev, name_ar: v }))}
               placeholder="مثال: خلاط كهربائي 500 واط"
             />
           </Field>
-          <Field label="اسم المنتج (English)" required hint="الاسم بالإنجليزي — مطلوب لـ Amazon" isAiGenerated={selectedAiProduct !== null}>
+          <Field label="اسم السلعة (English)" required hint="الاسم بالإنجليزي — مطلوب لـ Amazon" isAiGenerated={selectedAiProduct !== null}>
             <TextInput
               value={required.name_en}
               onChange={v => setRequired(prev => ({ ...prev, name_en: v }))}
@@ -1243,22 +1252,29 @@ export default function ProductCreatePage() {
           </div>
         </Field>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Field label="🔒 البراند" required hint="اسم العلامة التجارية — ⚠️ حقل ثابت (AI مش بيغيره)">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Field label="🔒 البراند" required hint="العلامة التجارية">
             <TextInput
               value={required.brand}
               onChange={v => setRequired(prev => ({ ...prev, brand: v }))}
               placeholder="Generic"
             />
           </Field>
-          <Field label="الموديل" required hint="رقم الموديل — يظهر في نتائج البحث">
+          <Field label="رقم الموديل" required hint="Model Number">
             <TextInput
               value={required.model_number}
               onChange={v => setRequired(prev => ({ ...prev, model_number: v }))}
               placeholder={required.name_en || 'SKU'}
             />
           </Field>
-          <Field label="🔒 المصنع" required hint="اسم الشركة المصنعة — ⚠️ حقل ثابت (AI مش بيغيره)">
+          <Field label="اسم الموديل" required hint="Model Name (إجباري من أمازون)">
+            <TextInput
+              value={required.model_name}
+              onChange={v => setRequired(prev => ({ ...prev, model_name: v }))}
+              placeholder="مثال: Mac-Pro-2024"
+            />
+          </Field>
+          <Field label="🔒 المصنع" required hint="Manufacturer">
             <TextInput
               value={required.manufacturer}
               onChange={v => setRequired(prev => ({ ...prev, manufacturer: v }))}
@@ -1302,7 +1318,7 @@ export default function ProductCreatePage() {
           />
         </Field>
 
-        <Field label="النقاط البيعية" hint="💡 يُنصح بكتابة 5 نقاط كاملة — كل نقطة جملة مفيدة تشرح ميزة أو فائدة مهمة للمشتري (اختياري)" isAiGenerated={selectedAiProduct !== null}>
+        <Field label="مميزات المنتج الرئيسية (Bullet Points)" hint="💡 يُنصح بكتابة 5 نقاط كاملة — كل نقطة جملة مفيدة (إجباري لأمازون)" isAiGenerated={selectedAiProduct !== null}>
           <div className="space-y-3">
             {required.bullet_points.map((bp, i) => (
               <div key={i} className="flex gap-2">
@@ -1334,14 +1350,14 @@ export default function ProductCreatePage() {
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="المكونات المرفقة" hint="مثال: 1x المنتج، 1x دليل الاستخدام">
+          <Field label="المكونات المضمنة (Included Components)" required hint="مثال: 1x خلاط، 1x دليل الاستخدام (إجباري)">
             <TextInput
               value={required.included_components}
               onChange={v => setRequired(prev => ({ ...prev, included_components: v }))}
-              placeholder={required.name_en || '1x المنتج'}
+              placeholder={required.name_en || 'مثال: 1x المنتج'}
             />
           </Field>
-          <Field label="عدد الوحدات" required>
+          <Field label="إحصاء الوحدات (Unit Count)" required>
             <NumberInput
               value={required.unit_count}
               onChange={v => setRequired(prev => ({ ...prev, unit_count: v }))}
@@ -1351,7 +1367,7 @@ export default function ProductCreatePage() {
           </Field>
         </div>
 
-        <Field label="نوع الوحدة" required>
+        <Field label="نوع إحصاء الوحدات (Unit Count Type)" required>
           <SelectInput
             value={required.unit_count_type}
             onChange={v => setRequired(prev => ({ ...prev, unit_count_type: v }))}

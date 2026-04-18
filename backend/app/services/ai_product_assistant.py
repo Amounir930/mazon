@@ -41,33 +41,19 @@ class AIProductAssistant:
     def _map_amazon_type_to_local(self, amazon_type: str) -> str:
         """
         Map Amazon's amazon_product_type to our local product_type enum.
-        This ensures consistency and prevents cross-category data pollution.
+        Only the 8 active categories are allowed.
         """
         mapping = {
-            # Storage & Home Organization
             "HOME_ORGANIZERS_AND_STORAGE": "STORAGE",
-            "VASE": "DECOR",
-            
-            # Kitchen & Cooking
             "KITCHEN": "KITCHEN",
-            "KITCHEN_TOOL": "KITCHEN",
-            "COOKWARE": "KITCHEN",
-            
-            # Cleaning & Personal Care
-            "SKIN_CLEANING_WIPE": "CLEANING",
-            
-            # Appliances (Electrical)
-            "SMALL_HOME_APPLIANCES": "APPLIANCE",
-            "PERSONAL_CARE_APPLIANCE": "APPLIANCE",
-            
-            # Electronics & Tools
-            "ELECTRONICS": "ELECTRONICS",
-            "TOOLS": "TOOLS",
-            
-            # Beauty & Cosmetics
-            "BEAUTY": "BEAUTY",
+            "BATHROOM": "BATHROOM",
+            "DECOR": "DECOR",
+            "CLEANING": "CLEANING",
+            "SHIPPING_SUPPLIES": "SHIPPING_SUPPLIES",
+            "HOME_IMPROVEMENT": "HOME_IMPROVEMENT",
+            "ARTS_AND_CRAFTS": "ARTS_AND_CRAFTS",
         }
-        return mapping.get(amazon_type, "GENERAL")
+        return mapping.get(amazon_type, "STORAGE")
     
     def _validate_specs_fidelity(self, original_specs: str, generated_content: str, field_name: str) -> bool:
         """
@@ -158,7 +144,7 @@ class AIProductAssistant:
                 
                 if amazon_type and (not local_type or local_type not in [
                     'STORAGE', 'KITCHEN', 'BATHROOM', 'DECOR', 'CLEANING', 
-                    'LAUNDRY', 'APPLIANCE', 'FURNITURE', 'LIGHTING', 'BEDDING', 'ELECTRONICS', 'TOOLS', 'BEAUTY', 'GENERAL'
+                    'SHIPPING_SUPPLIES', 'HOME_IMPROVEMENT', 'ARTS_AND_CRAFTS'
                 ]):
                     bp['product_type'] = self._map_amazon_type_to_local(amazon_type)
                     logger.debug(f"Mapped amazon_type '{amazon_type}' -> local_type '{bp['product_type']}'")
@@ -169,10 +155,14 @@ class AIProductAssistant:
                 if not bp.get('manufacturer') or not bp.get('manufacturer').strip():
                     bp['manufacturer'] = 'Generic'
                 
+                # 5. Model Name Rule: Ensure it follows AH-0001 pattern if missing
+                if not bp.get('model_name') or not bp.get('model_name').strip():
+                    bp['model_name'] = 'AH-0001'
+
                 # Final fallback only if both are missing/invalid
                 if not bp.get('product_type'):
-                    bp['product_type'] = 'GENERAL'
-                    logger.warning(f"Could not determine product_type for '{name}', using fallback 'GENERAL'")
+                    bp['product_type'] = 'STORAGE'
+                    logger.warning(f"Could not determine product_type for '{name}', using fallback 'STORAGE'")
 
             # FIX: If AI didn't generate enough variants, create them automatically
             if 'variants' not in raw_result or len(raw_result['variants']) < copies:
@@ -180,33 +170,27 @@ class AIProductAssistant:
                 bp = raw_result.get('base_product', {})
                 current_variants = raw_result.get('variants', [])
                 
-                # If completely empty, make a fake base variant from name AND specs
+                # If completely empty, make a fake base variant
                 if not current_variants:
                     variant_sku = f"{bp.get('model_number', 'PROD')}-001"
-                    # Use specs directly in description to preserve fidelity
-                    specs_ar = specs if any('\u0600' <= c <= '\u06FF' for c in specs) else f"مواصفات: {specs}"
-                    specs_en = specs if any(c.isascii() and c.isalpha() for c in specs) else f"Specs: {specs}"
-                    
                     current_variants.append({
                         "variant_number": 1,
-                        "name_ar": f"{name} — {specs_ar}",
-                        "name_en": f"{name} — {specs_en}",
-                        "description_ar": f"{specs_ar}. منتج عالي الجودة مصمم ليُلبي احتياجاتك اليومية بكفاءة وأداء متميز.",
-                        "description_en": f"{specs_en}. High-quality product designed to meet your daily needs with efficient and outstanding performance.",
+                        "name_ar": name, # Rule: Exact Name
+                        "name_en": name, # Basic translation fallback
+                        "description_ar": f"{specs}. منتج عالي الجودة مصمم ليُلبي احتياجاتك اليومية بكفاءة وأداء متميز.",
+                        "description_en": f"{specs}. High-quality product designed to meet your daily needs.",
                         "suggested_sku": variant_sku,
                     })
                 
                 # Duplicate the first variant to fill the remaining copies
                 base_var = current_variants[0]
-                marketing_suffixes = ["", " - جودة عالية", " - تصميم متميز", " - اختيار مثالي", " - متانة فائقة", " - إصدار خاص", " - عملي وأنيق", " - خامة ممتازة", " - حصري", " - الأفضل مبيعاً"]
                 
                 while len(current_variants) < copies:
                     idx = len(current_variants) + 1
-                    suffix = marketing_suffixes[idx % len(marketing_suffixes)]
                     current_variants.append({
                         "variant_number": idx,
-                        "name_ar": f"{base_var['name_ar']}{suffix}",
-                        "name_en": f"{base_var['name_en']} Format {idx}",
+                        "name_ar": base_var['name_ar'], # Rule: Exact Name (No suffixes)
+                        "name_en": base_var['name_en'],
                         "description_ar": base_var['description_ar'],
                         "description_en": base_var['description_en'],
                         "suggested_sku": f"{base_var['suggested_sku']}-V{idx}"

@@ -115,6 +115,7 @@ class ProductVariant(BaseModel):
     description_ar: str = Field(..., min_length=10, max_length=2000, description="Arabic description")
     description_en: str = Field(..., min_length=10, max_length=2000, description="English description")
     suggested_sku: str = Field(..., min_length=1, max_length=40, description="Auto-generated SKU")
+    model_name: str = Field(default="AH-0001", max_length=100, description="Sequential model name")
 
     @field_validator("suggested_sku")
     @classmethod

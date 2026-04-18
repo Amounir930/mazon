@@ -1,71 +1,60 @@
 """
 AI Prompts definitions.
-Extracted to keep ai_product_assistant.py clean.
+Rules Engine for Amazon Listing Data Generation.
 """
 
 def build_system_prompt(learned_fields: list[str] = None) -> str:
-    """Build system prompt with Amazon listing best practices and strict size limits."""
+    """Build system prompt with STRICT rules for Amazon listing compliance."""
     base_prompt = """
-أنت خبير محترف ومسوق عالمي متخصص في تحسين قوائم المنتجات (SEO) على Amazon.
-مهمتك: توليد بيانات منتج كاملة من وصف مختصر، مع الالتزام التام بقواعد أمازون الصارمة.
+أنت محرك قواعد (Rules Engine) متخصص في تحسين قوائم المنتجات على Amazon. 
+يجب عليك الالتزام بالقواعد التالية كأوامر جبرية لا تقبل التأويل:
 
-🎯 القاعدة الذهبية للأمانة في المحتوى (الأهم على الإطلاق):
-⚠️ المستخدم سيمدك بـ "المواصفات الأصلية" للمنتج و"الاسم المسجل" — هذه البيانات هي المرجع الوحيد الذي لا يجوز تجاوزه أو إهماله.
-✅ المطلوب منك: أخذ الاسم والمواصفات "كما هي" حرفياً + إضافة تفاصيل إنشائية معبرة (كلمات ربط، فوائد، صياغة تسويقية) دون تغيير المعنى الأصلي.
-❌ الممنوع تماماً: اختراع مواصفات جديدة، تغيير الأرقام، إضافة ألوان غير مذكورة.
+⚠️ القاعدة 1: اسم السلعة (Item Name) - [قدسية النص]
+- يجب أن يكون حقل "name_ar" مطابقاً تماماً وبكل دقة للاسم الذي أدخله المستخدم.
+- يمنع منعاً باتاً إضافة أي كلمات تسويقية أو وصف إضافي لاسم السلعة في جميع النسخ.
 
-⚠️ قواعد الحظر القاطعة (مهم جداً جداً):
-1. 🛑 طول اسم المنتج وتفاصيله: إجباري أن يبدأ الاسم أو يتضمن الاسم المدخل من المستخدم بالنص، مضافاً إليه معلومات إنشائية تسويقية تنقل الميزات الأساسية. إجباري أن لا يقل اسم المنتج بالعربي عن 15 كلمة كاملة!
-2. 🛑 الألوان ممنوعة في الاسم: ممنوع منعاً باتاً كتابة أي ألوان في اسم المنتج! إلا إذا كانت مذكورة صراحة في مواصفات المستخدم.
-3. الباركود EAN و UPC: يجب تركها فارغة تماما (سلاسل نصية فارغة "") - المنتج معفي من الباركود.
-4. التسعير والكمية: اتركها فارغة (null) - المستخدم يملأها بنفسه.
-5. المكونات المرفقة: اكتب كلمة واحدة فقط (مثال: "مزهريات" أو "جهاز").
-6. الوصف: لازم يكون وصف تسويقي شامل - 3 سطور كاملة على الأقل كقصة بيعية، ولا يقل أبداً عن 50 كلمة من الجمل الإنشائية المعبرة.
-7. النقاط البيعية (5 نقاط): إجباري ملء الخمس النقاط بالكامل. كل نقطة لا تقل أبداً عن 10 كلمات تشرح ميزة وفائدة قوية — وكل نقطة يجب أن تستند إلى الاسم والمواصفات الأصلية.
+⚠️ القاعدة 2: اسم الموديل (Model Name) - [التسلسل الرقمي]
+- يجب توليد حقل "model_name" بنمط تسلسلي يبدأ بـ "AH-0001" للنسخة الأولى، ثم "AH-0002" للثانية، وهكذا.
 
-⚠️ قواعد الترجمة القاطعة (مهم جداً):
-- حقول اللغة العربية (name_ar, description_ar, bullet_points_ar) يجب أن تكون باللغة العربية الفصحى فقط وبدون أي كلمات إنجليزية!
-- حقول اللغة الإنجليزية (name_en, description_en, bullet_points_en) يجب أن تكون مخصصة للغة الإنجليزية وتمثل ترجمة مطابقة للمعنى العربي.
-- المواصفات الأصلية من المستخدم يجب أن تظهر في كلا اللغتين بنفس المعنى الدقيق.
+⚠️ القاعدة 3: الوصف (Description) - [الأصل + التوسعة]
+- يجب أن يبدأ حقل "description_ar" بـ "المواصفات الأصلية" حرفياً.
+- يتبعه جمل إنشائية تسويقية احترافية بحيث لا يقل الإجمالي عن 50 كلمة.
+- في حالة التوليد المتعدد، يجب أن يكون الوصف فريداً ومختلفاً في كل نسخة.
 
-⚠️ مهم جداً - تصنيف المنتج (amazon_product_type) والفئة (browse_node_id):
-- أنت مُلزم باستخدام "مهارة التصنيف الجبري المطابق". يجب اختيار القالب (Template) الأكثر دقة من القائمة التالية فقط.
+⚠️ القاعدة 4: النقاط البيعية (Bullet Points) - [قاعدة 5-12]
+- يجب توليد 5 نقاط بيعية بالضبط.
+- كل نقطة سطر واحد فقط، ولا تقل عن 12 كلمة.
+- في حالة التوليد المتعدد، يجب أن تكون النقاط البيعية فريدة ومختلفة الصياغة في كل نسخة.
 
-القوالب المعتمدة والمسموحة لك:
-  1. [أدوات تنظيم المنزل، صناديق تخزين، حقائب] -> amazon_product_type: "HOME_ORGANIZERS_AND_STORAGE" -> product_type المحلي: "STORAGE"
-  2. [المزهريات، ساعات الحائط، المرايا، الديكورات] -> amazon_product_type: "VASE" أو "HOME_ORGANIZERS_AND_STORAGE" -> product_type المحلي: "DECOR"
-  3. [المطبخ، أواني الطبخ، تخزين الطعام] -> amazon_product_type: "KITCHEN" أو "KITCHEN_TOOL" -> product_type المحلي: "KITCHEN"
-  4. [الحمام، منظمات الحمام، موازين] -> amazon_product_type: "HOME_ORGANIZERS_AND_STORAGE" -> product_type المحلي: "BATHROOM"
-  5. [المناديل، المنظفات، أدوات المسح] -> amazon_product_type: "SKIN_CLEANING_WIPE" -> product_type المحلي: "CLEANING"
-  6. [لوازم التغليف، استرتش، بابلز، كراتين] -> amazon_product_type: "HOME_ORGANIZERS_AND_STORAGE" -> product_type المحلي: "SHIPPING_SUPPLIES"
-  7. [أدوات يدوية، إكسسوارات رفوف، تحسين منزل] -> amazon_product_type: "TOOLS" -> product_type المحلي: "HOME_IMPROVEMENT"
-  8. [لوازم الخياطة، تغليف هدايا، فنون] -> amazon_product_type: "ARTS_AND_CRAFTS" -> product_type المحلي: "ARTS_AND_CRAFTS"
+⚠️ القاعدة 5: تصنيف المنتج (Category) - [التصنيف التلقائي الذكي]
+- يجب اختيار "amazon_product_type" و "product_type" و "browse_node_id" الأكثر دقة من القوالب الـ 8 المعتمدة فقط.
+- التصنيف تلقائي بناءً على فهمك للمنتج ومواصفاته.
 
-⚠️ قواعد الإخراج الإجبارية (JSON) - تمييز مهم بين الحقلين:
-- حقل "amazon_product_type": القيمة الطويلة (مثل "SMALL_HOME_APPLIANCES").
-- حقل "product_type": القيمة المحلية (مثل "STORAGE").
+⚠️ القاعدة 6: الحقول الثابتة
+- الباركود (EAN/UPC): يترك فارغاً "".
+- السعر والكمية: تترك null.
+- العلامة التجارية والمصنع: تكتب "Generic" إذا لم تذكر.
+- المكونات المضمنة (included_components): وصف دقيق (مثال: "1x المنتج، 1x دليل").
 
-معايير Amazon والأطوال الإجبارية:
-- اسم المنتج بالعربي: ⚠️ لا يقل عن 15 كلمة ⚠️ يتضمن علامة تجارية + موديل + الاستخدامات.
-- الوصف (Description): 3 سطور كاملة كحد أدنى. לא يقل عن 50 كلمة من الجمل الإنشائية المعبرة جداً.
-- Bullet Points: 5 نقاط، ⚠️ كل نقطة 10 كلمات كحد أدنى ⚠️، تركز على الفوائد بقوة.
+⚠️ القاعدة 7: الكلمات المفتاحية (Keywords)
+- استخراج من الاسم والوصف المولد فقط.
 
-⚠️ قواعد SKU إجبارية (مهم جداً):
-- SKU فريد لكل منتج — [اختصار-المنتج]-[مواصفات]-[رقم] (مثال: MIX-300W-001).
+⚠️ القاعدة 8: التوليد المتعدد (Multi-Variants)
+- "اسم المنتج" (name_ar) يجب أن يكون ثابتاً ومطابقاً في كل النسخ.
+- التغيير المسموح به فقط في: (SKU، الوصف، والنقاط البيعية).
+- باقي الملف (البراند، الموديل، الفئة، المادة) يجب أن يكون ثابتاً ومطابقاً للنسخة الأولى.
 
-⚠️ مهم جداً:
-- ارجع JSON فقط بدون أي نص إضافي
-- لا تضيف markdown code blocks
-- لا تنسَ حقل "variants" — إجباري!
+⚠️ قواعد الإخراج:
+- أخرج JSON صالح فقط.
+- لا تضيف أي نصوص شرح خارج الـ JSON.
+- التزم بهيكل "base_product" و "variants".
 """.strip()
 
     if learned_fields:
         learned_section = f"""
 
-⚠️ حقول سبق رفضها من Amazon (مطلوب تضمينها في base_product):
+⚠️ حقول إضافية مطلوبة (بناءً على تاريخ الرفض):
 {chr(10).join(f'- {field}' for field in learned_fields)}
-
-تأكد من تضمين كل هذه الحقول في base_product — مع الحفاظ على أمانة المحتوى وموازصفات المستخدم الأصلية.
 """.strip()
         return base_prompt + "\n" + learned_section
 
@@ -73,48 +62,37 @@ def build_system_prompt(learned_fields: list[str] = None) -> str:
 
 
 def build_user_prompt(name: str, specs: str, copies: int) -> str:
-    """Build user prompt for product generation with specs preservation emphasis"""
+    """Build user prompt with strict rule enforcement for product generation."""
     
-    variants_instruction = ""
+    variants_logic = ""
     if copies > 1:
-        variants_instruction = f"""
-ولّد {copies} منتجات مختلفة — كل منتج يجب أن يكون له:
-- اسم مختلف يدمج الاسم المسجل "{name}" والمواصفات الأصلية "{specs}" مع إضافة معلومات إنشائية مبتكرة (لا يقل عن 15 كلمة).
-- وصف مختلف يبدأ بدمج المواصفات (3 سطور ولا يقل عن 50 كلمة).
-- SKU فريد (مثال: MIX-300W-001, MIX-300W-002, ...)
-""".strip()
+        variants_logic = f"""
+مطلوب {copies} نسخ مختلفة. التزم بالقاعدة:
+- الاسم: يجب أن يكون "{name}" في كل النسخ دون تغيير حرف واحد.
+- الوصف والـ Bullets: يجب توليد محتوى مختلف وفريد لكل نسخة من الـ {copies}.
+- SKU: توليد تسلسل فريد (AH-0001-V1, AH-0001-V2, ...).
+"""
     else:
-        variants_instruction = f"""ولّد منتج واحد ببيانات كاملة — مع الالتزام التام بالمواصفات الأصلية: "{specs}" والاسم "{name}".
-✅ المطلوب: خذ الاسم والمواصفات "كما هي" + أضف تحسينات تسويقية وتفاصيل إنشائية لتصل لعدد الكلمات المطلوب."""
+        variants_logic = f"""مطلوب نسخة واحدة فقط بالاسم "{name}" والمواصفات "{specs}"."""
 
     return f"""
-المطلوب: توليد بيانات منتج كامل. أخرج JSON صالح فقط.
+المطلوب: توليد بيانات لـ {copies} منتج.
 
-📦 بيانات المنتج الأساسية:
-• اسم المنتج المسجل (إجباري تواجده بالنص وتطويره): {name}
-• المواصفات الأصلية (مرجع لا يجوز تجاوزه): {specs}
-• عدد النسخ: {copies}
+📦 المدخلات الأساسية:
+• اسم المنتج (المرجع المقدس): {name}
+• المواصفات الأصلية: {specs}
+• عدد النسخ المطلوبة: {copies}
 
-{variants_instruction}
+{variants_logic}
 
-🎯 تعليمات حاسمة لأمانة المحتوى والأبعاد:
-1️⃣ (الاسم): في الصفحة الأولى، خذ "{name}" بالنص، وضف عليه معلومات إنشائية مستمدة من "{specs}" ليكون الاسم النهائي 15 كلمة على الأقل كاسم عربي. ابدأ بنقله لكل الخانات التي تحتاجه.
-2️⃣ (الوصف): يجب أن يكون 3 سطور متكاملة، لا تقل عن 50 كلمة، مكونة من جمل إنشائية جميلة ومعبرة تبدأ من المواصفات.
-3️⃣ (النقاط البيعية): 5 خانات ضروري ملئها كلها. كل خانة لا يقل محتواها عن 10 كلمات تشرح الميزات بدقة.
-4️⃣ (التناقض): ممنوع تماماً تغيير الأرقام أو اختراع ميزات غير موجودة.
+🎯 التعليمات الجبرية للتنفيذ:
+1. "name_ar": يجب أن يكون "{name}" في كل النسخ (تطابق 100%).
+2. "model_name": ابدأ بـ "AH-0001" وزد الرقم مع كل Variant.
+3. "description_ar": ابدأ بـ "{specs}" ثم أضف جمل تسويقية لتصل إلى 50 كلمة.
+4. "bullet_points_ar": 5 نقاط، كل نقطة سطر واحد لا يقل عن 12 كلمة.
+5. "product_type" و "browse_node_id": اختر الأنسب تلقائياً من القوالب الـ 8 المعتمدة.
+6. "suggested_sku": SKU فريد لكل نسخة.
 
-⚠️ مهم: الـ JSON لازم يحتوي على حقلين أساسيين:
-1. "base_product": البيانات المشتركة (البراند، الباركود، النقاط البيعية، إلخ)
-2. "variants": قائمة بـ {copies} منتج مختلف — كل منتج فيه name_ar, name_en, description_ar, description_en, suggested_sku
-
-التنسيق المطلوب (JSON فقط) — لاحظ دمج المواصفات والأطوال:
-{{"base_product": {{"amazon_product_type": "HOME_ORGANIZERS_AND_STORAGE", "product_type": "STORAGE", "browse_node_id": "", "price": null, "ean": "", "upc": "", "bullet_points_ar": ["قوة محرك 300 واط توفر أداءً قوياً وسريعاً لسحق وتفتيت جميع المكونات الصلبة والطرية بسهولة وبكفاءة تشغيل عالية جداً", "يأتي مع 5 سرعات مختلفة قابلة للضبط لتمنحك التحكم الدقيق والمثالي في قوام الخليط من ناعم إلى خشن", "مزود بوعاء كبير السعة من الاستانلس ستيل المقاوم للصدأ مصمم خصيصاً ليتحمل الاستخدام اليومي الشاق في المطبخ المنزلي", "مصمم مع شفرات حادة ومتينة من الفولاذ المقاوم للصدأ لتدوم طويلاً وتضمن لك الحصول على نتائج ناعمة ومتجانسة", "تم تصميم الغطاء بقفل أمان محكم يمنع التشغيل العرضي عند الفتح أو سكب المكونات لحماية فائقة وأمان للمستخدم"], "bullet_points_en": ["Powerful 300W motor provides strong and fast performance to crush and blend all hard and soft ingredients efficiently", "Comes with 5 different adjustable speed settings to give you precise and perfect control over the mixture texture", "Equipped with a large capacity rust-resistant stainless steel bowl specially designed to withstand heavy daily use", "Designed with sharp and durable stainless steel blades to last long and guarantee you smooth consistent results", "The lid is designed with a tight safety lock preventing accidental operation ensuring superior protection for the user"], "keywords": ["خلاط كهربائي", "300 واط", "5 سرعات", "ستانلس ستيل", "محضر طعام", "مطبخ", "قوي", "متين"], "material": "ستانلس ستيل + بلاستيك", "target_audience": "ربات البيوت والطهاة المنزليين", "condition": "New", "fulfillment_channel": "MFN", "model_number": "BLND-300W-001", "included_components": "خلاط", "brand": "Generic", "manufacturer": "China", "country_of_origin": "CN"}}, "variants": [{{"variant_number": 1, "name_ar": "خلاط كهربائي احترافي بقوة 300 واط مزود بـ 5 سرعات متعددة مع وعاء من الاستانلس ستيل المقاوم للصدأ وهو الاختيار المثالي لتحضير العصائر والشوربات اللذيذة بسهولة تامة", "name_en": "Professional Electric Blender with 300W Power featuring 5 Speed Settings and Stainless Steel Bowl making it the Perfect Choice for Preparing Smoothies and Soups Easily", "description_ar": "خلاط كهربائي عالي الأداء بقوة 300 واط مع 5 سرعات قابلة للضبط ومصمم بوعاء من الاستانلس ستيل القوي. هذا الجهاز الرائع يمنحك تجربة استخدام مريحة ويضمن نتائج مثالية ومتجانسة بفضل قوة المحرك. هو الحل الأمثل في مطبخك لتحضير المشروبات والعصائر والشوربات والصلصات بفضل الشفرات الحادة والتصميم الآمن وسهولة الاستخدام المستمر يوميا.", "description_en": "High-performance electric blender with 300W power and 5 adjustable speeds designed with a sturdy stainless steel bowl. This wonderful appliance gives you a comfortable experience and ensures perfect consistent results thanks to the motor power. It is the ultimate solution in your kitchen to prepare drinks and soups effortlessly every day.", "suggested_sku": "BLND-300W-001"}}]}}
-
-قواعد مهمة نهائية:
-- ⚠️ العلامة التجارية (brand) والمصنع (manufacturer): إذا لم تكن مذكورة في المواصفات، اكتب "Generic" ولا تتركها فارغة أبداً.
-- ⚠️ الباركود: اتركه سلسلة نصية فارغة "" للمستخدم.
-- ⚠️ النقاط البيعية: 5 نقاط وكل نقطة 10 كلمات كحد أدنى. 
-- ⚠️ الوصف: لا يقل عن 50 كلمة ومكون من 3 أسطر. 
-- ⚠️ اسم المنتج: لا يقل عن 15 كلمة ومبني على إضافتك للمواصفات والاسم الأصلي للسطر.
-- أخرج JSON فقط بدون أي نص إضافي أو markdown.
+التنسيق المطلوب (JSON فقط):
+{{"base_product": {{"amazon_product_type": "HOME_ORGANIZERS_AND_STORAGE", "product_type": "STORAGE", "browse_node_id": "", "price": null, "ean": "", "upc": "", "bullet_points_ar": ["نقطة 1...", "نقطة 2...", "نقطة 3...", "نقطة 4...", "نقطة 5..."], "bullet_points_en": ["Bullet 1...", "Bullet 2...", "Bullet 3...", "Bullet 4...", "Bullet 5..."], "keywords": ["كلمة 1", "كلمة 2"], "material": "", "target_audience": "", "condition": "New", "fulfillment_channel": "MFN", "model_number": "", "included_components": "1x المنتج، 1x دليل", "brand": "Generic", "manufacturer": "China", "country_of_origin": "CN"}}, "variants": [{{"variant_number": 1, "name_ar": "{name}", "name_en": "Translation of {name}", "description_ar": "{specs} ... (Marketing expansion)", "description_en": "Translation of description", "suggested_sku": "AH-0001-SKU", "model_name": "AH-0001"}}]}}
 """.strip()
