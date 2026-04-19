@@ -219,6 +219,27 @@ export default function ProductCreatePage() {
     }
   }, [sellers, editProduct?.seller_id, selectedSellerId])
 
+  // Fetch next model number automatically
+  useEffect(() => {
+    if (!isEditMode && !required.model_number) {
+      const fetchNextModelNumber = async () => {
+        try {
+          const response = await fetch('/api/v1/ai/next-model-number')
+          const data = await response.json()
+          if (data.next_model_number) {
+            setRequired(prev => ({
+              ...prev,
+              model_number: data.next_model_number
+            }))
+          }
+        } catch (error) {
+          console.error("Failed to fetch next model number:", error)
+        }
+      }
+      fetchNextModelNumber()
+    }
+  }, [isEditMode, required.model_number])
+
   // ==================== PAGE 1: الحقول الإجبارية ====================
   const [required, setRequired] = useState({
     // Tab 1: الهوية الأساسية
@@ -230,7 +251,7 @@ export default function ProductCreatePage() {
     has_product_identifier: false, // GTIN exemption checkbox
     brand: DEFAULT_VALUES.brand,
     model_number: '',
-    model_name: '', // [NEW] Required by SP-API
+    model_name: 'Generic', // Default to Generic
     manufacturer: DEFAULT_VALUES.brand,
     country_of_origin: DEFAULT_VALUES.country_of_origin,
 
@@ -274,7 +295,7 @@ export default function ProductCreatePage() {
     voltage: '',
     wattage: '',
     operating_frequency: '',
-    power_plug_type: '',
+    power_plug_type: 'غير متوافر',
   })
 
   // ==================== VALIDATION STATE ====================
@@ -532,6 +553,11 @@ export default function ProductCreatePage() {
       sale_end_date: '',
       handling_time: String(DEFAULT_VALUES.handling_time),
       package_quantity: String(DEFAULT_VALUES.package_quantity),
+      // Technical Specifications (Electrical)
+      voltage: product.voltage || '0',
+      wattage: product.wattage || '0',
+      operating_frequency: product.operating_frequency || '0',
+      power_plug_type: product.power_plug_type || 'غير متوافر',
     }))
   }, [])
 
@@ -570,30 +596,33 @@ export default function ProductCreatePage() {
         specs = `منتج ${nameToImprove}`
       }
 
-      const result = await aiApi.generateProduct({
+      const response = await aiApi.generateProduct({
         name: nameToImprove,
         specs: specs,
         copies: 1,
       })
 
-      if (result.variants.length > 0) {
+      if (response.data.success && response.data.data && response.data.data.variants.length > 0) {
+        const result = response.data.data
         const v = result.variants[0]
         const b = result.base_product
         
         // Construct a merged product object for fillFormFromAi
         const merged: AIMergedProduct = {
+          base_product: b,
+          variants: [v],
+          metadata: result.metadata
+        } as any // Cast to any because fillFormFromAi expects certain structure
+        
+        // Use the same logic as AIAssistantPanel to merge data
+        const flattened = {
           ...b,
           ...v,
-          variant_number: v.variant_number,
-          name_ar: v.name_ar,
-          name_en: v.name_en,
-          description_ar: v.description_ar,
-          description_en: v.description_en,
-          suggested_sku: v.suggested_sku,
           model_name: v.model_name || b.model_name || '',
+          metadata: result.metadata
         }
 
-        fillFormFromAi(merged)
+        fillFormFromAi(flattened)
         toast.success('تم تحسين وتحديث كافة البيانات بالذكاء الاصطناعي!')
       }
     } catch (e: any) {
@@ -1182,6 +1211,7 @@ export default function ProductCreatePage() {
         <AIAssistantPanel
           onProductsGenerated={handleAiProductsGenerated}
           onCopiesChange={setListingCopies}
+          onPageChange={setPage}
         />
       </div>
 
@@ -1428,7 +1458,7 @@ export default function ProductCreatePage() {
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="المكونات المضمنة (Included Components)" required hint="مثال: 1x خلاط، 1x دليل الاستخدام (إجباري)">
+          <Field label="المكونات المضمنة" required hint="مثال: 1x خلاط، 1x دليل الاستخدام (إجباري)">
             <TextInput
               value={required.included_components}
               onChange={v => setRequired(prev => ({ ...prev, included_components: v }))}
@@ -1716,7 +1746,7 @@ export default function ProductCreatePage() {
               value={optional.power_plug_type}
               onChange={v => setOptional(prev => ({ ...prev, power_plug_type: v }))}
               options={[
-                { value: '', label: 'اختر نوع القابس...' },
+                { value: 'غير متوافر', label: 'غير متوافر' },
                 { value: 'type_c_2pin', label: 'Type C (دبوسين - أغلب مصر)' },
                 { value: 'type_g_3pin', label: 'Type G (3 دبابيس - إنجليزي)' },
                 { value: 'type_a_2pin', label: 'Type A (دبوسين مسطح - أمريكي)' },

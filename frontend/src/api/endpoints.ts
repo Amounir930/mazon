@@ -310,3 +310,13 @@ export const imagesApi = {
   list: () =>
     api.get('/images/list'),
 }
+
+// ==================== AI Assistant API ====================
+
+export const aiApi = {
+  generate: (data: { name: string; specs: string; copies: number }) =>
+    api.post<{ success: boolean; data: any; error?: string }>('/ai/generate-product', data),
+
+  getNextModelNumber: () =>
+    api.get<{ next_model_number: string }>('/ai/next-model-number'),
+}

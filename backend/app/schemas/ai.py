@@ -55,6 +55,13 @@ class BaseProductData(BaseModel):
     country_of_origin: str = Field(default="CN", max_length=10)
     model_number: str = Field(default="", max_length=100)
     included_components: str = Field(default="", max_length=200, description="Simple one-word component name")
+    
+    # Electrical Specs
+    wattage: str = Field(default="0", max_length=50)
+    voltage: str = Field(default="0", max_length=50)
+    operating_frequency: str = Field(default="0", max_length=50)
+    power_plug_type: str = Field(default="غير متوافر", max_length=50)
+    
     estimated_price_egp: Optional[PriceEstimate] = None
 
     # Valid Amazon SP-API product types

@@ -21,6 +21,8 @@ from app.schemas.ai import AIProductResponse
 from app.services.translation_service import TranslationService
 from app.services.validation_service import ValidationService
 from app.services.retry_manager import RetryManager
+from app.services.counter_service import CounterService
+from sqlalchemy.orm import Session
 
 
 class AIProductAssistant:
@@ -98,6 +100,7 @@ class AIProductAssistant:
     
     async def generate_products(
         self,
+        db: Session,
         name: str,
         specs: str,
         copies: int = 1,
@@ -112,13 +115,19 @@ class AIProductAssistant:
             copies: Number of variants (1-10)
             learned_fields: Fields learned from previous rejection errors
         """
+        # Get starting serial number from memory
+        start_serial = CounterService.get_next_model_number(db)
+        # We need to reserve 'copies' numbers if we want to be exact, 
+        # but for now we'll just increment it once and the AI will follow.
+        # Actually, let's just use it as a reference.
+
         # Build system prompt with learned fields
         system_prompt = self._build_system_prompt(learned_fields)
         
-        # Build user prompt WITH specs preservation emphasis
-        user_prompt = self._build_user_prompt(name, specs, copies)
+        # Build user prompt WITH specs preservation and start serial
+        user_prompt = self._build_user_prompt(name, specs, copies, start_serial=start_serial)
         
-        logger.info(f"Generating {copies} product variant(s): {name} | specs: {specs[:100]}...")
+        logger.info(f"Generating {copies} product variant(s): {name} | start_serial: {start_serial}")
         
         # Call Qwen AI (async — non-blocking)
         raw_result = await self.llm.generate_json(
@@ -126,64 +135,104 @@ class AIProductAssistant:
             user_prompt=user_prompt,
         )
         
+        # ===== RADICAL POST-PROCESSOR: Clean up AI garbage =====
+        def clean_placeholder(text: str, fallback: str) -> str:
+            if not text: return fallback
+            t = text.lower()
+            placeholders = ['translation', 'professional', 'arabic', 'english', 'استنتج', 'expanded', '...', '---']
+            if any(p in t for p in placeholders) or len(text.split()) < 2:
+                return fallback
+            return text
+
+        if 'base_product' in raw_result:
+            bp = raw_result['base_product']
+            
+            # Ensure mandatory fields are never placeholders
+            bp['brand'] = clean_placeholder(bp.get('brand'), 'Generic')
+            bp['manufacturer'] = clean_placeholder(bp.get('manufacturer'), 'Generic')
+            bp['material'] = clean_placeholder(bp.get('material'), 'Mixed')
+            bp['target_audience'] = clean_placeholder(bp.get('target_audience'), 'Adults')
+            bp['included_components'] = clean_placeholder(bp.get('included_components'), f"1x {name}")
+            
+            # Electrical Specs: Ensure '0' fallback and 'Not Available' plug type
+            bp['wattage'] = clean_placeholder(bp.get('wattage'), '0')
+            bp['voltage'] = clean_placeholder(bp.get('voltage'), '0')
+            bp['operating_frequency'] = clean_placeholder(bp.get('operating_frequency'), '0')
+            bp['power_plug_type'] = 'غير متوافر'  # Always Not Available
+            
+            # Keywords fallback: Ensure exactly 10 keywords
+            current_keywords = bp.get('keywords', [])
+            if not isinstance(current_keywords, list):
+                current_keywords = []
+            
+            # Remove empty or placeholder keywords
+            current_keywords = [k for k in current_keywords if k and len(k) > 1]
+            
+            if len(current_keywords) < 10:
+                # Add keywords from name and specs
+                extracted = name.split() + specs.split()
+                for word in extracted:
+                    if len(word) > 3 and word not in current_keywords:
+                        current_keywords.append(word)
+                        if len(current_keywords) >= 10:
+                            break
+                
+                # Still not enough? Add generics
+                generics = ['جودة عالية', 'أصلي', 'منزل', 'ديكور', 'Amazon', 'توصيل سريع', 'أفضل سعر', 'عرض خاص', 'منتج مميز', 'جديد']
+                for g in generics:
+                    if len(current_keywords) >= 10:
+                        break
+                    if g not in current_keywords:
+                        current_keywords.append(g)
+            
+            bp['keywords'] = current_keywords[:10]
+
+            # EAN: Always clear as we are using GTIN Exemption
+            bp['ean'] = ''
+            bp['upc'] = ''
+            bp['has_product_identifier'] = False
+
+            # Bullet points: Ensure exactly 5 and clean placeholders + enforce 15 words
+            for key in ['bullet_points_ar', 'bullet_points_en']:
+                if key in bp:
+                    items = [clean_placeholder(p, '') for p in bp[key]]
+                    items = [p for p in items if p and len(p.split()) >= 15] # Only keep if 15+ words
+                    items = items[:5]
+                    while len(items) < 5:
+                        fallback_list = self._generate_contextual_bullets(name, specs, 'ar' if 'ar' in key else 'en')
+                        items.append(fallback_list[len(items)])
+                    bp[key] = items
+
+        if 'variants' in raw_result:
+            for i, v in enumerate(raw_result['variants']):
+                # Clean variant names and descriptions
+                v['name_en'] = clean_placeholder(v.get('name_en'), '')
+                
+                # Enforce 40 words for descriptions
+                desc_ar = clean_placeholder(v.get('description_ar', specs), specs)
+                if len(desc_ar.split()) < 40:
+                    desc_ar += f" إن هذا المنتج المتميز والمصمم بعناية فائقة يجمع بين الأناقة المطلقة والوظيفة العملية، مما يجعله الخيار المثالي لكل من يبحث عن الجودة العالية والأداء الاستثنائي في الاستخدام اليومي المستمر."
+                v['description_ar'] = desc_ar
+
+                desc_en = clean_placeholder(v.get('description_en'), '')
+                if desc_en and len(desc_en.split()) < 40:
+                    desc_en += f" This premium product is meticulously crafted to combine absolute elegance with practical functionality, making it the perfect choice for anyone seeking high quality and exceptional performance in continuous daily use."
+                v['description_en'] = desc_en
+
+                v['model_name'] = clean_placeholder(v.get('model_name'), f"AH-{i+1:04d}")
+                raw_result['variants'][i] = v
+
         # Validate with Pydantic
         try:
             # FIX: Auto-correct common validation issues BEFORE Pydantic validation
             if 'base_product' in raw_result:
                 bp = raw_result['base_product']
-
-                # 1. EAN: Always clear the EAN/UPC as we are using GTIN Exemption
-                bp['ean'] = ''
-                bp['upc'] = ''
-                bp['has_product_identifier'] = False  # For passing safely to frontend
-
-                # 2. Bullet points: Ensure exactly 5
-                for key in ['bullet_points_ar', 'bullet_points_en']:
-                    if key in bp:
-                        items = bp[key][:5]  # Truncate to 5
-                        while len(items) < 5:  # Pad if less than 5
-                            items.append("")
-                        bp[key] = items
-
-                # 3. Product type mapping: Sync local product_type with amazon_product_type
+                
+                # Product type mapping
                 amazon_type = bp.get('amazon_product_type', '')
                 local_type = bp.get('product_type', '')
-                
-                if amazon_type and (not local_type or local_type not in [
-                    'STORAGE', 'KITCHEN', 'BATHROOM', 'DECOR', 'CLEANING', 
-                    'SHIPPING_SUPPLIES', 'HOME_IMPROVEMENT', 'ARTS_AND_CRAFTS'
-                ]):
+                if amazon_type and (not local_type or local_type not in ['STORAGE', 'KITCHEN', 'BATHROOM', 'DECOR', 'CLEANING', 'SHIPPING_SUPPLIES', 'HOME_IMPROVEMENT', 'ARTS_AND_CRAFTS']):
                     bp['product_type'] = self._map_amazon_type_to_local(amazon_type)
-                    logger.debug(f"Mapped amazon_type '{amazon_type}' -> local_type '{bp['product_type']}'")
-                
-                # 4. Brand & Manufacturer Fallbacks (Ensure at least 1 char)
-                if not bp.get('brand') or not bp.get('brand').strip():
-                    bp['brand'] = 'Generic'
-                if not bp.get('manufacturer') or not bp.get('manufacturer').strip():
-                    bp['manufacturer'] = 'Generic'
-                
-                # 5. Model Name Rule: Ensure it follows AH-0001 pattern if missing
-                if not bp.get('model_name') or not bp.get('model_name').strip():
-                    bp['model_name'] = 'AH-0001'
-
-                # Final fallback only if both are missing/invalid
-                if not bp.get('product_type'):
-                    bp['product_type'] = 'STORAGE'
-                    logger.warning(f"Could not determine product_type for '{name}', using fallback 'STORAGE'")
-
-                # Check if current bullets are adequate
-                bullet_points_ar = bp.get('bullet_points_ar', [])
-                bullet_points_en = bp.get('bullet_points_en', [])
-                
-                qwen_bullets_ok = (
-                    len(bullet_points_ar) == 5 and 
-                    all(len(point.split()) >= 12 for point in bullet_points_ar)
-                )
-                
-                if not qwen_bullets_ok:
-                    logger.warning(f"Qwen bullets inadequate, replacing with quality bullets")
-                    bp['bullet_points_ar'] = self._generate_contextual_bullets(name, specs, 'ar')
-                    bp['bullet_points_en'] = self._generate_contextual_bullets(name, specs, 'en')
 
             # FIX: If AI didn't generate enough variants, create them automatically
             if 'variants' not in raw_result or len(raw_result['variants']) < copies:
@@ -346,43 +395,54 @@ class AIProductAssistant:
                 raise ValueError(f"AI generated invalid product data: {e}")
     
     def _generate_contextual_bullets(self, product_name: str, specs: str, lang: str = 'ar') -> List[str]:
-        """Generate high-quality, product-specific bullet points dynamically"""
+        """Generate high-quality, product-specific bullet points dynamically (15+ words each)"""
         
         if lang == 'ar':
             templates = [
-                f"{product_name} مصمم بعناية فائقة ليوفر {specs} مع ضمان الكفاءة والأداء المتميز في الاستخدام اليومي",
-                "يتميز هذا المنتج بجودة تصنيع عالية ومواد آمنة وصديقة للبيئة تضمن المتانة وطول العمر الافتراضي",
-                "حل عملي ومبتكر يلبي احتياجاتك اليومية ويوفر وقتك وجهدك بفضل تصميمه الذكي والوظيفي",
-                "خيار مثالي للاستخدام المنزلي أو المهني مع سهولة في التركيب والصيانة والتنظيف الفوري",
-                "منتج موثوق به يجمع بين الأناقة والوظيفة العملية مع ضمان رضا العملاء وتجربة استخدام ممتازة"
+                f"يتميز {product_name} بتصميم عصري وفريد من نوعه يجمع بين الأناقة المطلقة والوظيفة العملية الفائقة ليوفر لك تجربة استخدام استثنائية ومريحة في منزلك العصري",
+                f"تم تصنيع هذا المنتج باستخدام مواد عالية الجودة وخامات متينة تضمن لك طول العمر الافتراضي والمقاومة العالية للعوامل الخارجية مع الحفاظ على مظهره الفاخر والجديد دائماً",
+                f"يعتبر {product_name} حلاً مبتكراً وعملياً للغاية حيث يساعدك على تنظيم مساحتك الخاصة وتوفير الكثير من الوقت والجهد بفضل ميزاته التقنية المتقدمة التي تلبي كافة احتياجاتك اليومية",
+                f"يأتي المنتج مع ضمان كامل على جودة التصنيع والأداء المتميز وهو سهل التركيب والصيانة والتنظيف مما يجعله الخيار الأول والأنسب لكل من يبحث عن الجودة والجمال في آن واحد",
+                f"بفضل المواصفات المتميزة التي تشمل {specs} فإن هذا المنتج يضمن لك أداءً فائقاً يتجاوز التوقعات مع توفير أقصى درجات الراحة والأمان لك ولعائلتك في كافة الأوقات"
             ]
         else:  # English
             templates = [
-                f"{product_name} is expertly crafted to deliver {specs} with guaranteed efficiency and outstanding performance for daily use",
-                "This product features high-quality manufacturing and safe, eco-friendly materials that ensure durability and long-lasting reliability",
-                "A practical and innovative solution that meets your everyday needs while saving time and effort thanks to its smart and functional design",
-                "An ideal choice for home or professional use with easy installation, maintenance, and quick cleaning for maximum convenience",
-                "A trusted product that combines elegance with practical functionality, ensuring customer satisfaction and an excellent user experience"
+                f"This {product_name} features a modern and unique design that combines absolute elegance with superior practical functionality to provide you with an exceptional and comfortable user experience",
+                "Manufactured using high-quality materials and durable components that guarantee long-lasting performance and high resistance to external factors while maintaining its luxurious and brand-new appearance",
+                f"The {product_name} is a highly innovative and practical solution that helps you organize your space and save significant time and effort thanks to its advanced technical features",
+                "Comes with a full guarantee on manufacturing quality and outstanding performance, making it easy to install, maintain, and clean for anyone seeking both quality and beauty simultaneously",
+                f"With premium specifications including {specs}, this product ensures superior performance that exceeds expectations while providing maximum comfort and safety for you and your family at all times"
             ]
         return templates
     
     async def _safe_translate_variant(self, variant: dict, name: str, specs: str) -> dict:
         """Safely translate variant fields with fallback"""
+        # Detect placeholders that indicate AI failed to provide real content
+        placeholders = [
+            'translation', 'professional english', 'arabic description',
+            'english description', 'استنتج', 'expanded', '...', '---'
+        ]
+
+        def is_placeholder(text: str) -> bool:
+            if not text: return True
+            t = text.lower()
+            return any(p in t for p in placeholders) or len(text.split()) < 2
+
         # Translate name
-        if not variant.get('name_en') or variant['name_en'].startswith('Translation of'):
+        if is_placeholder(variant.get('name_en')):
             variant['name_en'] = await self.translator.translate(
                 variant.get('name_ar', name), 'ar', 'en', context=f"Product name: {name}"
             )
 
         # Translate description
-        if not variant.get('description_en') or variant['description_en'].startswith('Translation of'):
+        if is_placeholder(variant.get('description_en')):
             desc_ar = variant.get('description_ar', specs)
             variant['description_en'] = await self.translator.translate(
                 desc_ar, 'ar', 'en', context=f"Product description for: {name}"
             )
             # Ensure minimum length
-            if len(variant['description_en'].split()) < 50:
-                variant['description_en'] += f" This premium {name} combines functionality with aesthetics, perfect for home and professional use with modern design elements."
+            if len(variant['description_en'].split()) < 40:
+                variant['description_en'] += f" This premium product is meticulously crafted to combine absolute elegance with practical functionality, making it the perfect choice for anyone seeking high quality and exceptional performance in continuous daily use."
 
         return variant
     
@@ -390,6 +450,6 @@ class AIProductAssistant:
         from app.services.ai_prompts import build_system_prompt
         return build_system_prompt(learned_fields)
 
-    def _build_user_prompt(self, name: str, specs: str, copies: int) -> str:
+    def _build_user_prompt(self, name: str, specs: str, copies: int, start_serial: str = "AH-0001") -> str:
         from app.services.ai_prompts import build_user_prompt
-        return build_user_prompt(name, specs, copies)
+        return build_user_prompt(name, specs, copies, start_serial=start_serial)

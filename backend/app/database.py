@@ -59,6 +59,7 @@ def init_db():
     from app.models.listing import Listing
     from app.models.session import Session  # noqa: F401
     from app.models.activity_log import ActivityLog  # noqa: F401
+    from app.models.setting import Setting  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     logger.info(f"Database initialized at: {APP_DATA_DIR}/crazy_lister.db")

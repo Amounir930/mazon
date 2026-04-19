@@ -5,6 +5,7 @@ import { LanguageSwitcher } from '@/components/common'
 import { useSessionStatus, useLogout } from '@/api/hooks'
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import logo from '@/assets/logo.png'
 
 export default function Sidebar() {
   const { t } = useTranslation()
@@ -57,8 +58,8 @@ export default function Sidebar() {
       <div className="p-6 border-b border-border-subtle">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amazon-orange to-amazon-light flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-lg">C</span>
+            <div className="w-10 h-10 rounded-xl bg-amazon-orange/10 flex items-center justify-center shadow-lg overflow-hidden border border-amazon-orange/20 p-1">
+              <img src={logo} alt="Logo" className="w-full h-full object-contain" />
             </div>
             <div>
               <h1 className="text-lg font-bold text-text-primary">{t('app.name')}</h1>

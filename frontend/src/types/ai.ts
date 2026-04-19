@@ -36,6 +36,10 @@ export interface AIMergedProduct {
     country_of_origin: string
     model_number: string
     included_components: string
+    wattage?: string
+    voltage?: string
+    operating_frequency?: string
+    power_plug_type?: string
     estimated_price_egp: number | null
     has_product_identifier?: boolean
     description_ar?: string

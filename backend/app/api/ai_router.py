@@ -157,12 +157,16 @@ async def generate_product(request: AIProductRequest):
         )
     
     try:
+        db = SessionLocal()
         assistant = AIProductAssistant()
         result = await assistant.generate_products(
+            db=db,
             name=request.name,
             specs=request.specs,
             copies=request.copies,
         )
+    finally:
+        db.close()
 
         # DEBUG: Log AI response for troubleshooting
         logger.info(f"✅ AI generated {len(result.variants)} variant(s)")
@@ -213,3 +217,18 @@ async def generate_product(request: AIProductRequest):
                 "model_used": "qwen-max",
             }
         }
+
+@router.get(" /next-model-number\)
+async def get_next_model_number():
+ \\\
+ GET /api/v1/ai/next-model-number
+ 
+ Preview the next available sequential model number without incrementing.
+ \\\
+ from app.services.counter_service import CounterService
+ db = SessionLocal()
+ try:
+ next_num = CounterService.preview_next_model_number(db)
+ return {\next_model_number\: next_num}
+ finally:
+ db.close()
