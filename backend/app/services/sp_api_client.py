@@ -120,6 +120,9 @@ class SPAPIClient:
     # LWA Token URL
     LWA_TOKEN_URL = "https://api.amazon.com/auth/o2/token"
 
+    # Global throttling state (shared across all instances in the same process)
+    _last_request_time = 0.0
+
     def __init__(self, marketplace_id: str = "ARBP9OOSHTCHU", country_code: str = "eg"):
         self.marketplace_id = marketplace_id
         self.country_code = country_code.lower()
@@ -197,6 +200,17 @@ class SPAPIClient:
         """
         Make a signed request to SP-API with AWS SigV4.
         """
+        # Throttling: Ensure 3 seconds between any two requests to Amazon
+        current_time = time.time()
+        time_since_last = current_time - SPAPIClient._last_request_time
+        if time_since_last < 3.0:
+            sleep_time = 3.0 - time_since_last
+            logger.info(f"⏳ Throttling: Sleeping for {sleep_time:.2f}s before next Amazon request...")
+            time.sleep(sleep_time)
+        
+        # Update last request time before making the call
+        SPAPIClient._last_request_time = time.time()
+
         url = f"https://{self.endpoint}{path}"
         
         # Get access token
@@ -741,6 +755,7 @@ class SPAPIClient:
         condition = product_data.get("condition", "New")
         country_origin = product_data.get("country_of_origin", "CN")
         model_number = product_data.get("model_number", product_data.get("sku", "N/A"))
+        model_name = product_data.get("model_name", model_number) # Use model_name if available, else fallback to number
         manufacturer = (product_data.get("manufacturer") or brand).strip() or brand
         bullet_points = product_data.get("bullet_points", [])
         browse_node = product_data.get("browse_node_id", "21863799031")
@@ -772,7 +787,7 @@ class SPAPIClient:
 
             # Manufacturer & Model
             "manufacturer": [{"value": manufacturer, "language_tag": "ar_AE"}],
-            "model_name": [{"value": model_number, "language_tag": "ar_AE"}],
+            "model_name": [{"value": model_name, "language_tag": "ar_AE"}],
             "model_number": [{"value": model_number, "language_tag": "ar_AE"}],
 
             # Included components — REQUIRED by Amazon
@@ -874,29 +889,44 @@ class SPAPIClient:
         # Remove None values
         attributes = {k: v for k, v in attributes.items() if v is not None}
 
-        # === BARCODE / GTIN EXEMPTION (CRITICAL: fixes "أدخل رقم المنتج" error) ===
-        has_product_identifier = product_data.get("has_product_identifier", False)
-        logger.info(f"📦 GTIN Exemption flag: {has_product_identifier}, EAN: {ean}, UPC: {upc}")
-
-        if has_product_identifier:
-            # Product has NO barcode — declare exemption
-            attributes["supplier_declared_has_product_identifier_exemption"] = [{"value": True}]
-            logger.info("✅ GTIN Exemption: No barcode required")
-        elif ean and len(ean) == 13 and ean.isdigit():
-            attributes["externally_assigned_product_identifier"] = [{"value": {"type": "ean", "value": ean}}]
-        elif upc and len(upc) == 12 and upc.isdigit():
-            attributes["externally_assigned_product_identifier"] = [{"value": {"type": "upc", "value": upc}}]
-        else:
-            # No barcode AND no exemption — default to exemption to prevent rejection
-            logger.warning("⚠️ No valid barcode found — auto-enabling GTIN exemption")
-            attributes["supplier_declared_has_product_identifier_exemption"] = [{"value": True}]
-
-        # Merchant suggested ASIN 
+        # === PRODUCT IDENTIFIER (THE CORE FIX) ===
+        # Handle External Product Identifier (ADEL system)
+        has_exemption = product_data.get("has_product_identifier", False)
         merchant_asin = product_data.get("merchant_suggested_asin", "").strip()
+        
+        if ean.upper().startswith("ADEL"):
+            # Map ADEL to the primary identifier field
+            attributes["externally_assigned_product_identifier"] = [{
+                "value": ean[:10].strip(),
+                "type": "asin"
+            }]
+            logger.info(f"🚀 FORCING ExternalID (ADEL as ASIN): {ean[:10]}")
+            if not merchant_asin:
+                merchant_asin = ean
+        elif ean:
+            attributes["externally_assigned_product_identifier"] = [{
+                "value": ean.strip(),
+                "type": "ean"
+            }]
+        elif upc:
+            attributes["externally_assigned_product_identifier"] = [{
+                "value": upc.strip(),
+                "type": "upc"
+            }]
+        elif has_exemption or (not ean and not upc):
+            logger.info("ℹ️ Sending with GTIN Exemption")
+            attributes["supplier_declared_has_product_identifier_exemption"] = [{"value": True}]
+        
+        # [FIX] Official SP-API 2021-08-01 structure for merchant_suggested_asin
         if merchant_asin:
             attributes["merchant_suggested_asin"] = [{
-                "value": merchant_asin[:10]
+                "value": merchant_asin[:10],
+                "marketplace_id": self.marketplace_id  # REQUIRED by Amazon Schema
             }]
+            logger.info(f"🆔 Sent to Amazon - MerchantSuggestedASIN: {merchant_asin} (Marketplace: {self.marketplace_id})")
+
+        logger.info(f"📝 Sent to Amazon - ModelName: {model_name}")
+        logger.info(f"🔢 Sent to Amazon - ModelNumber: {model_number}")
 
         # Resolve product type via normalize (AI/frontend → Amazon valid type)
         raw_type = product_data.get("amazon_product_type") or product_data.get("product_type") or "HOME_ORGANIZERS_AND_STORAGE"

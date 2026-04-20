@@ -22,16 +22,20 @@ export class ProductRulesValidator {
       return {
         field: 'model_number',
         isValid: false,
-        message: 'رقم الموديل مطلوب - يجب أن يكون: Generic',
+        message: 'رقم الموديل مطلوب (مثلاً: AH-0001 أو Generic)',
         severity: 'error',
       };
     }
 
-    if (modelNumber.trim() !== 'Generic') {
+    // Allow AH-xxxx or Generic
+    const isSequential = modelNumber.trim().startsWith('AH-');
+    const isGeneric = modelNumber.trim() === 'Generic';
+
+    if (!isSequential && !isGeneric) {
       return {
         field: 'model_number',
         isValid: false,
-        message: `رقم الموديل يجب أن يكون "Generic"، والحالي: "${modelNumber}"`,
+        message: `رقم الموديل يجب أن يبدأ بـ "AH-" أو يكون "Generic"`,
         severity: 'error',
       };
     }

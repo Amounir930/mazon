@@ -61,6 +61,7 @@ class ProductCreate(BaseModel):
     amazon_product_type: Optional[str] = Field(None, max_length=100)
     manufacturer: Optional[str] = Field(None, max_length=200)
     model_number: Optional[str] = Field(None, max_length=100)
+    model_name: Optional[str] = Field(None, max_length=100, description="Model Name (Generic-xxxxx)")
     country_of_origin: Optional[str] = Field(None, max_length=10)
     package_quantity: int = Field(default=1, ge=1)
     browse_node_id: Optional[str] = Field(None, max_length=50, description="Amazon Browse Node ID")
@@ -147,6 +148,7 @@ class ProductUpdate(BaseModel):
     product_type: Optional[str] = Field(None, max_length=100)
     manufacturer: Optional[str] = Field(None, max_length=200)
     model_number: Optional[str] = Field(None, max_length=100)
+    model_name: Optional[str] = Field(None, max_length=100)
     country_of_origin: Optional[str] = Field(None, max_length=10)
     package_quantity: Optional[int] = Field(None, ge=1)
     browse_node_id: Optional[str] = Field(None, max_length=50)
@@ -208,6 +210,7 @@ class ProductResponse(BaseModel):
     product_type: Optional[str] = None
     manufacturer: Optional[str] = None
     model_number: Optional[str] = None
+    model_name: Optional[str] = None
     country_of_origin: Optional[str] = None
     package_quantity: int = 1
     browse_node_id: Optional[str] = None

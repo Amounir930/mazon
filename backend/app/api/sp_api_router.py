@@ -165,6 +165,7 @@ async def submit_product_to_amazon(product_id: str, background_tasks: Background
             "color": product_attrs.get("color", "متعدد") or "متعدد",
             "manufacturer": product.manufacturer or (product.brand or "Generic"),
             "model_number": product.model_number or product.sku,
+            "model_name": product_attrs.get("model_name") or product.model_number or product.sku,
             "ean": product.ean or "",
             "upc": product.upc or "",
             "price": float(product.price),
@@ -177,7 +178,7 @@ async def submit_product_to_amazon(product_id: str, background_tasks: Background
             "bullet_points": bullet_points,
             "browse_node_id": product.browse_node_id or "21863799031",
             # Merchant suggested ASIN 
-            "merchant_suggested_asin": (product_attrs.get("suggested_asin") or product_attrs.get("merchant_suggested_asin") or "")[:10].strip(),
+            "merchant_suggested_asin": (product_attrs.get("suggested_asin") or product_attrs.get("merchant_suggested_asin") or product.ean or "")[:10].strip(),
             # Additional required fields
             "number_of_items": product.number_of_items or 1,
             "package_quantity": product.package_quantity or 1,

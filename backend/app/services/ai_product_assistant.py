@@ -115,11 +115,8 @@ class AIProductAssistant:
             copies: Number of variants (1-10)
             learned_fields: Fields learned from previous rejection errors
         """
-        # Get starting serial number from memory
-        start_serial = CounterService.get_next_model_number(db)
-        # We need to reserve 'copies' numbers if we want to be exact, 
-        # but for now we'll just increment it once and the AI will follow.
-        # Actually, let's just use it as a reference.
+        # Get starting serial number from memory (reserve 'copies' numbers)
+        start_serial = CounterService.get_next_model_number(db, increment=copies)
 
         # Build system prompt with learned fields
         system_prompt = self._build_system_prompt(learned_fields)
@@ -154,6 +151,12 @@ class AIProductAssistant:
             bp['target_audience'] = clean_placeholder(bp.get('target_audience'), 'Adults')
             bp['included_components'] = clean_placeholder(bp.get('included_components'), f"1x {name}")
             
+            # SYSTEM ENFORCED FIELDS:
+            bp['model_name'] = 'Generic'
+            bp['model_number'] = start_serial
+            bp['brand'] = 'Generic'
+            bp['manufacturer'] = 'Generic'
+
             # Electrical Specs: Ensure '0' fallback and 'Not Available' plug type
             bp['wattage'] = clean_placeholder(bp.get('wattage'), '0')
             bp['voltage'] = clean_placeholder(bp.get('voltage'), '0')
@@ -203,6 +206,36 @@ class AIProductAssistant:
                         items.append(fallback_list[len(items)])
                     bp[key] = items
 
+        # Fetch starting sequential numbers
+        start_serial_num = CounterService.get_next_model_number(db, increment=copies)
+        start_product_id_str = CounterService.get_next_product_id(db, increment=copies)
+        
+        prefix = "AH-"
+        current_serial_num = 1
+        import re
+        match = re.match(r"([A-Za-z\-]+)(\d+)", start_serial_num)
+        if match:
+            prefix = match.group(1)
+            current_serial_num = int(match.group(2))
+            
+        id_prefix = "ADEL"
+        current_product_id_num = 1
+        id_match = re.match(r"([A-Za-z\-]+)(\d+)", start_product_id_str)
+        if id_match:
+            id_prefix = id_match.group(1)
+            current_product_id_num = int(id_match.group(2))
+
+        # Post-process results
+        if 'base_product' in raw_result:
+            bp = raw_result['base_product']
+            bp['brand'] = 'Generic'
+            bp['manufacturer'] = 'Generic'
+            # Use the first serial for the base product to ensure consistency
+            bp['model_name'] = f"Generic-{current_serial_num:05d}"
+            bp['model_number'] = f"{prefix}{current_serial_num:04d}"
+            bp['ean'] = f"{id_prefix}{current_product_id_num:06d}"
+            raw_result['base_product'] = bp
+
         if 'variants' in raw_result:
             for i, v in enumerate(raw_result['variants']):
                 # Clean variant names and descriptions
@@ -219,7 +252,21 @@ class AIProductAssistant:
                     desc_en += f" This premium product is meticulously crafted to combine absolute elegance with practical functionality, making it the perfect choice for anyone seeking high quality and exceptional performance in continuous daily use."
                 v['description_en'] = desc_en
 
-                v['model_name'] = clean_placeholder(v.get('model_name'), f"AH-{i+1:04d}")
+                # SYSTEM ENFORCED FIELDS:
+                # Calculate the sequential numbers for this specific variant
+                this_variant_num = current_serial_num + i
+                
+                # Set Model Name and Number sequentially
+                v['model_name'] = f"Generic-{this_variant_num:05d}"
+                v['model_number'] = f"{prefix}{this_variant_num:04d}"
+                
+                this_product_id_num = current_product_id_num + i
+                v['ean'] = f"{id_prefix}{this_product_id_num:06d}" # Each variant gets its OWN unique ID
+                
+                # Also ensure brand and manufacturer are set for each variant
+                v['brand'] = 'Generic'
+                v['manufacturer'] = 'Generic'
+                
                 raw_result['variants'][i] = v
 
         # Validate with Pydantic

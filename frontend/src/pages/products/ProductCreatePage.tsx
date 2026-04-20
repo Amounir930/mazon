@@ -219,26 +219,6 @@ export default function ProductCreatePage() {
     }
   }, [sellers, editProduct?.seller_id, selectedSellerId])
 
-  // Fetch next model number automatically
-  useEffect(() => {
-    if (!isEditMode && !required.model_number) {
-      const fetchNextModelNumber = async () => {
-        try {
-          const response = await fetch('/api/v1/ai/next-model-number')
-          const data = await response.json()
-          if (data.next_model_number) {
-            setRequired(prev => ({
-              ...prev,
-              model_number: data.next_model_number
-            }))
-          }
-        } catch (error) {
-          console.error("Failed to fetch next model number:", error)
-        }
-      }
-      fetchNextModelNumber()
-    }
-  }, [isEditMode, required.model_number])
 
   // ==================== PAGE 1: الحقول الإجبارية ====================
   const [required, setRequired] = useState({
@@ -248,7 +228,7 @@ export default function ProductCreatePage() {
     product_type: DEFAULT_VALUES.product_type,
     id_type: DEFAULT_VALUES.id_type as string,
     ean: '',
-    has_product_identifier: false, // GTIN exemption checkbox
+    has_product_identifier: true, // Default to true (checked) for ADEL system
     brand: DEFAULT_VALUES.brand,
     model_number: '',
     model_name: 'Generic', // Default to Generic
@@ -277,6 +257,49 @@ export default function ProductCreatePage() {
     package_weight: String(DEFAULT_VALUES.package_weight),
     number_of_boxes: String(DEFAULT_VALUES.number_of_boxes),
   })
+
+  // Fetch next model number and next ADEL product ID automatically
+  useEffect(() => {
+    if (!isEditMode) {
+      const fetchNextNumbers = async () => {
+        try {
+          // Fetch Model Number
+          if (!required.model_number) {
+            const resModel = await fetch('/api/v1/ai/next-model-number')
+            const dataModel = await resModel.json()
+            if (dataModel.next_model_number) {
+              const nextNum = dataModel.next_model_number
+              // Extract number part (e.g., from AH-0017)
+              const match = nextNum.match(/\d+/)
+              const numStr = match ? match[0] : '00001'
+              
+              setRequired(prev => ({ 
+                ...prev, 
+                model_number: nextNum,
+                model_name: `Generic-${numStr.padStart(5, '0')}` // Auto-set sequential model name
+              }))
+            }
+          }
+
+          // Fetch ADEL Product ID
+          if (!required.ean) {
+            const resId = await fetch('/api/v1/ai/next-product-id')
+            const dataId = await resId.json()
+            if (dataId.next_product_id) {
+              setRequired(prev => ({ 
+                ...prev, 
+                ean: dataId.next_product_id,
+                has_product_identifier: true // Ensure checked
+              }))
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch next sequential numbers:", error)
+        }
+      }
+      fetchNextNumbers()
+    }
+  }, [isEditMode])
 
   // ==================== PAGE 2: الحقول الاختيارية ====================
   const [optional, setOptional] = useState({
@@ -508,8 +531,9 @@ export default function ProductCreatePage() {
       brand: product.brand || prev.brand,
       manufacturer: product.manufacturer || prev.manufacturer,
       country_of_origin: product.country_of_origin || prev.country_of_origin,
-      model_number: product.model_number,
-      model_name: product.model_name || '', // [NEW]
+      model_number: product.model_number || prev.model_number,
+      model_name: product.model_name || 'Generic', 
+      ean: product.ean || prev.ean, // Keep current ean if AI wipes it
 
       // الوصف والتفاصيل - ملئ مباشر
       description_ar: product.description_ar,
@@ -666,18 +690,14 @@ export default function ProductCreatePage() {
       errors.push('اسم المنتج بالعربي لازم 3 أحرف على الأقل')
     if (required.name_en.trim().length < VALIDATION_RULES.name_en.min)
       errors.push('اسم المنتج بالإنجليزي لازم 3 أحرف على الأقل')
-    // Task 2: Barcode is MANDATORY - EAN (13 digits) or UPC (12 digits) only
-    // UNLESS "has_product_identifier" is checked (GTIN exemption)
+    // Barcode validation — simplified to allow ADEL (10 chars)
     if (!required.has_product_identifier) {
+      const isAdel = required.ean?.toUpperCase().startsWith('ADEL') && required.ean.length === 10
       const idLen = required.id_type === 'UPC' ? 12 : 13
-      if (!required.ean || required.ean.length !== idLen)
-        errors.push(`الباركود (${required.id_type}) لازم يكون ${idLen} رقم — إجباري`)
-    } else {
-      // GTIN exemption: product doesn't have a product identifier
-      if (required.ean && required.ean.trim()) {
-        const idLen = required.id_type === 'UPC' ? 12 : 13
-        if (required.ean.length !== idLen)
-          errors.push(`الباركود (${required.id_type}) لازم يكون ${idLen} رقم لو هتدخله`)
+      const isStandard = required.ean?.length === idLen
+      
+      if (!required.ean || (!isAdel && !isStandard)) {
+        errors.push(`الباركود مطلوب (EAN: 13 رقم، UPC: 12 رقم، أو ADEL: 10 خانات)`)
       }
     }
     if (!required.brand || required.brand.trim().length < 1)
@@ -889,6 +909,11 @@ export default function ProductCreatePage() {
     }
 
     const sku = isEditMode ? editProduct.sku : (aiData?.suggested_sku || `AUTO-${skuTimestamp}-${variantIndex}-${rand1}-${rand2}`)
+    
+    // [FIX] Ensure each variant gets its OWN unique identifiers from AI data
+    const finalModelNumber = aiData?.model_number || required.model_number || required.name_en.trim()
+    const finalModelName = aiData?.model_name || required.model_name || required.name_ar.trim()
+    const finalEan = aiData?.ean || required.ean || ''
 
     return {
       sku,
@@ -905,16 +930,16 @@ export default function ProductCreatePage() {
       amazon_product_type: aiData?.amazon_product_type || undefined,
       condition: required.condition,
       fulfillment_channel: 'MFN', // ثابت - الشحن على البائع
-      ean: required.id_type === 'EAN' && !required.has_product_identifier ? required.ean : '',
-      upc: required.id_type === 'UPC' && !required.has_product_identifier ? required.ean : '',
+      ean: required.id_type === 'EAN' && !required.has_product_identifier ? finalEan : '',
+      upc: required.id_type === 'UPC' && !required.has_product_identifier ? finalEan : '',
       has_product_identifier: required.has_product_identifier,
       description: finalDescAr,
       description_ar: finalDescAr,
       description_en: finalDescEn,
       bullet_points: required.bullet_points.filter(bp => bp.trim().length > 0),
       manufacturer: required.manufacturer || DEFAULT_VALUES.brand,
-      model_number: required.model_number || required.name_en.trim(),
-      model_name: required.model_name || required.name_ar.trim(), // [NEW]
+      model_number: finalModelNumber,
+      model_name: finalModelName, 
       country_of_origin: required.country_of_origin,
       browse_node_id: required.browse_node_id,
       material: optional.material,
@@ -1264,24 +1289,22 @@ export default function ProductCreatePage() {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="اسم السلعة (عربي)" required hint="الاسم بالعربي — يظهر على صفحة المنتج" isAiGenerated={selectedAiProduct !== null}>
+          <Field label="اسم السلعة (عربي)" required hint="الاسم بالعربي — يظهر على صفحة المنتج">
             <TextInput
               value={required.name_ar}
               onChange={v => {
                 const updated = { ...required, name_ar: v }
-                const validated = handleValidateAndTranslate(updated)
-                setRequired(validated)
+                setRequired(updated) // Update UI immediately
+                // Validation/Translation in background or after a short delay could go here
               }}
               placeholder="مثال: خلاط كهربائي 500 واط"
             />
           </Field>
-          <Field label="اسم السلعة (English)" required hint="الاسم بالإنجليزي — مطلوب لـ Amazon" isAiGenerated={selectedAiProduct !== null}>
+          <Field label="اسم السلعة (English)" required hint="الاسم بالإنجليزي — مطلوب لـ Amazon">
             <TextInput
               value={required.name_en}
               onChange={v => {
-                const updated = { ...required, name_en: v }
-                const validated = handleValidateAndTranslate(updated)
-                setRequired(validated)
+                setRequired(prev => ({ ...prev, name_en: v }))
               }}
               placeholder="Example: Electric Hand Mixer 500W"
             />
@@ -1303,36 +1326,13 @@ export default function ProductCreatePage() {
           />
         </Field>
 
-        <Field label="الباركود" required={!required.has_product_identifier} hint="EAN (13 رقم) أو UPC (12 رقم) — إجباري من Amazon للتعرف على المنتج" isAiGenerated={selectedAiProduct !== null}>
-          {/* GTIN Exemption Checkbox */}
-          <label className="flex items-center gap-2 mb-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={required.has_product_identifier}
-              onChange={e => setRequired(prev => ({ ...prev, has_product_identifier: e.target.checked }))}
-              className="w-4 h-4 rounded accent-blue-500"
-            />
-            <span className="text-sm text-text-secondary group-hover:text-text-primary transition-colors">
-              ✅ هذا المنتج لا يحتوي على رقم منتج (معفى من الباركود)
-            </span>
-          </label>
-
-          <div className={`transition-opacity ${required.has_product_identifier ? 'opacity-50 pointer-events-none' : ''}`}>
-            <div className="mb-2">
-              <RadioGroup
-                name="id_type"
-                options={ID_TYPES.filter(t => ['EAN', 'UPC'].includes(t.value)) as any}
-                value={required.id_type}
-                onChange={v => setRequired(prev => ({ ...prev, id_type: v }))}
-              />
-            </div>
-            <TextInput
-              value={required.ean}
-              onChange={v => setRequired(prev => ({ ...prev, ean: v.replace(/\D/g, '').slice(0, required.id_type === 'UPC' ? 12 : 13) }))}
-              placeholder={required.id_type === 'UPC' ? 'أدخل 12 رقم' : 'أدخل 13 رقم'}
-              type="text"
-            />
-          </div>
+        <Field label="ASIN" required>
+          <TextInput
+            value={required.ean}
+            onChange={v => setRequired(prev => ({ ...prev, ean: v.toUpperCase().slice(0, 10) }))}
+            placeholder="توليد تلقائي..."
+            type="text"
+          />
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1381,14 +1381,12 @@ export default function ProductCreatePage() {
           <FileSpreadsheet className="w-5 h-5" /> الوصف والتفاصيل
         </h3>
 
-        <Field label="الوصف (عربي)" required hint="وصف تفصيلي شامل - 3 سطور على الأقل يشرح مميزات المنتج واستخداماته" isAiGenerated={selectedAiProduct !== null}>
+        <Field label="الوصف (عربي)" required hint="وصف تفصيلي شامل - 3 سطور على الأقل يشرح مميزات المنتج واستخداماته">
           <div>
             <textarea
               value={required.description_ar}
               onChange={e => {
-                const updated = { ...required, description_ar: e.target.value }
-                const validated = handleValidateAndTranslate(updated)
-                setRequired(validated)
+                setRequired(prev => ({ ...prev, description_ar: e.target.value }))
               }}
               placeholder="مثال: هذا الخلاط كهربائي بقوة 500 واط يأتي مع 5 سرعات مختلفة لتناسب جميع احتياجاتك في المطبخ. مصنوع من مواد عالية الجودة تضمن له المتانة والاستخدام الطويل. مثالي لخلط العجين، تحضير العصائر، وفرم المكونات المختلفة بسهولة تامة."
               rows={4}
@@ -1419,7 +1417,7 @@ export default function ProductCreatePage() {
           </div>
         </Field>
 
-        <Field label="مميزات المنتج الرئيسية (Bullet Points)" hint="💡 يُنصح بكتابة 5 نقاط كاملة — كل نقطة جملة مفيدة (إجباري لأمازون)" isAiGenerated={selectedAiProduct !== null}>
+        <Field label="مميزات المنتج الرئيسية (Bullet Points)" hint="💡 يُنصح بكتابة 5 نقاط كاملة — كل نقطة جملة مفيدة (إجباري لأمازون)">
           <div className="space-y-3">
             {required.bullet_points.map((bp, i) => (
               <div key={i} className="flex gap-2">
@@ -1433,9 +1431,7 @@ export default function ProductCreatePage() {
                     onChange={e => {
                       const newBp = [...required.bullet_points]
                       newBp[i] = e.target.value
-                      const updated = { ...required, bullet_points: newBp }
-                      const validated = handleValidateAndTranslate(updated)
-                      setRequired(validated)
+                      setRequired(prev => ({ ...prev, bullet_points: newBp }))
                     }}
                     placeholder={`النقطة البيعية ${i + 1} - اكتب جملة كاملة تشرح ميزة مهمة...`}
                     className="neon-input w-full"

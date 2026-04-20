@@ -63,6 +63,12 @@ def product_to_dict(product: Product) -> dict:
         val = d.get(field)
         if val and hasattr(val, 'isoformat'):
             d[field] = val.isoformat()
+            
+    # [FIX] Extract model_name from attributes if it exists to match schema
+    if d.get('attributes') and isinstance(d['attributes'], dict):
+        if 'model_name' in d['attributes']:
+            d['model_name'] = d['attributes']['model_name']
+            
     return d
 
 
@@ -185,7 +191,6 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
         bullet_points_en=json.dumps(data.bullet_points_en or []),
         keywords=json.dumps(data.keywords or []),
         images=json.dumps(data.images or []),
-        attributes=json.dumps(data.attributes or {}),
         upc=data.upc or "",
         ean=data.ean or "",
         has_product_identifier=data.has_product_identifier if hasattr(data, 'has_product_identifier') else False,
@@ -218,6 +223,13 @@ async def create_product(data: ProductCreate, db: Session = Depends(get_db)):
         # المنتج بيتحفظ draft لو كامل، incomplete لو ناقص
         status=status,
     )
+    
+    # [FIX] Ensure model_name is put into attributes JSON
+    attrs = data.attributes or {}
+    if hasattr(data, 'model_name') and data.model_name:
+        attrs['model_name'] = data.model_name
+    product.attributes = json.dumps(attrs)
+    
     db.add(product)
     db.commit()
     db.refresh(product)
@@ -286,8 +298,22 @@ async def update_product(product_id: str, data: ProductUpdate, db: Session = Dep
             setattr(product, field, json.dumps(value))
         elif field == 'has_product_identifier':
             setattr(product, field, bool(value))
+        elif field == 'model_name':
+            # [FIX] Put model_name into attributes instead of trying to set on Product model
+            try:
+                attrs = json.loads(product.attributes) if isinstance(product.attributes, str) else (product.attributes or {})
+                attrs['model_name'] = value
+                product.attributes = json.dumps(attrs)
+            except Exception:
+                pass
         else:
             setattr(product, field, value)
+            
+    # CRITICAL FIX: Ensure display 'name' is synced with 'name_ar' during update
+    if 'name_ar' in update_data:
+        product.name = update_data['name_ar']
+    elif 'name_en' in update_data and not product.name:
+        product.name = update_data['name_en']
 
     # Re-validate after update to determine if status should change
     from app.services.validation_service import ValidationService

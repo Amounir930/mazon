@@ -52,8 +52,23 @@ export default function Sidebar() {
     { to: '/settings', label: t('sidebar.settings'), icon: Settings },
   ]
 
+  const [currentTime, setCurrentTime] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState(new Date())
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date()
+      setCurrentTime(now)
+      // Only update date if it's a new day
+      if (now.getDate() !== currentDate.getDate()) {
+        setCurrentDate(now)
+      }
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [currentDate])
+
   return (
-    <div className="w-64 bg-bg-tertiary/80 backdrop-blur-xl border-r border-border-subtle h-screen flex flex-col contain-layout">
+    <div className="w-64 bg-bg-tertiary/80 backdrop-blur-xl border-l border-border-subtle h-screen flex flex-col sticky top-0 z-50">
       {/* Logo Section */}
       <div className="p-6 border-b border-border-subtle">
         <div className="flex items-center justify-between">
@@ -90,6 +105,18 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      {/* Time & Date Section */}
+      <div className="p-4 border-t border-border-subtle bg-bg-primary/30">
+        <div className="flex flex-col items-center justify-center space-y-1 py-2 rounded-xl bg-amazon-orange/5 border border-amazon-orange/10">
+          <span className="text-lg font-mono font-bold text-amazon-orange">
+            {currentTime.toLocaleTimeString('ar-EG', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </span>
+          <span className="text-[10px] text-text-muted uppercase tracking-wider">
+            {currentTime.toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </span>
+        </div>
+      </div>
 
       {/* Connection Status Footer */}
       <div className="p-4 border-t border-border-subtle">

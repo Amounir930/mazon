@@ -43,7 +43,7 @@ class BaseProductData(BaseModel):
         description="Amazon SP-API product type (English only, e.g., HOME_KITCHEN, ELECTRONICS)"
     )
     price: Optional[float] = Field(default=None, description="Price in EGP - optional, AI leaves empty")
-    ean: str = Field(default="", max_length=13, description="EAN barcode - 13 digits or empty for GTIN exemption")
+    ean: str = Field(default="", max_length=13, description="EAN barcode - 13 digits or ADELxxxxxx for sequential ID")
     upc: Optional[str] = Field(default="", max_length=12)
     bullet_points_ar: List[str] = Field(default_factory=list, min_items=5, max_items=5)
     bullet_points_en: List[str] = Field(default_factory=list, min_items=5, max_items=5)
@@ -63,7 +63,7 @@ class BaseProductData(BaseModel):
     power_plug_type: str = Field(default="غير متوافر", max_length=50)
     
     estimated_price_egp: Optional[PriceEstimate] = None
-
+    
     # Valid Amazon SP-API product types
     VALID_PRODUCT_TYPES: ClassVar[set] = {
         "HOME_KITCHEN", "HOME_ORGANIZERS_AND_STORAGE", "ELECTRONICS",
@@ -94,13 +94,20 @@ class BaseProductData(BaseModel):
     @field_validator("ean")
     @classmethod
     def validate_ean(cls, v: str) -> str:
-        """EAN must be 13 digits or empty for GTIN exemption"""
+        """EAN must be 13 digits, empty, or ADELxxxxxx (10 chars)"""
         if not v or not v.strip():
             return ""
-        digits = v.strip().replace("-", "")
+        
+        val = v.strip().upper()
+        # Allow ADEL sequential IDs (10 chars)
+        if val.startswith("ADEL") and len(val) == 10:
+            return val
+            
+        # Standard EAN validation
+        digits = val.replace("-", "")
         if not digits.isdigit() or len(digits) != 13:
-            raise ValueError("EAN must be exactly 13 digits if provided")
-        return v.strip()
+            raise ValueError("EAN must be exactly 13 digits or ADELxxxxxx (10 chars)")
+        return val
 
     @field_validator("upc")
     @classmethod
@@ -125,7 +132,34 @@ class ProductVariant(BaseModel):
     description_ar: str = Field(..., min_length=10, max_length=2000, description="Arabic description")
     description_en: str = Field(..., min_length=10, max_length=2000, description="English description")
     suggested_sku: str = Field(..., min_length=1, max_length=40, description="Auto-generated SKU")
-    model_name: str = Field(default="AH-0001", max_length=100, description="Sequential model name")
+    model_name: str = Field(default="Generic", max_length=100, description="Sequential model name")
+    model_number: str = Field(default="", max_length=100, description="Sequential model number")
+    ean: str = Field(default="", max_length=13, description="Unique ASIN/EAN for this variant")
+    upc: Optional[str] = Field(default="", max_length=12)
+
+    @field_validator("ean")
+    @classmethod
+    def validate_ean(cls, v: str) -> str:
+        """EAN must be 13 digits, empty, or ADELxxxxxx (10 chars)"""
+        if not v or not v.strip():
+            return ""
+        val = v.strip().upper()
+        if val.startswith("ADEL") and len(val) == 10:
+            return val
+        digits = val.replace("-", "")
+        if not digits.isdigit() or len(digits) != 13:
+            raise ValueError("EAN must be exactly 13 digits or ADELxxxxxx (10 chars)")
+        return val
+
+    @field_validator("upc")
+    @classmethod
+    def validate_upc(cls, v: str) -> str:
+        """UPC must be 12 digits if provided"""
+        if v and v.strip():
+            digits = v.strip().replace("-", "")
+            if not digits.isdigit() or len(digits) != 12:
+                raise ValueError("UPC must be 12 digits")
+        return v or ""
 
     @field_validator("suggested_sku")
     @classmethod

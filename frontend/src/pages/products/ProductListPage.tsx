@@ -277,6 +277,43 @@ export default function ProductListPage() {
     }
   }
 
+  const handleBulkList = async () => {
+    if (selectedIds.size === 0) return
+    if (!window.confirm(`هل أنت متأكد من رفع ${selectedIds.size} منتج لـ Amazon؟`)) return
+
+    const idsToList = Array.from(selectedIds)
+    let successCount = 0
+    let failCount = 0
+
+    const loadingToast = toast.loading(`جاري إرسال ${selectedIds.size} منتج لـ Amazon...`)
+
+    try {
+      for (const id of idsToList) {
+        try {
+          await listMutation.mutateAsync(id)
+          successCount++
+        } catch {
+          failCount++
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`تم إرسال ${successCount} منتج بنجاح`, { id: loadingToast })
+      } else {
+        toast.error('فشل إرسال المنتجات المختارة', { id: loadingToast })
+      }
+
+      if (failCount > 0) {
+        toast.error(`فشل إرسال ${failCount} منتج`)
+      }
+
+      setSelectedIds(new Set())
+      refetch()
+    } catch (error) {
+      toast.error('حدث خطأ أثناء الرفع المجمع', { id: loadingToast })
+    }
+  }
+
   const handleEdit = (product: Product) => {
     navigate('/products/create', { state: { editMode: true, editProduct: product } })
   }
@@ -684,13 +721,22 @@ export default function ProductListPage() {
         </div>
 
         {selectedIds.size > 0 && (
-          <button
-            onClick={handleBulkDelete}
-            className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg animate-in fade-in slide-in-from-right-4 transition-all"
-          >
-            <Trash2 className="w-5 h-5" />
-            حذف ({selectedIds.size})
-          </button>
+          <div className="flex gap-2 animate-in fade-in slide-in-from-right-4">
+            <button
+              onClick={handleBulkList}
+              className="flex items-center gap-2 px-6 py-3 bg-amazon-orange hover:bg-amazon-orange/90 text-white font-bold rounded-xl shadow-lg shadow-amazon-orange/20 transition-all active:scale-95"
+            >
+              <Upload className="w-5 h-5" />
+              رفع المختار لـ Amazon ({selectedIds.size})
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg shadow-red-600/20 transition-all active:scale-95"
+            >
+              <Trash2 className="w-5 h-5" />
+              حذف ({selectedIds.size})
+            </button>
+          </div>
         )}
 
         {isLoading && data && (

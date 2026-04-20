@@ -105,7 +105,8 @@ export function useUpdateProduct() {
       return result
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: productKeys.lists() })
+      // Invalidate the entire products root to ensure list and details are refreshed
+      queryClient.invalidateQueries({ queryKey: productKeys.all })
     },
   })
 }

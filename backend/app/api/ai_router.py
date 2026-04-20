@@ -18,9 +18,6 @@ from app.models.product import Product
 router = APIRouter()
 
 
-# ... existing generate_product endpoint ...
-
-
 class AmazonImportRequest(BaseModel):
     """Request to import product from Amazon by ASIN/UPC/EAN"""
     search_value: str  # ASIN, UPC, or EAN
@@ -33,41 +30,20 @@ async def import_from_amazon(request: AmazonImportRequest):
     POST /api/v1/ai/import-from-amazon
 
     Search Amazon catalog by ASIN/UPC/EAN and return product data for import.
-
-    Request Body:
-    {
-        "search_value": "B0XXXXXXXX",
-        "search_type": "ASIN"  // or "UPC" or "EAN"
-    }
-
-    Response:
-    {
-        "found": true,
-        "asin": "B0XXXXXXXX",
-        "title": "Product Title",
-        "brand": "Brand Name",
-        "bullet_points": ["...", "..."],
-        "description": "...",
-        "images": ["..."],
-        "price_estimate": 100,
-        "product_type": "..."
-    }
     """
     try:
         client = SPAPIClient(marketplace_id='ARBP9OOSHTCHU', country_code='eg')
 
         if request.search_type == "ASIN":
-            # Direct ASIN lookup
             result = client.get_catalog_item(
                 asin=request.search_value,
                 included_data=["summaries", "images", "identifiers", "dimensions"]
             )
             items = [result] if result.get("asin") else []
         else:
-            # Search by UPC/EAN
             result = client.search_catalog_items(
                 identifiers=[request.search_value],
-                identifiers_type=request.search_type,  # EAN, UPC, etc.
+                identifiers_type=request.search_type,
                 included_data=["summaries", "images", "identifiers"]
             )
             items = result.get("items", [])
@@ -83,7 +59,6 @@ async def import_from_amazon(request: AmazonImportRequest):
         summaries = item.get("summaries", [{}])
         summary = summaries[0] if summaries else {}
 
-        # Extract product data
         product_data = {
             "found": True,
             "asin": asin,
@@ -113,7 +88,7 @@ async def import_from_amazon(request: AmazonImportRequest):
 async def get_learned_fields(product_id: str):
     """
     GET /api/v1/ai/learned-fields/{product_id}
-    
+
     Get fields that were previously rejected by Amazon for this product.
     """
     db = SessionLocal()
@@ -121,21 +96,21 @@ async def get_learned_fields(product_id: str):
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             raise HTTPException(404, "Product not found")
-        
+
         learned_fields = []
         rejection_history = []
-        
+
         if product.optimized_data:
             import json as _json
             opt_data = _json.loads(product.optimized_data) if isinstance(product.optimized_data, str) else product.optimized_data
             learned_fields = opt_data.get("learned_fields", [])
             rejection_history = opt_data.get("rejection_history", [])
-        
+
         return {
             "product_id": product_id,
             "learned_fields": learned_fields,
             "rejection_count": len(rejection_history),
-            "rejection_history": rejection_history[-5:],  # Last 5 rejections
+            "rejection_history": rejection_history[-5:],
         }
     finally:
         db.close()
@@ -146,18 +121,16 @@ async def generate_product(request: AIProductRequest):
     """
     POST /api/v1/ai/generate-product
     """
-    # DEBUG: Log request for troubleshooting
-    logger.info(f"📥 AI generate request: name='{request.name}' (len={len(request.name)}), specs='{request.specs[:50]}...' (len={len(request.specs)}), copies={request.copies}")
+    logger.info(f"📥 AI generate request: name='{request.name}', copies={request.copies}")
 
-    # Validate copies range
     if request.copies < 1 or request.copies > 10:
         raise HTTPException(
             status_code=400,
             detail="عدد المنتجات يجب أن يكون بين 1 و 10"
         )
-    
+
+    db = SessionLocal()
     try:
-        db = SessionLocal()
         assistant = AIProductAssistant()
         result = await assistant.generate_products(
             db=db,
@@ -165,14 +138,10 @@ async def generate_product(request: AIProductRequest):
             specs=request.specs,
             copies=request.copies,
         )
-    finally:
-        db.close()
 
-        # DEBUG: Log AI response for troubleshooting
         logger.info(f"✅ AI generated {len(result.variants)} variant(s)")
         logger.info(f"   base_product: brand={result.base_product.brand}, product_type={result.base_product.product_type}")
-        
-        # Build response matching frontend expectations (AIGenerateProductResponse)
+
         return {
             "success": True,
             "data": {
@@ -188,7 +157,7 @@ async def generate_product(request: AIProductRequest):
                 "processing_time_ms": None,
             }
         }
-        
+
     except ValueError as e:
         logger.error(f"AI generation failed: {e}")
         return {
@@ -199,9 +168,7 @@ async def generate_product(request: AIProductRequest):
             "validation_errors": [],
             "warnings": [],
             "fallback_used": False,
-            "metadata": {
-                "model_used": "qwen-max",
-            }
+            "metadata": {"model_used": "qwen-max"}
         }
     except Exception as e:
         logger.error(f"Unexpected error in AI generation: {e}", exc_info=True)
@@ -213,22 +180,39 @@ async def generate_product(request: AIProductRequest):
             "validation_errors": [],
             "warnings": [],
             "fallback_used": False,
-            "metadata": {
-                "model_used": "qwen-max",
-            }
+            "metadata": {"model_used": "qwen-max"}
         }
+    finally:
+        db.close()
 
-@router.get(" /next-model-number\)
+
+@router.get("/next-model-number")
 async def get_next_model_number():
- \\\
- GET /api/v1/ai/next-model-number
- 
- Preview the next available sequential model number without incrementing.
- \\\
- from app.services.counter_service import CounterService
- db = SessionLocal()
- try:
- next_num = CounterService.preview_next_model_number(db)
- return {\next_model_number\: next_num}
- finally:
- db.close()
+    """
+    GET /api/v1/ai/next-model-number
+
+    Preview the next available sequential model number without incrementing.
+    """
+    from app.services.counter_service import CounterService
+    db = SessionLocal()
+    try:
+        next_num = CounterService.preview_next_model_number(db)
+        return {"next_model_number": next_num}
+    finally:
+        db.close()
+
+
+@router.get("/next-product-id")
+async def get_next_product_id():
+    """
+    GET /api/v1/ai/next-product-id
+
+    Preview the next available sequential ADEL identifier without incrementing.
+    """
+    from app.services.counter_service import CounterService
+    db = SessionLocal()
+    try:
+        next_id = CounterService.preview_next_product_id(db)
+        return {"next_product_id": next_id}
+    finally:
+        db.close()
