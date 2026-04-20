@@ -191,12 +191,12 @@ async def get_next_model_number():
     """
     GET /api/v1/ai/next-model-number
 
-    Preview the next available sequential model number without incrementing.
+    Fetch and increment the next available sequential model number.
     """
     from app.services.counter_service import CounterService
     db = SessionLocal()
     try:
-        next_num = CounterService.preview_next_model_number(db)
+        next_num = CounterService.get_next_model_number(db)
         return {"next_model_number": next_num}
     finally:
         db.close()
@@ -207,12 +207,28 @@ async def get_next_product_id():
     """
     GET /api/v1/ai/next-product-id
 
-    Preview the next available sequential ADEL identifier without incrementing.
+    Fetch and increment the next available sequential ADEL identifier.
     """
     from app.services.counter_service import CounterService
     db = SessionLocal()
     try:
-        next_id = CounterService.preview_next_product_id(db)
+        next_id = CounterService.get_next_product_id(db)
         return {"next_product_id": next_id}
+    finally:
+        db.close()
+
+
+@router.get("/next-sku")
+async def get_next_sku():
+    """
+    GET /api/v1/ai/next-sku
+
+    Fetch and increment the next available sequential SKU.
+    """
+    from app.services.counter_service import CounterService
+    db = SessionLocal()
+    try:
+        next_sku = CounterService.get_next_sku_serial(db)
+        return {"next_sku": next_sku}
     finally:
         db.close()

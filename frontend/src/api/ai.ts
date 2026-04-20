@@ -53,4 +53,9 @@ export const aiApi = {
   // Import product from Amazon using AI
   importFromAmazon: (data: AIImportAmazonRequest) =>
     api.post<AIImportAmazonResponse>('/ai/import-from-amazon', data),
+
+  // Sequential Identifiers
+  getNextSku: () => api.get<{ next_sku: string }>('/ai/next-sku'),
+  getNextModelNumber: () => api.get<{ next_model_number: string }>('/ai/next-model-number'),
+  getNextProductId: () => api.get<{ next_product_id: string }>('/ai/next-product-id'),
 }

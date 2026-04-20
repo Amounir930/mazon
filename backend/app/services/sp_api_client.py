@@ -160,27 +160,45 @@ class SPAPIClient:
             "client_id": self.client_id,
             "client_secret": self.client_secret,
         }
-        
-        response = requests.post(self.LWA_TOKEN_URL, data=payload, timeout=15)
 
-        if response.status_code != 200:
-            # Try to parse JSON error response
+        max_retries = 3
+        last_error = None
+        
+        for attempt in range(max_retries):
             try:
-                error_data = response.json()
-                error_description = error_data.get('error_description', error_data.get('error', 'Unknown error'))
-                error_message = f"LWA Error {response.status_code}: {error_description}"
-            except:
-                error_message = f"LWA Error {response.status_code}: {response.text[:500]}"
-            
-            logger.error(error_message)
-            raise Exception(error_message)
+                response = requests.post(self.LWA_TOKEN_URL, data=payload, timeout=15)
+                
+                if response.status_code != 200:
+                    try:
+                        error_data = response.json()
+                        error_description = error_data.get('error_description', error_data.get('error', 'Unknown error'))
+                        error_message = f"LWA Error {response.status_code}: {error_description}"
+                    except:
+                        error_message = f"LWA Error {response.status_code}: {response.text[:500]}"
+                    
+                    logger.error(error_message)
+                    raise Exception(error_message)
+                
+                data = response.json()
+                self._access_token = data["access_token"]
+                self._token_expires_at = time.time() + data.get("expires_in", 3600)
+                
+                logger.info(f"✅ LWA access token refreshed (expires in {data.get('expires_in', 3600)}s)")
+                return self._access_token
+                
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                last_error = e
+                wait_time = (attempt + 1) * 2
+                logger.warning(f"⚠️ Connection error (DNS/Timeout) on attempt {attempt+1}/{max_retries}: {e}. Retrying in {wait_time}s...")
+                if attempt < max_retries - 1:
+                    time.sleep(wait_time)
+            except Exception as e:
+                logger.error(f"❌ Unexpected LWA error: {e}")
+                raise e
         
-        data = response.json()
-        self._access_token = data["access_token"]
-        self._token_expires_at = time.time() + data.get("expires_in", 3600)
-        
-        logger.info(f"✅ LWA access token refreshed (expires in {data.get('expires_in', 3600)}s)")
-        return self._access_token
+        error_msg = f"Failed to connect to Amazon Auth (DNS/Network issue) after {max_retries} attempts. Error: {last_error}"
+        logger.error(error_msg)
+        raise Exception(error_msg)
 
     def _sign_request(self, method: str, path: str, headers: Dict[str, str], body: str = "") -> Dict[str, str]:
         """
@@ -736,6 +754,19 @@ class SPAPIClient:
             "raw_response": result,
         }
 
+    def _calculate_ean_checksum(self, code12: str) -> str:
+        """Calculate the 13th digit (checksum) for an EAN-13 barcode."""
+        if len(code12) != 12 or not code12.isdigit():
+            return "0"
+        digits = [int(d) for d in code12]
+        # Sum: (odd positions * 1) + (even positions * 3)
+        odd_sum = sum(digits[0::2])
+        even_sum = sum(digits[1::2])
+        total = odd_sum + (even_sum * 3)
+        remainder = total % 10
+        check_digit = 0 if remainder == 0 else 10 - remainder
+        return str(check_digit)
+
     def _build_listing_payload(self, product_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Build the complete SP-API listing payload using The Ultimate Dictionary.
@@ -894,15 +925,24 @@ class SPAPIClient:
         has_exemption = product_data.get("has_product_identifier", False)
         merchant_asin = product_data.get("merchant_suggested_asin", "").strip()
         
+        # [THE ULTIMATE FIX] Transform ADEL to a valid EAN-13 to prevent matching issues
         if ean.upper().startswith("ADEL"):
-            # Map ADEL to the primary identifier field
+            import re
+            num_match = re.search(r"\d+", ean)
+            serial_num = int(num_match.group()) if num_match else 0
+            
+            # Build EAN-13: Prefix (2335) + Serial (8 digits) + Checksum (1 digit)
+            code12 = f"2335{serial_num:08d}"
+            check_digit = self._calculate_ean_checksum(code12)
+            final_ean = f"{code12}{check_digit}"
+            
+            logger.info(f"🚀 TRANSFORMED ADEL {ean} -> EAN-13: {final_ean}")
             attributes["externally_assigned_product_identifier"] = [{
-                "value": ean[:10].strip(),
-                "type": "asin"
+                "value": final_ean,
+                "type": "ean"
             }]
-            logger.info(f"🚀 FORCING ExternalID (ADEL as ASIN): {ean[:10]}")
-            if not merchant_asin:
-                merchant_asin = ean
+            # IMPORTANT: Wipe merchant_asin to prevent Amazon from trying to match by fake ASIN
+            merchant_asin = ""
         elif ean:
             attributes["externally_assigned_product_identifier"] = [{
                 "value": ean.strip(),
@@ -918,15 +958,33 @@ class SPAPIClient:
             attributes["supplier_declared_has_product_identifier_exemption"] = [{"value": True}]
         
         # [FIX] Official SP-API 2021-08-01 structure for merchant_suggested_asin
+        # This acts as a hint/reference for our internal ID
         if merchant_asin:
             attributes["merchant_suggested_asin"] = [{
                 "value": merchant_asin[:10],
-                "marketplace_id": self.marketplace_id  # REQUIRED by Amazon Schema
+                "marketplace_id": self.marketplace_id
             }]
-            logger.info(f"🆔 Sent to Amazon - MerchantSuggestedASIN: {merchant_asin} (Marketplace: {self.marketplace_id})")
+            logger.info(f"🆔 Sent as Hint - MerchantSuggestedASIN: {merchant_asin[:10]}")
 
-        logger.info(f"📝 Sent to Amazon - ModelName: {model_name}")
-        logger.info(f"🔢 Sent to Amazon - ModelNumber: {model_number}")
+        # [FIX] Ensure Model Name is not "Generic" if possible to avoid Amazon overwriting it with Model Number
+        final_model_name = model_name
+        if "Generic" in model_name and model_number != "N/A":
+             # Use a more specific model name format
+             final_model_name = model_name.replace("Generic", "Model")
+        
+        attributes["model_name"] = [{"value": final_model_name, "language_tag": "ar_AE"}]
+        attributes["model_number"] = [{"value": model_number, "language_tag": "ar_AE"}]
+        
+        # [NEW] Map ADEL to part_number so it's searchable/visible in Amazon backend
+        if ean.upper().startswith("ADEL"):
+            attributes["part_number"] = [{"value": ean, "language_tag": "ar_AE"}]
+
+        logger.info(f"📝 Final Payload - ModelName: {final_model_name}")
+        logger.info(f"🔢 Final Payload - ModelNumber: {model_number}")
+        
+        # [DEBUG] Log full attributes to see exactly what goes to Amazon
+        import json
+        logger.info(f"📦 FULL ATTRIBUTES JSON: {json.dumps(attributes, ensure_ascii=False)}")
 
         # Resolve product type via normalize (AI/frontend → Amazon valid type)
         raw_type = product_data.get("amazon_product_type") or product_data.get("product_type") or "HOME_ORGANIZERS_AND_STORAGE"

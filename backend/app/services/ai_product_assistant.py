@@ -199,7 +199,7 @@ class AIProductAssistant:
             for key in ['bullet_points_ar', 'bullet_points_en']:
                 if key in bp:
                     items = [clean_placeholder(p, '') for p in bp[key]]
-                    items = [p for p in items if p and len(p.split()) >= 15] # Only keep if 15+ words
+                    items = [p for p in items if p and 10 <= len(p.split()) <= 15] # Strict 10-15 words
                     items = items[:5]
                     while len(items) < 5:
                         fallback_list = self._generate_contextual_bullets(name, specs, 'ar' if 'ar' in key else 'en')
@@ -209,10 +209,12 @@ class AIProductAssistant:
         # Fetch starting sequential numbers
         start_serial_num = CounterService.get_next_model_number(db, increment=copies)
         start_product_id_str = CounterService.get_next_product_id(db, increment=copies)
+        start_sku_str = CounterService.get_next_sku_serial(db, increment=copies)
+        
+        import re
         
         prefix = "AH-"
         current_serial_num = 1
-        import re
         match = re.match(r"([A-Za-z\-]+)(\d+)", start_serial_num)
         if match:
             prefix = match.group(1)
@@ -225,6 +227,13 @@ class AIProductAssistant:
             id_prefix = id_match.group(1)
             current_product_id_num = int(id_match.group(2))
 
+        sku_prefix = "SKU-V1-"
+        current_sku_num = 101
+        sku_match = re.match(r"([A-Za-z0-9\-]+)(\d+)", start_sku_str)
+        if sku_match:
+            sku_prefix = sku_match.group(1)
+            current_sku_num = int(sku_match.group(2))
+
         # Post-process results
         if 'base_product' in raw_result:
             bp = raw_result['base_product']
@@ -234,6 +243,7 @@ class AIProductAssistant:
             bp['model_name'] = f"Generic-{current_serial_num:05d}"
             bp['model_number'] = f"{prefix}{current_serial_num:04d}"
             bp['ean'] = f"{id_prefix}{current_product_id_num:06d}"
+            bp['suggested_sku'] = f"{sku_prefix}{current_sku_num:03d}"
             raw_result['base_product'] = bp
 
         if 'variants' in raw_result:
@@ -254,14 +264,15 @@ class AIProductAssistant:
 
                 # SYSTEM ENFORCED FIELDS:
                 # Calculate the sequential numbers for this specific variant
-                this_variant_num = current_serial_num + i
+                variant_serial = current_serial_num + i
+                variant_id_num = current_product_id_num + i
+                variant_sku_num = current_sku_num + i
                 
-                # Set Model Name and Number sequentially
-                v['model_name'] = f"Generic-{this_variant_num:05d}"
-                v['model_number'] = f"{prefix}{this_variant_num:04d}"
-                
-                this_product_id_num = current_product_id_num + i
-                v['ean'] = f"{id_prefix}{this_product_id_num:06d}" # Each variant gets its OWN unique ID
+                # Set all unique identifiers for this variant
+                v['model_name'] = f"Generic-{variant_serial:05d}"
+                v['model_number'] = f"{prefix}{variant_serial:04d}"
+                v['ean'] = f"{id_prefix}{variant_id_num:06d}"
+                v['suggested_sku'] = f"{sku_prefix}{variant_sku_num:03d}"
                 
                 # Also ensure brand and manufacturer are set for each variant
                 v['brand'] = 'Generic'
@@ -442,23 +453,23 @@ class AIProductAssistant:
                 raise ValueError(f"AI generated invalid product data: {e}")
     
     def _generate_contextual_bullets(self, product_name: str, specs: str, lang: str = 'ar') -> List[str]:
-        """Generate high-quality, product-specific bullet points dynamically (15+ words each)"""
+        """Generate high-quality bullet points (strictly 10-15 words each)"""
         
         if lang == 'ar':
             templates = [
-                f"يتميز {product_name} بتصميم عصري وفريد من نوعه يجمع بين الأناقة المطلقة والوظيفة العملية الفائقة ليوفر لك تجربة استخدام استثنائية ومريحة في منزلك العصري",
-                f"تم تصنيع هذا المنتج باستخدام مواد عالية الجودة وخامات متينة تضمن لك طول العمر الافتراضي والمقاومة العالية للعوامل الخارجية مع الحفاظ على مظهره الفاخر والجديد دائماً",
-                f"يعتبر {product_name} حلاً مبتكراً وعملياً للغاية حيث يساعدك على تنظيم مساحتك الخاصة وتوفير الكثير من الوقت والجهد بفضل ميزاته التقنية المتقدمة التي تلبي كافة احتياجاتك اليومية",
-                f"يأتي المنتج مع ضمان كامل على جودة التصنيع والأداء المتميز وهو سهل التركيب والصيانة والتنظيف مما يجعله الخيار الأول والأنسب لكل من يبحث عن الجودة والجمال في آن واحد",
-                f"بفضل المواصفات المتميزة التي تشمل {specs} فإن هذا المنتج يضمن لك أداءً فائقاً يتجاوز التوقعات مع توفير أقصى درجات الراحة والأمان لك ولعائلتك في كافة الأوقات"
+                f"يتميز {product_name} بتصميم عصري يجمع بين الأناقة المطلقة والوظيفة العملية الفائقة لراحة المستخدم دائماً",
+                "تم التصنيع باستخدام مواد عالية الجودة تضمن المتانة العالية والمقاومة الفائقة للعوامل الخارجية الصعبة",
+                "يعتبر حلاً مبتكراً يساعدك على تنظيم مساحتك الخاصة وتوفير الكثير من الوقت والجهد يومياً",
+                "يأتي مع ضمان كامل على جودة التصنيع والأداء المتميز وسهولة التركيب والصيانة والتنظيف المستمر",
+                f"بفضل المواصفات التي تشمل {specs} يضمن المنتج أداءً فائقاً يتجاوز التوقعات مع توفير أقصى أمان"
             ]
         else:  # English
             templates = [
-                f"This {product_name} features a modern and unique design that combines absolute elegance with superior practical functionality to provide you with an exceptional and comfortable user experience",
-                "Manufactured using high-quality materials and durable components that guarantee long-lasting performance and high resistance to external factors while maintaining its luxurious and brand-new appearance",
-                f"The {product_name} is a highly innovative and practical solution that helps you organize your space and save significant time and effort thanks to its advanced technical features",
-                "Comes with a full guarantee on manufacturing quality and outstanding performance, making it easy to install, maintain, and clean for anyone seeking both quality and beauty simultaneously",
-                f"With premium specifications including {specs}, this product ensures superior performance that exceeds expectations while providing maximum comfort and safety for you and your family at all times"
+                f"Modern {product_name} design combining absolute elegance with superior functionality for an exceptional user experience",
+                "Manufactured using premium materials ensuring long lasting performance and high resistance to all external factors",
+                f"The {product_name} is an innovative solution helping organize your space while saving significant effort",
+                "Full manufacturing guarantee and outstanding performance making installation and maintenance very easy for any user",
+                f"With premium specifications including {specs} this product ensures superior performance exceeding expectations and providing safety"
             ]
         return templates
     

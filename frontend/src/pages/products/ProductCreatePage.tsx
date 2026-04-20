@@ -228,6 +228,7 @@ export default function ProductCreatePage() {
     product_type: DEFAULT_VALUES.product_type,
     id_type: DEFAULT_VALUES.id_type as string,
     ean: '',
+    sku: '', // Added SKU to state
     has_product_identifier: true, // Default to true (checked) for ADEL system
     brand: DEFAULT_VALUES.brand,
     model_number: '',
@@ -263,33 +264,41 @@ export default function ProductCreatePage() {
     if (!isEditMode) {
       const fetchNextNumbers = async () => {
         try {
+          // Fetch Next SKU
+          if (!required.sku) {
+            const res = await aiApi.getNextSku()
+            if (res.data.next_sku) {
+              setRequired(prev => ({ 
+                ...prev, 
+                sku: res.data.next_sku
+              }))
+            }
+          }
+
           // Fetch Model Number
           if (!required.model_number) {
-            const resModel = await fetch('/api/v1/ai/next-model-number')
-            const dataModel = await resModel.json()
-            if (dataModel.next_model_number) {
-              const nextNum = dataModel.next_model_number
-              // Extract number part (e.g., from AH-0017)
+            const res = await aiApi.getNextModelNumber()
+            if (res.data.next_model_number) {
+              const nextNum = res.data.next_model_number
               const match = nextNum.match(/\d+/)
               const numStr = match ? match[0] : '00001'
               
               setRequired(prev => ({ 
                 ...prev, 
                 model_number: nextNum,
-                model_name: `Generic-${numStr.padStart(5, '0')}` // Auto-set sequential model name
+                model_name: `Generic-${numStr.padStart(5, '0')}`
               }))
             }
           }
 
           // Fetch ADEL Product ID
           if (!required.ean) {
-            const resId = await fetch('/api/v1/ai/next-product-id')
-            const dataId = await resId.json()
-            if (dataId.next_product_id) {
+            const res = await aiApi.getNextProductId()
+            if (res.data.next_product_id) {
               setRequired(prev => ({ 
                 ...prev, 
-                ean: dataId.next_product_id,
-                has_product_identifier: true // Ensure checked
+                ean: res.data.next_product_id,
+                has_product_identifier: true
               }))
             }
           }
@@ -528,6 +537,7 @@ export default function ProductCreatePage() {
       has_product_identifier: !product.ean && !product.upc, // Automatically check exemption if barcode is empty
 
       // ⚠️ FIXED FIELDS - AI CANNOT modify these (user/seller settings only)
+      sku: product.suggested_sku || prev.sku,
       brand: product.brand || prev.brand,
       manufacturer: product.manufacturer || prev.manufacturer,
       country_of_origin: product.country_of_origin || prev.country_of_origin,
@@ -908,7 +918,7 @@ export default function ProductCreatePage() {
       finalNameEn += ` - Copy ${variantIndex + 1}`
     }
 
-    const sku = isEditMode ? editProduct.sku : (aiData?.suggested_sku || `AUTO-${skuTimestamp}-${variantIndex}-${rand1}-${rand2}`)
+    const sku = isEditMode ? editProduct.sku : (aiData?.suggested_sku || required.sku || `AUTO-${skuTimestamp}-${variantIndex}-${rand1}-${rand2}`)
     
     // [FIX] Ensure each variant gets its OWN unique identifiers from AI data
     const finalModelNumber = aiData?.model_number || required.model_number || required.name_en.trim()
@@ -1311,29 +1321,36 @@ export default function ProductCreatePage() {
           </Field>
         </div>
 
-        <Field label="نوع المنتج" required hint="اختر الفئة المناسبة — الفئات المتاحة تتغير حسب النوع" isAiGenerated={selectedAiProduct !== null}>
-          <SelectInput
-            value={required.product_type}
-            onChange={v => {
-              const newNodes = BROWSE_NODES_BY_TYPE[v] || []
-              setRequired(prev => ({
-                ...prev,
-                product_type: v,
-                browse_node_id: newNodes[0]?.value || prev.browse_node_id
-              }))
-            }}
-            options={PRODUCT_TYPE_CATEGORIES as any}
-          />
-        </Field>
-
-        <Field label="ASIN" required>
-          <TextInput
-            value={required.ean}
-            onChange={v => setRequired(prev => ({ ...prev, ean: v.toUpperCase().slice(0, 10) }))}
-            placeholder="توليد تلقائي..."
-            type="text"
-          />
-        </Field>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+          <Field label="SKU" required hint="معرف المخزون الفريد">
+            <TextInput
+              value={required.sku}
+              onChange={v => setRequired(prev => ({ ...prev, sku: v.toUpperCase() }))}
+              placeholder="SKU-V1-00"
+            />
+          </Field>
+          <Field label="ASIN / ADEL" required hint="معرف المنتج الخارجي">
+            <TextInput
+              value={required.ean}
+              onChange={v => setRequired(prev => ({ ...prev, ean: v.toUpperCase().slice(0, 10) }))}
+              placeholder="توليد تلقائي..."
+            />
+          </Field>
+          <Field label="نوع المنتج" required hint="اختر الفئة المناسبة">
+            <SelectInput
+              value={required.product_type}
+              onChange={v => {
+                const newNodes = BROWSE_NODES_BY_TYPE[v] || []
+                setRequired(prev => ({
+                  ...prev,
+                  product_type: v,
+                  browse_node_id: newNodes[0]?.value || prev.browse_node_id
+                }))
+              }}
+              options={PRODUCT_TYPE_CATEGORIES as any}
+            />
+          </Field>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Field label="🔒 البراند" required hint="العلامة التجارية">
