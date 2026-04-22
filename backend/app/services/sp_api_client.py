@@ -122,24 +122,32 @@ class SPAPIClient:
 
     # Global throttling state (shared across all instances in the same process)
     _last_request_time = 0.0
+    
+    # Global Token Cache (shared across all instances)
+    _access_token: Optional[str] = None
+    _token_expires_at: float = 0
 
-    def __init__(self, marketplace_id: str = "ARBP9OOSHTCHU", country_code: str = "eg"):
+    def __init__(self, marketplace_id: str = "ARBP9OOSHTCHU", country_code: str = "eg", 
+                 refresh_token: str | None = None, client_id: str | None = None, client_secret: str | None = None):
         self.marketplace_id = marketplace_id
         self.country_code = country_code.lower()
         self.endpoint = self.ENDPOINTS.get(country_code, self.ENDPOINTS["eg"])
         
-        # Credentials from environment
-        self.client_id = os.getenv("SP_API_CLIENT_ID", "")
-        self.client_secret = os.getenv("SP_API_CLIENT_SECRET", "")
-        self.refresh_token = os.getenv("SP_API_REFRESH_TOKEN", "")
+        # Credentials from environment or passed arguments
+        self.client_id = client_id or os.getenv("SP_API_CLIENT_ID", "")
+        self.client_secret = client_secret or os.getenv("SP_API_CLIENT_SECRET", "")
+        
+        # Smart Refresh Token selection
+        self.refresh_token = refresh_token
+        if not self.refresh_token or self.refresh_token.startswith("MOCK_") or self.refresh_token == "MOCK-TOKEN":
+            self.refresh_token = os.getenv("SP_API_REFRESH_TOKEN", "")
+            if self.refresh_token and refresh_token != self.refresh_token:
+                logger.info(f"SPAPIClient: Using global fallback refresh token for marketplace {marketplace_id}")
+        
         self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "")
         self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "")
         self.aws_region = os.getenv("AWS_REGION", "eu-west-1")
         self.role_arn = os.getenv("AWS_SELLER_ROLE_ARN", "")
-        
-        # Token cache
-        self._access_token: Optional[str] = None
-        self._token_expires_at: float = 0
         
         logger.info(f"SPAPIClient initialized: marketplace={marketplace_id}, endpoint={self.endpoint}")
 
@@ -149,10 +157,10 @@ class SPAPIClient:
         Tokens expire after 1 hour.
         """
         # Return cached token if still valid
-        if self._access_token and time.time() < self._token_expires_at - 60:
-            return self._access_token
+        if SPAPIClient._access_token and time.time() < SPAPIClient._token_expires_at - 60:
+            return SPAPIClient._access_token
 
-        logger.info("Refreshing LWA access token...")
+        logger.info(f"Refreshing LWA access token for client {self.client_id[:5]}... using refresh token {self.refresh_token[:5]}...")
         
         payload = {
             "grant_type": "refresh_token",
@@ -180,11 +188,11 @@ class SPAPIClient:
                     raise Exception(error_message)
                 
                 data = response.json()
-                self._access_token = data["access_token"]
-                self._token_expires_at = time.time() + data.get("expires_in", 3600)
+                SPAPIClient._access_token = data["access_token"]
+                SPAPIClient._token_expires_at = time.time() + data.get("expires_in", 3600)
                 
                 logger.info(f"✅ LWA access token refreshed (expires in {data.get('expires_in', 3600)}s)")
-                return self._access_token
+                return SPAPIClient._access_token
                 
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
                 last_error = e
@@ -234,25 +242,27 @@ class SPAPIClient:
         # Get access token
         access_token = self._get_access_token()
         
-        # Create AWS SigV4 auth
-        aws_auth = AWSSigV4(
-            'execute-api',
-            aws_access_key_id=self.aws_access_key,
-            aws_secret_access_key=self.aws_secret_key,
-            region=self.aws_region,
-        )
+        # Create AWS SigV4 auth only if keys are present
+        aws_auth = None
+        if self.aws_access_key and self.aws_secret_key:
+            aws_auth = AWSSigV4(
+                'execute-api',
+                aws_access_key_id=self.aws_access_key,
+                aws_secret_access_key=self.aws_secret_key,
+                region=self.aws_region,
+            )
         
+        # Professional Headers matching Amazon requirements
         headers = {
             "x-amz-access-token": access_token,
-            "Content-Type": "application/json",
-            "Host": self.endpoint,
+            "Accept": "application/json",
+            "Content-Type": "application/json; charset=utf-8"
         }
         
         logger.debug(f"{method} {url}")
-        if params:
-            logger.debug(f"Params: {params}")
         
         try:
+            # Use auth=aws_auth only if initialized
             if method == "GET":
                 response = requests.get(url, headers=headers, params=params, auth=aws_auth, timeout=30)
             elif method == "PUT":
@@ -269,7 +279,7 @@ class SPAPIClient:
             logger.info(f"SP-API Response: {response.status_code}")
             
             if response.status_code >= 400:
-                logger.error(f"SP-API Error: {response.text[:1000]}")
+                logger.error(f"SP-API Error ({response.status_code}): {response.text[:1000]}")
             
             return response.json()
         except Exception as e:
@@ -299,13 +309,18 @@ class SPAPIClient:
                 "sku": "...",
             }
         """
-        path = f"/listings/2021-08-01/items/{seller_id}/{sku}"
+    def put_listing_item(self, seller_id: str, sku: str, product_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create or update a listing item.
+        """
+        clean_sku = sku.strip()
+        path = f"/listings/2021-08-01/items/{seller_id}/{clean_sku}"
         params = {
             "marketplaceIds": self.marketplace_id,
             "issueLocale": "ar_AE",
         }
 
-        logger.info(f"Putting listing item: SKU={sku}, Seller={seller_id}")
+        logger.info(f"Putting listing item: SKU={clean_sku}, Seller={seller_id}")
         logger.debug(f"Product data keys: {list(product_data.keys())}")
 
         return self._make_request("PUT", path, data=product_data, params=params)
@@ -317,7 +332,8 @@ class SPAPIClient:
         API: GET /listings/2021-08-01/items/{sellerId}/{sku}
         Docs: https://developer-docs.amazon.com/sp-api/docs/listings-items-api-v2021-08-01-reference#getlistingsitem
         """
-        path = f"/listings/2021-08-01/items/{seller_id}/{sku}"
+        clean_sku = sku.strip()
+        path = f"/listings/2021-08-01/items/{seller_id}/{clean_sku}"
         params = {
             "marketplaceIds": self.marketplace_id,
             "issueLocale": "ar_AE",
@@ -332,7 +348,8 @@ class SPAPIClient:
 
         API: DELETE /listings/2021-08-01/items/{sellerId}/{sku}
         """
-        path = f"/listings/2021-08-01/items/{seller_id}/{sku}"
+        clean_sku = sku.strip()
+        path = f"/listings/2021-08-01/items/{seller_id}/{clean_sku}"
         params = {
             "marketplaceIds": self.marketplace_id,
         }
@@ -585,6 +602,88 @@ class SPAPIClient:
         return self._make_request("GET", path, params=params)
 
     # ============================================================
+    # Listings Restrictions API (v2021-08-01)
+    # ============================================================
+
+    def get_listings_restrictions(self, asin: str, condition_type: str = "new") -> Dict[str, Any]:
+        """
+        Check if the seller has restrictions for publishing a specific ASIN.
+
+        API: GET /listings/2021-08-01/restrictions
+        Docs: https://developer-docs.amazon.com/sp-api/docs/listings-items-api-v2021-08-01-reference#getlistingsrestrictions
+
+        Args:
+            asin: ASIN to check
+            condition_type: Condition (new, used_like_new, etc.)
+
+        Returns:
+            {
+                "restrictions": [
+                    {
+                        "marketplaceId": "...",
+                        "reasons": [{"reasonCode": "...", "message": "..."}]
+                    }
+                ]
+            }
+        """
+        path = "/listings/2021-08-01/restrictions"
+        params = {
+            "asin": asin,
+            "conditionType": condition_type,
+            "marketplaceIds": self.marketplace_id,
+            "sellerId": self.seller_id
+        }
+
+        logger.info(f"Checking listings restrictions for ASIN: {asin}")
+        return self._make_request("GET", path, params=params)
+
+    # ============================================================
+    # Reports API (v2021-06-30)
+    # ============================================================
+
+    def create_report(self, report_type: str, marketplace_ids: list | None = None, options: dict | None = None) -> str:
+        """
+        Request Amazon to generate a specific report.
+
+        API: POST /reports/2021-06-30/reports
+        """
+        path = "/reports/2021-06-30/reports"
+        body = {
+            "reportType": report_type,
+            "marketplaceIds": marketplace_ids or [self.marketplace_id],
+            "reportOptions": options or {}
+        }
+
+        logger.info(f"Requesting report: {report_type}")
+        res = self._make_request("POST", path, body=body)
+        return res.get("reportId", "")
+
+    def get_report(self, report_id: str) -> Dict[str, Any]:
+        """Get report status and document ID"""
+        path = f"/reports/2021-06-30/reports/{report_id}"
+        return self._make_request("GET", path)
+
+    def get_report_document(self, document_id: str) -> Dict[str, Any]:
+        """Get report document download URL"""
+        path = f"/reports/2021-06-30/documents/{document_id}"
+        return self._make_request("GET", path)
+
+    # ============================================================
+    # Feeds API (v2021-06-30) - Extensions
+    # ============================================================
+
+    def cancel_feed(self, feed_id: str) -> Dict[str, Any]:
+        """
+        Cancel a feed that is in the IN_QUEUE status.
+
+        API: DELETE /feeds/2021-06-30/feeds/{feedId}
+        Docs: https://developer-docs.amazon.com/sp-api/docs/feeds-api-v2021-06-30-reference#cancelfeed
+        """
+        path = f"/feeds/2021-06-30/feeds/{feed_id}"
+        logger.info(f"Attempting to cancel feed: {feed_id}")
+        return self._make_request("DELETE", path)
+
+    # ============================================================
     # Helpers: Upload images directly to Amazon
     # ============================================================
 
@@ -802,13 +901,20 @@ class SPAPIClient:
         material = product_data.get("material", "")
         target_audience = product_data.get("target_audience", "")
 
-        # Build attributes — THE ULTIMATE DICTIONARY (ar_AE, EGP, 30+ fields)
+        # Material & Target
         attributes = {
             # === IDENTITY ===
             "item_name": [{"value": name, "language_tag": "ar_AE"}],
             "brand": [{"value": brand, "language_tag": "ar_AE"}],
             "color": [{"value": color, "language_tag": "ar_AE"}],
             "product_description": [{"value": description, "language_tag": "ar_AE"}],
+
+            # === VARIATIONS ===
+            "variation_theme": [{"name": product_data.get("variation_theme")}] if product_data.get("variation_theme") else None,
+            "parent_child_relationship": [{
+                "type": "parent" if product_data.get("is_parent") else "child",
+                "parent_asin": product_data.get("parent_asin")
+            }] if product_data.get("is_parent") or product_data.get("parent_asin") else None,
 
             # Bullet points
             "bullet_point": [
@@ -920,51 +1026,14 @@ class SPAPIClient:
         # Remove None values
         attributes = {k: v for k, v in attributes.items() if v is not None}
 
-        # === PRODUCT IDENTIFIER (THE CORE FIX) ===
-        # Handle External Product Identifier (ADEL system)
-        has_exemption = product_data.get("has_product_identifier", False)
-        merchant_asin = product_data.get("merchant_suggested_asin", "").strip()
+        # === PRODUCT IDENTIFIER (GTIN EXEMPTION SYSTEM) ===
+        # [ULTIMATE FIX] Force GTIN Exemption for ALL products to prevent Amazon rejections.
+        # We NO LONGER send ean, upc, or asin. We explicitly tell Amazon this product is exempt.
+        logger.info("ℹ️ Force-sending with GTIN Exemption (No external identifiers)")
+        attributes["supplier_declared_has_product_identifier_exemption"] = [{"value": True}]
         
-        # [THE ULTIMATE FIX] Transform ADEL to a valid EAN-13 to prevent matching issues
-        if ean.upper().startswith("ADEL"):
-            import re
-            num_match = re.search(r"\d+", ean)
-            serial_num = int(num_match.group()) if num_match else 0
-            
-            # Build EAN-13: Prefix (2335) + Serial (8 digits) + Checksum (1 digit)
-            code12 = f"2335{serial_num:08d}"
-            check_digit = self._calculate_ean_checksum(code12)
-            final_ean = f"{code12}{check_digit}"
-            
-            logger.info(f"🚀 TRANSFORMED ADEL {ean} -> EAN-13: {final_ean}")
-            attributes["externally_assigned_product_identifier"] = [{
-                "value": final_ean,
-                "type": "ean"
-            }]
-            # IMPORTANT: Wipe merchant_asin to prevent Amazon from trying to match by fake ASIN
-            merchant_asin = ""
-        elif ean:
-            attributes["externally_assigned_product_identifier"] = [{
-                "value": ean.strip(),
-                "type": "ean"
-            }]
-        elif upc:
-            attributes["externally_assigned_product_identifier"] = [{
-                "value": upc.strip(),
-                "type": "upc"
-            }]
-        elif has_exemption or (not ean and not upc):
-            logger.info("ℹ️ Sending with GTIN Exemption")
-            attributes["supplier_declared_has_product_identifier_exemption"] = [{"value": True}]
-        
-        # [FIX] Official SP-API 2021-08-01 structure for merchant_suggested_asin
-        # This acts as a hint/reference for our internal ID
-        if merchant_asin:
-            attributes["merchant_suggested_asin"] = [{
-                "value": merchant_asin[:10],
-                "marketplace_id": self.marketplace_id
-            }]
-            logger.info(f"🆔 Sent as Hint - MerchantSuggestedASIN: {merchant_asin[:10]}")
+        # We explicitly omit 'externally_assigned_product_identifier' and 'merchant_suggested_asin'
+        # to ensure Amazon treats this as a brand-new, exempt listing.
 
         # [FIX] Ensure Model Name is not "Generic" if possible to avoid Amazon overwriting it with Model Number
         final_model_name = model_name

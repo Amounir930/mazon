@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, Play, RotateCcw, AlertCircle, CheckCircle, Info, Image as ImageIcon, Edit2 } from 'lucide-react'
-import { useListings, useRetryListing } from '@/api/hooks'
+import { Loader2, Play, RotateCcw, AlertCircle, CheckCircle, Info, Image as ImageIcon, Edit2, XCircle } from 'lucide-react'
+import { useListings, useRetryListing, useCancelListing } from '@/api/hooks'
 import { productsApi } from '@/api/endpoints'
 import { StatusBadge, NeonButton } from '@/components/common'
 import type { Listing } from '@/types/api'
@@ -13,6 +13,7 @@ export default function ListingQueuePage() {
   const navigate = useNavigate()
   const { data: listings, isLoading } = useListings({})
   const retryMutation = useRetryListing()
+  const cancelMutation = useCancelListing()
   
   // Track failed listings to show notifications
   const [notifiedFailed, setNotifiedFailed] = useState<Set<string>>(new Set())
@@ -74,6 +75,17 @@ export default function ListingQueuePage() {
       toast.success('تمت إعادة المحاولة!')
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'فشل إعادة المحاولة')
+    }
+  }
+
+  const handleCancel = async (listingId: string) => {
+    if (!window.confirm('هل أنت متأكد من إلغاء هذا الطلب؟')) return
+    
+    try {
+      await cancelMutation.mutateAsync(listingId)
+      toast.success('تم طلب الإلغاء بنجاح')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'فشل إلغاء الطلب')
     }
   }
 
@@ -279,34 +291,45 @@ export default function ListingQueuePage() {
                   <td className="text-text-secondary text-sm text-right">
                     {listing.created_at ? new Date(listing.created_at).toLocaleTimeString('ar-EG') : '-'}
                   </td>
-                  <td className="text-right">
-                    {listing.status === 'failed' && (
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="text-right">
+                      {(listing.status === 'queued' || listing.status === 'processing' || listing.status === 'submitted') && (
                         <button
-                          className="neon-btn neon-btn--info neon-btn--sm"
-                          onClick={() => handleEditProduct(listing.product_id)}
-                          title="تعديل المنتج لحل المشكلة"
+                          className="neon-btn neon-btn--red neon-btn--sm"
+                          onClick={() => handleCancel(listing.id!)}
+                          disabled={cancelMutation.isPending}
+                          title="إلغاء الطلب من Amazon"
                         >
-                          <Edit2 className="w-4 h-4" />
-                          تعديل
+                          <XCircle className="w-4 h-4" />
+                          إلغاء
                         </button>
-                        <button
-                          className="neon-btn neon-btn--warning neon-btn--sm"
-                          onClick={() => handleRetry(listing.id!)}
-                          disabled={retryMutation.isPending}
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                          إعادة محاولة
-                        </button>
-                      </div>
-                    )}
-                    {listing.status === 'success' && (
-                      <span className="text-xs text-neon-cyan flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />
-                        تم
-                      </span>
-                    )}
-                  </td>
+                      )}
+                      {listing.status === 'failed' && (
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            className="neon-btn neon-btn--info neon-btn--sm"
+                            onClick={() => handleEditProduct(listing.product_id)}
+                            title="تعديل المنتج لحل المشكلة"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                            تعديل
+                          </button>
+                          <button
+                            className="neon-btn neon-btn--warning neon-btn--sm"
+                            onClick={() => handleRetry(listing.id!)}
+                            disabled={retryMutation.isPending}
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                            إعادة محاولة
+                          </button>
+                        </div>
+                      )}
+                      {listing.status === 'success' && (
+                        <span className="text-xs text-neon-cyan flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" />
+                          تم
+                        </span>
+                      )}
+                    </td>
                 </tr>
               )
             })}

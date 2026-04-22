@@ -1,7 +1,7 @@
 """
 Product API Endpoints
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional
@@ -508,14 +508,13 @@ async def match_skus(db: Session = Depends(get_db)):
 
 
 @router.post("/{product_id}/submit-to-amazon")
-async def submit_product_to_amazon(product_id: str):
+async def submit_product_to_amazon(product_id: str, background_tasks: BackgroundTasks):
     """
     Submit a product to Amazon via SP-API.
 
     This endpoint calls the SP-API router internally.
     """
     from app.api.sp_api_router import submit_product_to_amazon as sp_submit
-    from fastapi import BackgroundTasks
     
-    # Note: BackgroundTasks won't work here properly, use /sp-api/submit/{product_id} instead
-    return await sp_submit(product_id)
+    return await sp_submit(product_id, background_tasks)
+

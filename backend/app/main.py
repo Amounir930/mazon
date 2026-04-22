@@ -79,52 +79,67 @@ async def startup_event():
     """Application startup - initialize database and services"""
     logger.info("Starting Crazy Lister v3.0")
 
+    # Enable file logging in production/frozen mode or if configured
+    log_file = APP_DATA_DIR / "crazy_lister.log"
+    logger.add(
+        log_file,
+        rotation="10 MB",
+        retention="1 week",
+        level="DEBUG",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        encoding="utf-8"
+    )
+    logger.info(f"File logging enabled: {log_file}")
+
     # Create database tables
     logger.info("Initializing database...")
     init_db()
 
-    # Auto-add missing columns (migration)
-    from sqlalchemy import inspect, text
-    inspector = inspect(engine)
-    columns = [col["name"] for col in inspector.get_columns("products")]
-    new_cols = [
-        ("material", "VARCHAR(200)", "''"),
-        ("number_of_items", "INTEGER", "1"),
-        ("unit_count", "TEXT", "NULL"),
-        ("target_audience", "VARCHAR(100)", "''"),
-    ]
-    with engine.connect() as conn:
-        for name, dtype, default in new_cols:
-            if name not in columns:
-                try:
-                    conn.execute(text(f"ALTER TABLE products ADD COLUMN {name} {dtype} DEFAULT {default}"))
-                    conn.commit()
-                    logger.info(f"Added column: {name}")
-                except Exception as e:
-                    logger.warning(f"Column {name} migration skipped: {e}")
-
     logger.info("Database initialized successfully")
+
     
-    # 3. Ensure default seller exists if .env is populated (for new installations)
+    # 3. Sync Sellers table with .env SP-API credentials (Single Seller source of truth)
     from app.models.seller import Seller
     from app.database import SessionLocal
     db = SessionLocal()
     try:
-        if settings.SP_API_SELLER_ID and not db.query(Seller).first():
-            new_seller = Seller(
-                amazon_seller_id=settings.SP_API_SELLER_ID,
-                display_name=f"Amazon - {settings.SP_API_SELLER_ID}",
-                marketplace_id=getattr(settings, "SP_API_MARKETPLACE_ID", "ARBP9OOSHTCHU"),
-                region=getattr(settings, "AWS_REGION", "eu-west-1"),
-                is_connected=True
-            )
-            db.add(new_seller)
+        sp_seller_id = getattr(settings, "SP_API_SELLER_ID", None)
+        if sp_seller_id:
+            # Try to find existing seller (either by ID or just the first one)
+            existing_seller = db.query(Seller).filter(Seller.amazon_seller_id == sp_seller_id).first()
+            if not existing_seller:
+                existing_seller = db.query(Seller).first()
+
+            if not existing_seller:
+                # Create new
+                new_seller = Seller(
+                    amazon_seller_id=sp_seller_id,
+                    lwa_client_id=getattr(settings, "SP_API_CLIENT_ID", ""),
+                    lwa_client_secret=getattr(settings, "SP_API_CLIENT_SECRET", ""),
+                    lwa_refresh_token=getattr(settings, "SP_API_REFRESH_TOKEN", ""),
+                    display_name=f"Amazon - {sp_seller_id}",
+                    marketplace_id=getattr(settings, "SP_API_MARKETPLACE_ID", "ARBP9OOSHTCHU"),
+                    region=getattr(settings, "AWS_REGION", "eu-west-1"),
+                    is_connected=True
+                )
+                db.add(new_seller)
+                logger.info(f"✨ Created Seller from .env: {sp_seller_id}")
+            else:
+                # Sync existing with .env
+                existing_seller.amazon_seller_id = sp_seller_id
+                existing_seller.lwa_client_id = getattr(settings, "SP_API_CLIENT_ID", existing_seller.lwa_client_id)
+                existing_seller.lwa_client_secret = getattr(settings, "SP_API_CLIENT_SECRET", existing_seller.lwa_client_secret)
+                existing_seller.lwa_refresh_token = getattr(settings, "SP_API_REFRESH_TOKEN", existing_seller.lwa_refresh_token)
+                existing_seller.is_connected = True
+                logger.info(f"🔄 Synced Seller record with .env credentials: {sp_seller_id}")
+            
             db.commit()
-            logger.info(f"Auto-created default seller from .env: {settings.SP_API_SELLER_ID}")
     except Exception as e:
-        logger.warning(f"Could not auto-create default seller: {e}")
+        db.rollback()
+        logger.warning(f"⚠️ Could not sync seller from .env: {e}")
     finally:
         db.close()
+
 
     # Production: No mock data seeding - user must configure real seller credentials
     logger.info("Production mode - no mock data. Configure seller via Settings.")

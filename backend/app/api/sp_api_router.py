@@ -408,10 +408,7 @@ async def search_listings(
     try:
         # If no seller_id provided, get from session
         if not seller_id:
-            seller_id_dep = Depends(get_seller_id_from_session)
-            # We can't use Depends inside another function, so we need to
-            # call the dependency manually through the FastAPI dependency system.
-            # For simplicity, let's use a direct session query here as fallback.
+            # For simplicity, we query the session directly here.
             db = SessionLocal()
             try:
                 auth_session = db.query(AuthSession).filter(
@@ -420,14 +417,17 @@ async def search_listings(
                 ).order_by(AuthSession.created_at.desc()).first()
 
                 if not auth_session or not auth_session.credentials_json:
-                    raise HTTPException(status_code=401, detail="No active session with credentials")
-
-                credentials = json.loads(decrypt_data(auth_session.credentials_json))
-                seller_id = credentials.get("seller_id")
+                    # Fallback to ENV
+                    seller_id = os.getenv("SP_API_SELLER_ID")
+                else:
+                    credentials = json.loads(decrypt_data(auth_session.credentials_json))
+                    seller_id = credentials.get("seller_id")
+                
                 if not seller_id:
-                    raise HTTPException(status_code=400, detail="Seller ID not found in session")
+                    raise HTTPException(status_code=401, detail="Seller ID not found. Please log in or set SP_API_SELLER_ID in .env")
             finally:
                 db.close()
+
 
         result = client.search_listings_items(
             seller_id=seller_id,

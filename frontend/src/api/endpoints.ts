@@ -224,6 +224,9 @@ export const listingsApi = {
 
   retry: (listing_id: string) =>
     api.post(`/listings/${listing_id}/retry`),
+
+  cancel: (listing_id: string) =>
+    api.delete(`/listings/${listing_id}/cancel`),
 }
 
 // ==================== Tasks API ====================
@@ -320,3 +323,29 @@ export const aiApi = {
   getNextModelNumber: () =>
     api.get<{ next_model_number: string }>('/ai/next-model-number'),
 }
+
+// ==================== Dashboard API ====================
+
+export const dashboardApi = {
+  getMetrics: (days: number = 30) =>
+    api.get<{ success: boolean; data: any }>('/dashboard/metrics', { params: { days } }),
+
+  sync: () =>
+    api.get<{ success: boolean; data: any; message: string }>('/dashboard/sync'),
+}
+// ==================== Discovery API ====================
+
+export const discoveryApi = {
+  getTopItems: (keywords?: string, category?: string) =>
+    api.get<{ success: boolean; data: any[] }>('/discovery/top-items', { params: { keywords, category } }),
+}
+
+// ==================== Debug API ====================
+
+export const debugApi = {
+  getLogs: (lines: number = 100) =>
+    api.get<{ logs: string[]; file_path: string; total_lines: number }>('/debug/logs', { params: { lines } }),
+  getStatus: () =>
+    api.get('/debug/status'),
+}
+

@@ -10,14 +10,16 @@ from sqlalchemy.pool import StaticPool
 from typing import Generator
 from loguru import logger
 
-# Windows AppData path
-APP_DATA_DIR = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming")) / "CrazyLister"
-APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+from app.config import get_settings
 
-DATABASE_URL = f"sqlite:///{APP_DATA_DIR.as_posix()}/crazy_lister.db"
-logger.info(f"Database URL configured as: {DATABASE_URL}")
+# Get settings
+settings = get_settings()
+APP_DATA_DIR = Path(settings.UPLOAD_DIR).parent
+DATABASE_URL = settings.DATABASE_URL
 
-# SQLite-specific engine config
+logger.info(f"Database initialized with path: {DATABASE_URL}")
+
+# Create engine with better SQLite settings for desktop usage
 engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False},
@@ -31,6 +33,7 @@ SessionLocal = sessionmaker(
     autoflush=False,
     bind=engine,
 )
+
 
 # Base class for all ORM models
 Base = declarative_base()

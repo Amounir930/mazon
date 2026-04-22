@@ -9,6 +9,8 @@ import ListingQueuePage from './pages/listings/ListingQueuePage'
 import ReportsPage from './pages/reports/ReportsPage'
 import SettingsPage from './pages/settings/SettingsPage'
 
+import LiveMirrorPage from './pages/dashboard/LiveMirrorPage'
+
 function ConnectedLayout() {
   return <Outlet />
 }
@@ -20,6 +22,7 @@ export default function AppRouter() {
         <Route element={<Layout />}>
           <Route path="" element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="live-mirror" element={<LiveMirrorPage />} />
           <Route path="products" element={<ProductListPage />} />
           <Route path="products/create" element={<ProductCreatePage />} />
           <Route path="products/search" element={<CatalogSearchPage />} />

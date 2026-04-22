@@ -55,7 +55,8 @@ export const aiApi = {
     api.post<AIImportAmazonResponse>('/ai/import-from-amazon', data),
 
   // Sequential Identifiers
-  getNextSku: () => api.get<{ next_sku: string }>('/ai/next-sku'),
+  getNextSku: (category?: string, version?: number) => 
+    api.get<{ next_sku: string }>(`/ai/next-sku?category=${category || 'GEN'}&version=${version || 1}`),
   getNextModelNumber: () => api.get<{ next_model_number: string }>('/ai/next-model-number'),
   getNextProductId: () => api.get<{ next_product_id: string }>('/ai/next-product-id'),
 }

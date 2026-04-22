@@ -114,3 +114,25 @@ class CounterService:
         db_val = int(setting.value) if setting and setting.value.isdigit() else 0
         current_num = max(int(file_val), db_val)
         return f"{prefix}{current_num + 1:0{padding}d}"
+
+    @staticmethod
+    def generate_stateless_sku(category: str = "GEN", version: int = 1) -> str:
+        """
+        Generate a professional SKU that doesn't rely on DB for uniqueness.
+        Format: IMP-[CAT]-S[DD][MM]-[VERSION]
+        Example: IMP-KITCHEN-S2104-V01
+        """
+        from datetime import datetime
+        now = datetime.now()
+        # S[Day][Month]
+        date_code = f"S{now.day:02d}{now.month:02d}"
+        
+        # Normalize category
+        cat_slug = category.strip().upper()
+        if not cat_slug:
+            cat_slug = "GEN"
+        
+        # Limit category length to 7 chars for clean SKUs
+        cat_slug = cat_slug[:7]
+        
+        return f"IMP-{cat_slug}-{date_code}-V{version:02d}"

@@ -219,16 +219,12 @@ async def get_next_product_id():
 
 
 @router.get("/next-sku")
-async def get_next_sku():
+async def get_next_sku(category: Optional[str] = "GEN", version: int = 1):
     """
-    GET /api/v1/ai/next-sku
+    GET /api/v1/ai/next-sku?category=KITCHEN&version=1
 
-    Fetch and increment the next available sequential SKU.
+    Generate a stateless professional SKU based on category and version.
     """
     from app.services.counter_service import CounterService
-    db = SessionLocal()
-    try:
-        next_sku = CounterService.get_next_sku_serial(db)
-        return {"next_sku": next_sku}
-    finally:
-        db.close()
+    next_sku = CounterService.generate_stateless_sku(category=category, version=version)
+    return {"next_sku": next_sku}

@@ -1,112 +1,124 @@
-import { useTranslation } from 'react-i18next'
-import { Package, Upload, CheckCircle, XCircle, TrendingUp, Loader2, Plus, FileSpreadsheet, RefreshCw } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { useListings, useProducts } from '@/api/hooks'
-import type { Listing } from '@/types/api'
+import React from 'react';
+import { 
+  LayoutDashboard, 
+  Package, 
+  Upload, 
+  CheckCircle, 
+  XCircle, 
+  Plus, 
+  RefreshCw,
+  Activity,
+  Search
+} from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import api from '@/lib/axios';
+import { useQuery } from '@tanstack/react-query';
 
-export default function DashboardPage() {
-  const { t } = useTranslation()
-  const { data: productsData, isLoading: loadingProducts } = useProducts({ page_size: 1 })
-  const { data: listings, isLoading: loadingListings } = useListings()
+const DashboardPage: React.FC = () => {
+  const { t } = useTranslation();
 
-  const totalProducts = productsData?.total ?? 0
-  const totalListings = listings?.length ?? 0
-  const published = listings?.filter((l: Listing) => l.status === 'success').length ?? 0
-  const queued = listings?.filter((l: Listing) => l.status === 'queued' || l.status === 'processing').length ?? 0
-  const failed = listings?.filter((l: Listing) => l.status === 'failed').length ?? 0
+  // Fetch local system stats (not live Amazon sales)
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ['system-stats'],
+    queryFn: async () => {
+      const response = await api.get('/products'); // Assuming this returns local product list
+      const products = response.data.data || [];
+      return {
+        total: products.length,
+        queued: products.filter((p: any) => p.status === 'pending').length,
+        published: products.filter((p: any) => p.status === 'published' || p.status === 'active').length,
+        failed: products.filter((p: any) => p.status === 'error' || p.status === 'failed').length
+      };
+    }
+  });
 
-  const isLoading = loadingProducts || loadingListings
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-amazon-orange" />
-      </div>
-    )
-  }
-
-  const stats = [
-    { label: t('dashboard.totalProducts'), value: totalProducts.toString(), icon: Package, accent: 'blue' as const },
-    { label: t('dashboard.inQueue'), value: queued.toString(), icon: Upload, accent: 'orange' as const },
-    { label: t('dashboard.published'), value: published.toString(), icon: CheckCircle, accent: 'green' as const },
-    { label: t('dashboard.failed'), value: failed.toString(), icon: XCircle, accent: 'red' as const },
-  ]
+  const cards = [
+    { label: 'إجمالي المنتجات', value: stats?.total || 0, sub: 'المسجلة محلياً', icon: Package, color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
+    { label: 'في قائمة الانتظار', value: stats?.queued || 0, sub: 'بانتظار الرفع', icon: Upload, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+    { label: 'تم الرفع بنجاح', value: stats?.published || 0, sub: 'موجود على أمازون', icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+    { label: 'عمليات فشلت', value: stats?.failed || 0, sub: 'تحتاج مراجعة', icon: XCircle, color: 'text-rose-400', bg: 'bg-rose-500/10' }
+  ];
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-8 animate-in fade-in duration-500">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">{t('dashboard.title')}</h1>
-          <p className="text-text-secondary mt-1">{t('dashboard.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2 px-4 py-2 bg-neon-cyan/10 text-neon-cyan rounded-xl border border-neon-cyan/20">
-          <TrendingUp className="w-5 h-5" />
-          <span className="font-medium">{totalListings} {t('dashboard.totalListings')}</span>
+          <h1 className="text-3xl font-extrabold text-white flex items-center gap-3">
+            لوحة التحكم <span className="text-amazon-orange">Dashboard</span>
+          </h1>
+          <p className="text-white/40 mt-1 font-medium">مرحباً بك في نظام إدارة منتجات أمازون الآلي</p>
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map(({ label, value, icon: Icon, accent }) => {
-          const iconColors: Record<string, string> = {
-            blue: 'text-neon-blue',
-            orange: 'text-amazon-orange',
-            green: 'text-neon-cyan',
-            red: 'text-neon-red',
-          }
-          return (
-            <div key={label} className={`neon-card neon-card--accent neon-card--${accent} contain-layout`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-text-secondary">{label}</p>
-                  <p className="text-3xl font-bold text-text-primary mt-1">{value}</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-bg-elevated/50 border border-border-subtle flex items-center justify-center">
-                  <Icon className={`w-6 h-6 ${iconColors[accent] || 'text-text-primary'}`} />
-                </div>
-              </div>
+        {cards.map((card, i) => (
+          <div key={i} className="bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 p-6 flex items-center justify-between transition-all hover:bg-white/10">
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-white/40 uppercase tracking-widest">{card.label}</p>
+              <p className="text-2xl font-black text-white">{isLoading ? '...' : card.value}</p>
+              <p className="text-[10px] text-white/30 font-medium">{card.sub}</p>
             </div>
-          )
-        })}
+            <div className={`w-12 h-12 rounded-2xl ${card.bg} flex items-center justify-center border border-white/5 shadow-inner`}>
+              <card.icon className={`w-6 h-6 ${card.color}`} />
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Quick Actions */}
-      <h2 className="text-lg font-semibold text-text-primary mt-8 mb-4">{t('dashboard.quickActions')}</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Link
-          to="/products/create"
-          className="neon-card neon-card--interactive group contain-layout"
-        >
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amazon-orange/20 to-amazon-light/10 border border-amazon-orange/30 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
-            <Plus className="w-6 h-6 text-amazon-orange" />
-          </div>
-          <h3 className="text-lg font-semibold text-text-primary mb-2">{t('dashboard.addNewProduct')}</h3>
-          <p className="text-text-secondary text-sm">{t('dashboard.addNewProductDesc')}</p>
-        </Link>
+      {/* Main Actions Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Quick Actions */}
+        <div className="space-y-6">
+          <Link
+            to="/products/create"
+            className="group bg-gradient-to-br from-white/5 to-white/[0.02] hover:to-white/10 rounded-3xl border border-white/10 p-8 flex items-center gap-8 transition-all duration-500 hover:-translate-y-1 shadow-xl"
+          >
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amazon-orange to-amazon-light flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-amazon-orange/20">
+              <Plus className="w-10 h-10 text-white" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-white">إضافة منتج جديد</h3>
+              <p className="text-white/40 mt-1">أدخل بيانات المنتج وقم برفعه مباشرة إلى أمازون</p>
+            </div>
+          </Link>
 
-        <Link
-          to="/products/create"
-          className="neon-card neon-card--interactive group contain-layout"
-        >
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-neon-blue/20 to-neon-purple/10 border border-neon-blue/30 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
-            <FileSpreadsheet className="w-6 h-6 text-neon-blue" />
-          </div>
-          <h3 className="text-lg font-semibold text-text-primary mb-2">{t('dashboard.bulkUpload')}</h3>
-          <p className="text-text-secondary text-sm">{t('dashboard.bulkUploadDesc')}</p>
-        </Link>
+          <Link
+            to="/listings"
+            className="group bg-gradient-to-br from-white/5 to-white/[0.02] hover:to-white/10 rounded-3xl border border-white/10 p-8 flex items-center gap-8 transition-all duration-500 hover:-translate-y-1 shadow-xl"
+          >
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg shadow-cyan-500/20">
+              <RefreshCw className="w-10 h-10 text-white" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-white">قائمة الانتظار</h3>
+              <p className="text-white/40 mt-1">تابع حالة رفع ومعالجة المنتجات على أمازون</p>
+            </div>
+          </Link>
+        </div>
 
-        <Link
-          to="/listings"
-          className="neon-card neon-card--interactive group contain-layout"
-        >
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-neon-cyan/20 to-neon-blue/10 border border-neon-cyan/30 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200">
-            <RefreshCw className="w-6 h-6 text-neon-cyan" />
+        {/* Info Section */}
+        <div className="bg-white/5 backdrop-blur-md rounded-3xl border border-white/10 p-8 flex flex-col justify-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none select-none">
+             <LayoutDashboard className="w-64 h-64" />
           </div>
-          <h3 className="text-lg font-semibold text-text-primary mb-2">{t('dashboard.viewQueue')}</h3>
-          <p className="text-text-secondary text-sm">{t('dashboard.viewQueueDesc')}</p>
-        </Link>
+          <h3 className="text-2xl font-bold text-white mb-4">اكتشف أداء مبيعاتك <span className="text-amazon-orange ml-2 text-lg">Sales Performance</span></h3>
+          <p className="text-white/60 mb-8 leading-relaxed">
+            تم نقل بيانات المبيعات المباشرة والرسوم البيانية إلى قسم <strong>"متابعة المبيعات | Sales Tracking"</strong> الجديد لضمان أداء أسرع ومراقبة دقيقة لحظة بلحظة.
+          </p>
+          <Link 
+            to="/live-mirror"
+            className="inline-flex items-center gap-3 px-8 py-4 bg-amazon-orange hover:bg-amazon-light text-white font-bold rounded-2xl transition-all shadow-lg shadow-amazon-orange/20 active:scale-95 self-start"
+          >
+            <Activity className="w-5 h-5" />
+            انتقل لمتابعة المبيعات (Live)
+          </Link>
+        </div>
       </div>
     </div>
-  )
-}
+  );
+};
+
+export default DashboardPage;

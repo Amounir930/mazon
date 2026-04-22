@@ -235,6 +235,24 @@ def run_migrations(engine) -> None:
             _add_column_if_missing(conn, "products", "operating_frequency", "VARCHAR(50)")
             _add_column_if_missing(conn, "products", "power_plug_type", "VARCHAR(50)")
 
+        # ==========================================
+        # Migration 16: Add missing SP-API fields to listings
+        # ==========================================
+        if "listings" in existing_tables:
+            _add_column_if_missing(conn, "listings", "sp_api_submission_id", "VARCHAR(100)")
+            _add_column_if_missing(conn, "listings", "sp_api_status", "VARCHAR(30)")
+            _add_column_if_missing(conn, "listings", "sp_api_last_polled_at", "TIMESTAMP")
+
+        # ==========================================
+        # Migration 17: Add missing detail fields to products
+        # ==========================================
+        if "products" in existing_tables:
+            _add_column_if_missing(conn, "products", "material", "VARCHAR(200) DEFAULT ''")
+            _add_column_if_missing(conn, "products", "number_of_items", "INTEGER DEFAULT 1")
+            _add_column_if_missing(conn, "products", "unit_count", "TEXT")
+            _add_column_if_missing(conn, "products", "target_audience", "VARCHAR(100) DEFAULT ''")
+
+
         conn.commit()
 
     logger.info("Database migration completed successfully")

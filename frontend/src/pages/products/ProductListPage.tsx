@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown, FileSpreadsheet, X, Check, Download, AlertCircle, Image as ImageIcon, CloudOff, Cloud, Eye } from 'lucide-react'
+import { Plus, Search, Filter, Edit2, Trash2, Upload, Loader2, RefreshCw, FileDown, ChevronDown, FileText, X, CheckCircle as Check, Download, AlertCircle, Image as ImageIcon, XCircle as CloudOff, Activity as Cloud, FileSpreadsheet } from 'lucide-react'
+const Eye = Search;
 import { useProducts, useDeleteProduct, useUpdateProduct, useSubmitListing, useSyncFromAmazon, useExportToAmazon, useExportPriceInventory, useExportListingLoader, useDeleteListing, usePatchListing } from '@/api/hooks'
 import { productsApi } from '@/api/endpoints'
 import { StatusBadge } from '@/components/common/StatusBadge'
@@ -54,6 +55,7 @@ export default function ProductListPage() {
   const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set())
   const [importing, setImporting] = useState(false)
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
+  const [pollingFailedCount, setPollingFailedCount] = useState(0)
 
   const { data, isLoading, isError, refetch } = useProducts({ page: 1, search: search || undefined })
   const deleteMutation = useDeleteProduct()
@@ -252,12 +254,15 @@ export default function ProductListPage() {
           const res = await fetch('/api/v1/listings?status=failed')
           const data = await res.json()
 
+          const failedListings = Array.isArray(data) ? data.filter((l: any) => l.status === 'failed') : []
+          setPollingFailedCount(failedListings.length)
+
           // Check if any listing for this product failed in the last 30 seconds
-          const recentFailures = (data || []).filter((l: any) => {
+          const recentFailures = Array.isArray(data) ? data.filter((l: any) => {
             if (!l.completed_at || !l.error_message) return false
             const completedTime = new Date(l.completed_at).getTime()
             return Date.now() - completedTime < 30000 // last 30 seconds
-          })
+          }) : []
 
           if (recentFailures.length > 0) {
             const error = recentFailures[0].error_message

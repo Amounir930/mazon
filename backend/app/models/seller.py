@@ -16,11 +16,12 @@ class Seller(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    # Amazon SP-API Credentials (المفاتيح الأربعة)
-    lwa_client_id = Column(String(255), nullable=False)        # Client ID
-    lwa_client_secret = Column(String(255), nullable=False)    # Client Secret
-    lwa_refresh_token = Column(Text, nullable=False)           # Refresh Token
-    amazon_seller_id = Column(String(100), nullable=False)     # Seller ID
+    # Amazon SP-API Credentials (المفاتيح الأربعة - اختيارية للربط عبر المتصفح)
+    lwa_client_id = Column(String(255), nullable=True)        # Client ID
+    lwa_client_secret = Column(String(255), nullable=True)    # Client Secret
+    lwa_refresh_token = Column(Text, nullable=True)           # Refresh Token
+    amazon_seller_id = Column(String(100), nullable=True)     # Seller ID
+
 
     # Optional Info
     display_name = Column(String(200), default="My Amazon Store")

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Search, Package, Loader2, ExternalLink, Plus, AlertCircle, Cloud } from 'lucide-react'
+import { Search, Package, Loader2, ExternalLink, Plus, AlertCircle, Activity, Activity as Cloud } from 'lucide-react'
 import { useSearchCatalogSPApi } from '@/api/hooks'
 import { NeonButton, NeonCard } from '@/components/common'
 import toast from 'react-hot-toast'
@@ -92,7 +92,7 @@ export default function CatalogSearchPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-          <Cloud className="w-6 h-6 text-neon-cyan" />
+          <Activity className="w-6 h-6 text-neon-cyan" />
           {t('catalogSearch.title')}
         </h1>
         <p className="text-text-secondary mt-1">{t('catalogSearch.subtitle')}</p>
@@ -135,7 +135,7 @@ export default function CatalogSearchPage() {
               {isPending ? (
                 <><Loader2 className="w-5 h-5 animate-spin" /> {t('catalogSearch.searching')}</>
               ) : (
-                <><Cloud className="w-5 h-5" /> {t('catalogSearch.search')}</>
+                <><Activity className="w-5 h-5" /> {t('catalogSearch.search')}</>
               )}
             </NeonButton>
           </div>
@@ -163,7 +163,7 @@ export default function CatalogSearchPage() {
               {t('catalogSearch.results')} ({totalResults})
             </h2>
             <span className="text-xs text-neon-cyan flex items-center gap-1">
-              <Cloud className="w-3 h-3" />
+              <Activity className="w-3 h-3" />
               {t('catalogSearch.spApiOfficial')}
             </span>
           </div>

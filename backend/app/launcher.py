@@ -36,10 +36,17 @@ else:
     BASE_DIR = Path(__file__).parent.parent
 
 # ============================================================
-# 2. APPDATA PATHS (No Admin permissions needed)
+# 2. DATA PATHS (Consistent with app/config.py)
 # ============================================================
 
-APP_DATA_DIR = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming")) / "CrazyLister"
+if getattr(sys, 'frozen', False):
+    # Production (EXE): Use Standard Windows Roaming AppData with a distinct folder
+    APP_DATA_DIR = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming")) / "CrazyListerV3-Release"
+else:
+    # Development: Use local dev_data folder
+    # launcher.py is in backend/app/
+    APP_DATA_DIR = Path(__file__).resolve().parent.parent / "dev_data"
+
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 UPLOAD_DIR = APP_DATA_DIR / "uploads"
@@ -51,8 +58,7 @@ for d in [UPLOAD_DIR, EXPORT_DIR]:
 
 # Set environment variables for the app to use
 os.environ["APP_DATA_DIR"] = str(APP_DATA_DIR)
-os.environ["UPLOAD_DIR"] = str(UPLOAD_DIR)
-os.environ["EXPORT_DIR"] = str(EXPORT_DIR)
+
 
 # ============================================================
 # 3. LOGGING SETUP
@@ -89,12 +95,9 @@ def _run_server():
     """Run FastAPI server in background thread"""
     global _server_started
 
-    # Set up database before starting server
-    import app.database as db_module
-    db_module.APP_DATA_DIR = APP_DATA_DIR
-    db_module.DATABASE_URL = f"sqlite:///{APP_DATA_DIR}/crazy_lister.db"
-
+    # Logger will show the path from database.py initialization
     logger.info(f"Starting FastAPI backend on {BACKEND_URL}...")
+
 
     try:
         # Import app directly to catch any import-time errors in this thread

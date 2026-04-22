@@ -19,8 +19,19 @@ def get_env_path() -> Path:
     return backend_dir / ".env"
 
 
+# Environment Detection
+IS_FROZEN = getattr(sys, 'frozen', False)
+
 # Windows AppData paths
-APP_DATA_DIR = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming")) / "CrazyLister"
+if IS_FROZEN:
+    # Production (EXE): Use Standard Windows Roaming AppData with a distinct folder
+    APP_DATA_DIR = Path(os.getenv("APPDATA", Path.home() / "AppData" / "Roaming")) / "CrazyListerV3-Release"
+else:
+    # Development: Use a local folder inside the project to keep dev data separate
+    # Resolve to backend/dev_data
+    current_file = Path(__file__).resolve()
+    APP_DATA_DIR = current_file.parent.parent / "dev_data"
+
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 UPLOAD_DIR = APP_DATA_DIR / "uploads"
@@ -29,6 +40,7 @@ LOG_FILE = APP_DATA_DIR / "crazy_lister.log"
 
 for d in [UPLOAD_DIR, EXPORT_DIR]:
     d.mkdir(parents=True, exist_ok=True)
+
 
 
 class Settings(BaseSettings):

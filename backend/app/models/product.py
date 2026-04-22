@@ -19,8 +19,10 @@ class Product(Base):
 
     # Basic Information
     sku = Column(String(100), nullable=False, index=True)
-    parent_sku = Column(String(100), index=True)  # To support Variation logic
+    parent_sku = Column(String(100), index=True)  # Internal parent reference
+    parent_asin = Column(String(20), index=True)  # Amazon's parent reference
     is_parent = Column(Boolean, default=False)  # True if this is a parent container
+    variation_theme = Column(String(100))  # e.g., SIZE, COLOR, SIZE_NAME_WITH_COLOR_NAME
     name = Column(String(500), nullable=False)
     name_ar = Column(String(500))
     name_en = Column(String(500))

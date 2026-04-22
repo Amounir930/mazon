@@ -342,15 +342,18 @@ class AIProductAssistant:
                         "suggested_sku": variant_sku,
                     })
                 
-                # Duplicate the first variant to fill the remaining copies
+                # Generate unique variations even in fallback
                 base_var = current_variants[0]
                 
                 while len(current_variants) < copies:
                     idx = len(current_variants) + 1
+                    variant_name_ar = self._generate_name_variation(base_var['name_ar'], idx, 'ar')
+                    variant_name_en = self._generate_name_variation(base_var['name_en'], idx, 'en')
+                    
                     current_variants.append({
                         "variant_number": idx,
-                        "name_ar": base_var['name_ar'],
-                        "name_en": base_var['name_en'],
+                        "name_ar": variant_name_ar,
+                        "name_en": variant_name_en,
                         "description_ar": base_var['description_ar'],
                         "description_en": base_var['description_en'],
                         "suggested_sku": f"{base_var['suggested_sku']}-V{idx}"
@@ -503,6 +506,46 @@ class AIProductAssistant:
                 variant['description_en'] += f" This premium product is meticulously crafted to combine absolute elegance with practical functionality, making it the perfect choice for anyone seeking high quality and exceptional performance in continuous daily use."
 
         return variant
+
+    def _generate_name_variation(self, original_name: str, index: int, lang: str = 'ar') -> str:
+        """
+        Locally generate a long variation using Fixed Base + Smart Rephrase logic.
+        Preserves the first part of the name and rephrases the technical rest.
+        """
+        if not original_name or len(original_name.split()) < 5:
+            return f"{original_name} | {index}" if original_name else f"Product Variant {index}"
+            
+        # Professional separators
+        separators = [" | ", " - ", " . ", " : ", " — "]
+        sep = separators[index % len(separators)]
+        
+        words = original_name.split()
+        
+        # 1. FIX THE BASE: Keep first 4-6 words (Brand + Main Product Name)
+        base_count = min(6, len(words) // 2)
+        if base_count < 3: base_count = 3
+        
+        base_name = " ".join(words[:base_count])
+        rest_of_name = " ".join(words[base_count:])
+        
+        # 2. SMART REPHRASE THE REST: Split the rest into technical chunks
+        chunks = re.split(r'[,،|.\-_]', rest_of_name)
+        chunks = [c.strip() for c in chunks if c.strip()]
+        
+        if len(chunks) < 2:
+            # If no delimiters, just split the rest into two halves
+            rest_words = rest_of_name.split()
+            mid = len(rest_words) // 2
+            chunks = [" ".join(rest_words[:mid]), " ".join(rest_words[mid:])]
+
+        # 3. ROTATE CHUNKS
+        if index % 2 == 1:
+            chunks.reverse()
+            
+        # 4. ASSEMBLE (NO PROMOTIONAL SUFFIXES)
+        rephrased_rest = sep.join(chunks)
+        
+        return f"{base_name} {sep} {rephrased_rest}".strip(" |-. :_—")
     
     def _build_system_prompt(self, learned_fields: list[str] = None) -> str:
         from app.services.ai_prompts import build_system_prompt

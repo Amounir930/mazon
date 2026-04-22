@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Package, List, FileText, Settings, Search, LogOut, AlertTriangle } from 'lucide-react'
+import { LayoutDashboard, Package, List, FileText, Settings, Search, LogOut, AlertTriangle, Activity } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/common'
 import { useSessionStatus, useLogout } from '@/api/hooks'
@@ -45,6 +45,7 @@ export default function Sidebar() {
 
   const menuItems = [
     { to: '/dashboard', label: t('sidebar.dashboard'), icon: LayoutDashboard },
+    { to: '/live-mirror', label: t('sidebar.liveMirror'), icon: Activity },
     { to: '/products', label: t('sidebar.products'), icon: Package },
     { to: '/products/search', label: t('sidebar.searchAmazon'), icon: Search },
     { to: '/listings', label: t('sidebar.listingQueue'), icon: List },

@@ -124,6 +124,34 @@ class CookieAuth:
             # Estimate expiry (Amazon cookies typically last 30 days)
             expires_at = datetime.now(timezone.utc) + timedelta(days=30)
 
+            from app.models.seller import Seller
+            
+            # 1. Sync with Sellers table (The "Real Seller" the user wants)
+            # Try to find existing seller by name or ID
+            seller_record = db.query(Seller).filter(
+                (Seller.display_name == (seller_name or email)) |
+                (Seller.amazon_seller_id == email)
+            ).first()
+
+            if not seller_record:
+                # Create a new real seller record
+                seller_record = Seller(
+                    display_name=seller_name or email,
+                    amazon_seller_id=email, # Use email as ID if not known
+                    marketplace_id=country_code.upper(),
+                    is_connected=True
+                )
+                db.add(seller_record)
+                db.flush()
+                logger.info(f"Auto-created real Seller record: {seller_record.display_name}")
+            else:
+                # Update existing seller
+                seller_record.is_connected = True
+                if seller_name:
+                    seller_record.display_name = seller_name
+                logger.info(f"Updated existing Seller record: {seller_record.display_name}")
+
+            # 2. Save Session (Cookies)
             session = Session(
                 auth_method="browser",
                 email=email,
@@ -140,8 +168,9 @@ class CookieAuth:
             db.commit()
             db.refresh(session)
 
-            logger.info(f"Browser cookies saved: {email} ({country_code.upper()})")
+            logger.info(f"Browser session and Seller record saved for: {email}")
             return session
+
 
         except Exception as e:
             db.rollback()

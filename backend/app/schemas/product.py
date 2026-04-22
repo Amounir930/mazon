@@ -81,6 +81,8 @@ class ProductCreate(BaseModel):
     # Variation fields
     is_parent: Optional[bool] = Field(default=False)
     parent_sku: Optional[str] = Field(None, max_length=100)
+    parent_asin: Optional[str] = Field(None, max_length=20)
+    variation_theme: Optional[str] = Field(None, max_length=100)
 
     @field_validator("sku")
     @classmethod
@@ -224,6 +226,12 @@ class ProductResponse(BaseModel):
     wattage: Optional[str] = None
     operating_frequency: Optional[str] = None
     power_plug_type: Optional[str] = None
+    
+    # Variation fields
+    is_parent: bool = False
+    parent_sku: Optional[str] = None
+    parent_asin: Optional[str] = None
+    variation_theme: Optional[str] = None
     
     status: str
     created_at: datetime

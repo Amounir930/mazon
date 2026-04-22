@@ -97,6 +97,12 @@ class SimulatedAmazonClient:
             "processingStartTime": datetime.utcnow().isoformat()
         }
 
+    async def cancel_feed(self, feed_id: str) -> dict:
+        """Simulates Feed Cancellation"""
+        await asyncio.sleep(0.3)
+        logger.info(f"[SIMULATION] Feed {feed_id} cancelled.")
+        return {"feedId": feed_id, "status": "CANCELLED"}
+
     async def verify_credentials(self) -> bool:
         """Verify connectivity"""
         try:
@@ -140,8 +146,15 @@ class RealSPAPIClient:
             if not REAL_API_AVAILABLE:
                 raise RuntimeError("Real API requested but libraries are missing.")
             
+            # Use the passed refresh token, but fallback to global setting if it's missing or a mock placeholder
+            token = self.refresh_token
+            if not token or token.startswith("MOCK_") or token == "MOCK-TOKEN":
+                token = settings.SP_API_REFRESH_TOKEN
+                if token:
+                    logger.info(f"Using global fallback SP-API Refresh Token for seller: {self.seller_id}")
+
             self.creds = {
-                "refresh_token": self.refresh_token,
+                "refresh_token": token,
                 # Use dynamic credentials if provided, fallback to settings
                 "lwa_app_id": client_id or settings.SP_API_CLIENT_ID,
                 "lwa_client_secret": client_secret or settings.SP_API_CLIENT_SECRET,
@@ -217,6 +230,16 @@ class RealSPAPIClient:
             return res.payload
         except SellingApiException as e:
             logger.error(f"SP-API Error (get_feed_status): {e}")
+            raise
+
+    async def cancel_feed(self, feed_id: str) -> dict:
+        if self.is_simulation:
+            return await self.client.cancel_feed(feed_id)
+        try:
+            res = Feeds(credentials=self.creds).cancel_feed(feed_id)
+            return res.payload
+        except SellingApiException as e:
+            logger.error(f"SP-API Error (cancel_feed): {e}")
             raise
 
     async def create_or_update_listing(self, sku: str, product_data: dict) -> dict:

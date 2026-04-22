@@ -11,10 +11,17 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
-  Package, DollarSign, Image as ImageIcon, Save, Loader2,
-  AlertTriangle, CheckCircle, Upload, X, FileSpreadsheet, Eye,
-  Truck, ShoppingCart, Tag, Globe, Sparkles, Store, Zap
+  Package, DollarSign, Image as ImageIcon, Search, Loader2,
+  AlertTriangle, CheckCircle, Upload, X, FileText,
+  Truck, ShoppingCart, Globe, Store, Activity as Zap,
+  RefreshCw
 } from 'lucide-react'
+// Map missing icons to available ones
+const Save = Search;
+const Eye = Search;
+const Tag = Search;
+const Sparkles = Zap;
+const FileSpreadsheet = FileText;
 import { useCreateProduct } from '@/api/hooks'
 import { useSellersList } from '@/api/hooks'
 import { productsApi, imagesApi } from '@/api/endpoints'
@@ -206,6 +213,15 @@ export default function ProductCreatePage() {
   const [page, setPage] = useState(0)
   const [submitting, setSubmitting] = useState(false)
 
+  // Stateless SKU Helper (Local)
+  const generateStatelessSku = (category: string, version: number = 1) => {
+    const now = new Date()
+    const dd = String(now.getDate()).padStart(2, '0')
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const catCode = category.split('_').slice(-1)[0].toUpperCase().slice(0, 7) || 'GEN'
+    return `IMP-${catCode}-S${dd}${mm}-V${String(version).padStart(2, '0')}`
+  }
+
   // ==================== Seller Selection ====================
   const sellers = sellersData?.sellers ?? []
   const [selectedSellerId, setSelectedSellerId] = useState<string>('')
@@ -264,15 +280,13 @@ export default function ProductCreatePage() {
     if (!isEditMode) {
       const fetchNextNumbers = async () => {
         try {
-          // Fetch Next SKU
-          if (!required.sku) {
-            const res = await aiApi.getNextSku()
-            if (res.data.next_sku) {
-              setRequired(prev => ({ 
-                ...prev, 
-                sku: res.data.next_sku
-              }))
-            }
+          // Fetch Next SKU - Use local generator for instant professional SKU
+          if (!required.sku || required.sku.startsWith('SKU-V1')) {
+            const nextSku = generateStatelessSku(required.product_type)
+            setRequired(prev => ({ 
+              ...prev, 
+              sku: nextSku
+            }))
           }
 
           // Fetch Model Number
@@ -516,7 +530,7 @@ export default function ProductCreatePage() {
     setAiProducts(products)
     if (products.length > 0) {
       setSelectedAiProduct(0)
-      fillFormFromAi(products[0])
+      fillFormFromAi(products[0], 0)
       // Task 6: Sync listingCopies = AI-generated count (direct)
       // This ensures each AI product gets its own listing/ad on Amazon
       setListingCopies(products.length)
@@ -524,7 +538,7 @@ export default function ProductCreatePage() {
     }
   }, [])
 
-  const fillFormFromAi = useCallback((product: AIMergedProduct) => {
+  const fillFormFromAi = useCallback((product: any, index: number = 0) => {
     // Fill ALL fields directly from AI - no partial fill
     setRequired(prev => ({
       ...prev,
@@ -533,11 +547,11 @@ export default function ProductCreatePage() {
       name_en: product.name_en,
       product_type: product.product_type,
       id_type: product.ean ? 'EAN' : (product.upc ? 'UPC' : 'EAN'),
-      ean: product.ean || '',
-      has_product_identifier: !product.ean && !product.upc, // Automatically check exemption if barcode is empty
+      ean: product.ean || prev.ean,
+      has_product_identifier: !product.ean && !product.upc,
 
-      // ⚠️ FIXED FIELDS - AI CANNOT modify these (user/seller settings only)
-      sku: product.suggested_sku || prev.sku,
+      // ⚠️ NEW SYSTEM: Date + Category + Unique Version (V01, V02, etc.)
+      sku: generateStatelessSku(product.product_type, index + 1),
       brand: product.brand || prev.brand,
       manufacturer: product.manufacturer || prev.manufacturer,
       country_of_origin: product.country_of_origin || prev.country_of_origin,
@@ -656,7 +670,7 @@ export default function ProductCreatePage() {
           metadata: result.metadata
         }
 
-        fillFormFromAi(flattened)
+        fillFormFromAi(flattened, 0)
         toast.success('تم تحسين وتحديث كافة البيانات بالذكاء الاصطناعي!')
       }
     } catch (e: any) {
@@ -700,7 +714,8 @@ export default function ProductCreatePage() {
       errors.push('اسم المنتج بالعربي لازم 3 أحرف على الأقل')
     if (required.name_en.trim().length < VALIDATION_RULES.name_en.min)
       errors.push('اسم المنتج بالإنجليزي لازم 3 أحرف على الأقل')
-    // Barcode validation — simplified to allow ADEL (10 chars)
+    // ⚠️ FIXED: Barcode validation is now OPTIONAL because backend forces GTIN Exemption
+    /* 
     if (!required.has_product_identifier) {
       const isAdel = required.ean?.toUpperCase().startsWith('ADEL') && required.ean.length === 10
       const idLen = required.id_type === 'UPC' ? 12 : 13
@@ -710,6 +725,7 @@ export default function ProductCreatePage() {
         errors.push(`الباركود مطلوب (EAN: 13 رقم، UPC: 12 رقم، أو ADEL: 10 خانات)`)
       }
     }
+    */
     if (!required.brand || required.brand.trim().length < 1)
       errors.push('البراند مطلوب')
     if (!required.manufacturer || required.manufacturer.trim().length < 1)
@@ -918,12 +934,13 @@ export default function ProductCreatePage() {
       finalNameEn += ` - Copy ${variantIndex + 1}`
     }
 
-    const sku = isEditMode ? editProduct.sku : (aiData?.suggested_sku || required.sku || `AUTO-${skuTimestamp}-${variantIndex}-${rand1}-${rand2}`)
+    // ⚠️ FIXED: Priority is now the actual form state (required.sku) which holds the New System format
+    const sku = isEditMode ? editProduct.sku : (required.sku || aiData?.suggested_sku || `AUTO-${skuTimestamp}-${variantIndex}-${rand1}-${rand2}`)
     
-    // [FIX] Ensure each variant gets its OWN unique identifiers from AI data
-    const finalModelNumber = aiData?.model_number || required.model_number || required.name_en.trim()
-    const finalModelName = aiData?.model_name || required.model_name || required.name_ar.trim()
-    const finalEan = aiData?.ean || required.ean || ''
+    // [FIX] Ensure each variant gets data from the form state (which was filled by fillFormFromAi)
+    const finalModelNumber = required.model_number || aiData?.model_number || required.name_en.trim()
+    const finalModelName = required.model_name || aiData?.model_name || required.name_ar.trim()
+    const finalEan = required.ean || aiData?.ean || ''
 
     return {
       sku,
@@ -1277,7 +1294,7 @@ export default function ProductCreatePage() {
                 key={i}
                 onClick={() => {
                   setSelectedAiProduct(i)
-                  fillFormFromAi(product)
+                  fillFormFromAi(product, i)
                   toast.success(`تم اختيار المنتج ${i + 1}`)
                 }}
                 className={`px-3 py-2 rounded-xl text-sm transition-colors ${selectedAiProduct === i
@@ -1322,12 +1339,28 @@ export default function ProductCreatePage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-          <Field label="SKU" required hint="معرف المخزون الفريد">
-            <TextInput
-              value={required.sku}
-              onChange={v => setRequired(prev => ({ ...prev, sku: v.toUpperCase() }))}
-              placeholder="SKU-V1-00"
-            />
+          <Field label="رمز SKU" required hint="معرف المخزون الفريد (IMP-KITCHEN-S21-V01)">
+            <div className="flex gap-2">
+              <TextInput
+                value={required.sku}
+                onChange={v => setRequired(prev => ({ ...prev, sku: v.trim().toUpperCase() }))}
+                placeholder="IMP-KITCHEN-S12-004"
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await aiApi.getNextSku(required.product_type)
+                  if (res.data.next_sku) {
+                    setRequired(prev => ({ ...prev, sku: res.data.next_sku }))
+                    toast.success('تم توليد SKU احترافي جديد')
+                  }
+                }}
+                className="px-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-amazon-orange"
+                title="توليد SKU ذكي تلقائي"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
           </Field>
           <Field label="ASIN / ADEL" required hint="معرف المنتج الخارجي">
             <TextInput
@@ -1344,7 +1377,8 @@ export default function ProductCreatePage() {
                 setRequired(prev => ({
                   ...prev,
                   product_type: v,
-                  browse_node_id: newNodes[0]?.value || prev.browse_node_id
+                  browse_node_id: newNodes[0]?.value || prev.browse_node_id,
+                  sku: generateStatelessSku(v)
                 }))
               }}
               options={PRODUCT_TYPE_CATEGORIES as any}

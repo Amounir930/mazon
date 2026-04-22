@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { productsApi, listingsApi, amazonApi, authApi, tasksApi, syncApi, bulkApi, exportApi, sellersApi, catalogApi, spApi } from './endpoints'
+import { authApi, sellersApi, productsApi, listingsApi, tasksApi, amazonApi, syncApi, bulkApi, exportApi, catalogApi, spApi, imagesApi, dashboardApi, discoveryApi, debugApi } from './endpoints'
 import type { ProductListResponse, Listing, SessionStatusResponse, BrowserLoginResponse } from '@/types/api'
 
 // ==================== Product Keys ====================
@@ -159,6 +159,20 @@ export function useRetryListing() {
   return useMutation({
     mutationFn: async (listing_id: string) => {
       const { data } = await listingsApi.retry(listing_id)
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: listingKeys.lists() })
+    },
+  })
+}
+
+export function useCancelListing() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (listing_id: string) => {
+      const { data } = await listingsApi.cancel(listing_id)
       return data
     },
     onSuccess: () => {
@@ -565,3 +579,58 @@ export function useCatalogItemSPApi(asin: string) {
     staleTime: 1000 * 60 * 5,
   })
 }
+
+// ==================== Dashboard Hooks ====================
+
+export function useDashboardMetrics(days: number = 30) {
+  return useQuery({
+    queryKey: ['dashboard', 'metrics', days],
+    queryFn: async () => {
+      const { data } = await dashboardApi.getMetrics(days)
+      return data.data
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  })
+}
+
+export function useSyncDashboard() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await dashboardApi.sync()
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'metrics'] })
+    },
+  })
+}
+
+// ==================== Discovery Hooks ====================
+
+export function useDiscovery(keywords: string = "bestsellers") {
+  return useQuery({
+    queryKey: ['discovery', 'top-items', keywords],
+    queryFn: async () => {
+      const { data } = await discoveryApi.getTopItems(keywords)
+      return data.data
+    },
+    staleTime: 1000 * 60 * 30, // 30 minutes
+  })
+}
+
+// ==================== Debug Hooks ====================
+
+export function useLogs(lines: number = 100, enabled: boolean = false) {
+  return useQuery({
+    queryKey: ['debug', 'logs', lines],
+    queryFn: async () => {
+      const { data } = await debugApi.getLogs(lines)
+      return data
+    },
+    enabled,
+    refetchInterval: 3000, // Poll every 3 seconds
+  })
+}
+

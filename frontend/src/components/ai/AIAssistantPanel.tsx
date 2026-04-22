@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Sparkles, Send, Copy, AlertCircle, CheckCircle2, Loader2, RotateCcw, AlertTriangle, X, Tag } from 'lucide-react'
+import { Activity as Sparkles, Send, Copy, AlertCircle, CheckCircle, Loader2, RefreshCw as RotateCcw, AlertTriangle, X, Search as Tag } from 'lucide-react'
 import { aiApi } from '@/api/ai'
 import type { AIMergedProduct, AIGenerateProductRequest, ValidationError } from '@/types/ai'
 import toast from 'react-hot-toast'
@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 interface AIAssistantPanelProps {
   onProductsGenerated?: (products: any[]) => void
   onCopiesChange?: (count: number) => void
+  onPageChange?: (page: number) => void
   onClose?: () => void
 }
 
@@ -15,6 +16,7 @@ type GenerationStep = 'idle' | 'prompting' | 'generating' | 'validating' | 'comp
 export const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
   onProductsGenerated,
   onCopiesChange,
+  onPageChange,
   onClose,
 }) => {
   const [productName, setProductName] = useState('')
@@ -261,7 +263,7 @@ export const AIAssistantPanel: React.FC<AIAssistantPanelProps> = ({
           <div className="p-5 bg-amazon-orange/10 border border-amazon-orange/20 rounded-2xl flex items-center justify-between shadow-lg shadow-amazon-orange/5">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-amazon-orange/20 rounded-xl shadow-inner">
-                <CheckCircle2 className="w-6 h-6 text-amazon-orange" />
+                <CheckCircle className="w-6 h-6 text-amazon-orange" />
               </div>
               <div>
                 <p className="text-lg font-black text-text-primary">تم التوليد بنجاح!</p>
