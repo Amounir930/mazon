@@ -63,7 +63,7 @@ const LogSidePanel: React.FC<LogSidePanelProps> = ({ isOpen, onClose }) => {
   return (
     <div className={`fixed inset-y-0 right-0 w-[450px] bg-[#0d0d1a]/95 backdrop-blur-xl border-l border-white/10 shadow-2xl z-[100] flex flex-col transition-transform duration-300 transform ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-white/10 bg-white/5">
+      <div className="hidden flex items-center justify-between p-4 border-b border-white/10 bg-white/5">
         <div className="flex items-center gap-2">
           <div className="p-1.5 bg-blue-500/20 rounded-lg">
             <Terminal className="w-4 h-4 text-blue-400" />

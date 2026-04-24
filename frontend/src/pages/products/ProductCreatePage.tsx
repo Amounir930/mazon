@@ -422,9 +422,9 @@ export default function ProductCreatePage() {
     
     // Run automatic translations for Arabic fields if they have content
     const translations = ProductTranslationService.translateProduct({
-      description_ar: updatedRequired.description_ar,
+      description: updatedRequired.description_ar,
       bullet_points: updatedRequired.bullet_points,
-      name_ar: updatedRequired.name_ar,
+      name: updatedRequired.name_ar,
     })
     
     // Only update fields that have translations and are currently empty

@@ -100,7 +100,7 @@ const DashboardPage: React.FC = () => {
         </div>
 
         {/* Info Section */}
-        <div className="bg-white/5 backdrop-blur-md rounded-3xl border border-white/10 p-8 flex flex-col justify-center relative overflow-hidden">
+        <div className="hidden bg-white/5 backdrop-blur-md rounded-3xl border border-white/10 p-8 flex flex-col justify-center relative overflow-hidden">
           <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none select-none">
              <LayoutDashboard className="w-64 h-64" />
           </div>

@@ -45,11 +45,11 @@ export default function Sidebar() {
 
   const menuItems = [
     { to: '/dashboard', label: t('sidebar.dashboard'), icon: LayoutDashboard },
-    { to: '/live-mirror', label: t('sidebar.liveMirror'), icon: Activity },
+    // { to: '/live-mirror', label: t('sidebar.liveMirror'), icon: Activity },
     { to: '/products', label: t('sidebar.products'), icon: Package },
-    { to: '/products/search', label: t('sidebar.searchAmazon'), icon: Search },
+    // { to: '/products/search', label: t('sidebar.searchAmazon'), icon: Search },
     { to: '/listings', label: t('sidebar.listingQueue'), icon: List },
-    { to: '/reports', label: t('sidebar.reports'), icon: FileText },
+    // { to: '/reports', label: t('sidebar.reports'), icon: FileText },
     { to: '/settings', label: t('sidebar.settings'), icon: Settings },
   ]
 
@@ -69,7 +69,7 @@ export default function Sidebar() {
   }, [currentDate])
 
   return (
-    <div className="w-64 bg-bg-tertiary/80 backdrop-blur-xl border-l border-border-subtle h-screen flex flex-col sticky top-0 z-50">
+    <div className="w-64 bg-bg-tertiary/80 backdrop-blur-xl border-l border-border-subtle h-screen flex flex-col fixed inset-y-0 right-0 z-50">
       {/* Logo Section */}
       <div className="p-6 border-b border-border-subtle">
         <div className="flex items-center justify-between">
